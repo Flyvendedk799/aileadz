@@ -1294,6 +1294,47 @@ OPENAI_TOOLS.extend([
 ])
 
 
+# Several questions at once -> a question sheet in the chat (static/futurematch/assets/question-sheet.js):
+# one field per question, sent back as ONE message, so nobody has to type "1: ... 2: ..." into the chat.
+# Anonymous-safe: it writes nothing; whatever the person answers is just their next message.
+OPENAI_TOOLS.append({
+    "type": "function",
+    "function": {
+        "name": "ask_user_questions",
+        "description": (
+            "Vis brugeren 2-4 spørgsmål som et lille svarark i chatten, hvor hvert spørgsmål har sit eget felt "
+            "(og evt. forslag til svar). Brug det, når du reelt har brug for flere svar på én gang, i stedet for "
+            "at skrive en nummereret liste, som brugeren selv skal besvare med '1: … 2: …'. Normalt stiller du ÉT "
+            "spørgsmål ad gangen i teksten. Spørgsmålene skal være konkrete og bundet til brugerens situation, "
+            "aldrig en liste over profilfelter. Skriv højst én kort indledende sætning bagefter og gentag ikke "
+            "spørgsmålene i teksten; brugerens svar kommer som deres næste besked."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "intro": {"type": "string", "description": "Én kort sætning over arket (dansk), fx hvorfor du spørger."},
+                "questions": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 4,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "label": {"type": "string", "description": "Kort emne (1-3 ord), fx 'Nuværende rolle'. Bruges i brugerens svar."},
+                            "question": {"type": "string", "description": "Selve spørgsmålet, naturligt og konkret."},
+                            "choices": {"type": "array", "items": {"type": "string"},
+                                        "description": "Valgfrit: op til 5 korte svarforslag, brugeren kan trykke på."},
+                            "placeholder": {"type": "string", "description": "Valgfrit: kort eksempel i feltet."}
+                        },
+                        "required": ["label", "question"]
+                    }
+                }
+            },
+            "required": ["questions"]
+        }
+    }
+})
+
 # Anchors on /profile (ids in templates/fm/my_profile.html); open_in_app(open_profile, section=...).
 _PROFILE_PAGE_SECTIONS = frozenset({
     "cv", "skills", "experience", "education", "languages", "portfolio", "certifications",
@@ -4634,6 +4675,52 @@ def _execute_get_vendor_info(args):
     return json.dumps({"status": "error", "message": "Angiv enten vendor_name eller topic."})
 
 
+def _execute_ask_user_questions(args, username=None):
+    """Pass-through: the model asked several questions at once. Validate and clamp them (they land
+    in an SSE event the chat renders directly) and return a ``ui_card`` of type ``questions``."""
+    raw = args.get("questions") if isinstance(args, dict) else None
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            raw = None
+    fields = []
+    seen = set()
+    for i, q in enumerate(raw if isinstance(raw, list) else []):
+        if not isinstance(q, dict):
+            continue
+        question = str(q.get("question") or "").strip()[:240]
+        label = str(q.get("label") or "").strip()[:40]
+        if not question:
+            continue
+        choices = []
+        for c in (q.get("choices") if isinstance(q.get("choices"), list) else [])[:5]:
+            c = str(c or "").strip()[:40]
+            if c and c not in choices:
+                choices.append(c)
+        base = "".join(ch for ch in label.lower() if ch.isalnum())[:20] or f"q{i + 1}"
+        name, n = base, 2
+        while name in seen:
+            name, n = f"{base}{n}", n + 1
+        seen.add(name)
+        fields.append({"name": name, "label": label or f"Spørgsmål {len(fields) + 1}", "question": question,
+                       "choices": choices, "placeholder": str(q.get("placeholder") or "").strip()[:80]})
+        if len(fields) == 4:
+            break
+    if len(fields) < 2:
+        return json.dumps({
+            "status": "error",
+            "message_da": "Stil ét spørgsmål direkte i teksten i stedet (ask_user_questions kræver mindst to konkrete spørgsmål).",
+        }, ensure_ascii=False)
+    return json.dumps({
+        "status": "ui_card",
+        "ui_type": "questions",
+        "message": str(args.get("intro") or "").strip()[:200] or "Et par ting, jeg gerne vil vide:",
+        "fields": fields,
+        "note": "Arket vises nu for brugeren. Skriv højst én kort sætning og vent på svaret; gentag ikke spørgsmålene.",
+    }, ensure_ascii=False)
+
+
 def _execute_request_user_input(args, username):
     """Pass-through: AI requested a UI card. No DB calls — just return the card spec."""
     if not username:
@@ -6734,6 +6821,8 @@ def execute_tool(tool_call, username=None, session_id=None):
             return _execute_open_in_app(args, username)
         elif function_name == "request_user_input":
             return _execute_request_user_input(args, username)
+        elif function_name == "ask_user_questions":
+            return _execute_ask_user_questions(args, username)
         elif function_name == "create_course_order":
             return _execute_create_order(args, username)
         elif function_name == "analyze_skill_gaps":

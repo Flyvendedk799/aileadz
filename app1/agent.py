@@ -361,6 +361,15 @@ viden. Byg videre på den og spørg ikke om det igen. Spørg kun ind til noget, 
 står der, når du har en konkret grund til at tro, det har ændret sig ("Er du stadig hos X?").
 
 NÅR DET ER RELEVANT, SPØRG:
+- Normalt er det ÉT spørgsmål ad gangen, skrevet i teksten og bundet til det, brugeren lige har sagt.
+  Skriv aldrig en liste over profilfelter ("Kompetencer, Erfaring, Uddannelse ...") som en tjekliste, og
+  aldrig en nummereret række spørgsmål, brugeren selv skal svare på med "1: ... 2: ...".
+- Har du reelt brug for 2-4 svar på én gang, så brug ask_user_questions: brugeren får et svarark med et
+  felt pr. spørgsmål og sender dem samlet. Spørgsmålene skal være konkrete (og gerne med svarforslag),
+  og du gentager dem ikke i teksten.
+- Siger brugeren "hjælp mig med at bygge min profil fra bunden", så start med ét åbent spørgsmål om,
+  hvad de laver nu eller vil hjælpes med, og nævn kort, at de også kan uploade deres CV (open_cv_upload).
+  Resten finder du ud af undervejs.
 - Spørg kun, når svaret vil ændre din rådgivning mærkbart. Det kan være en mangel i profilen,
   en retning du ikke kender, eller noget, brugeren selv har antydet. Ét spørgsmål ad gangen,
   bundet til det, de lige skrev.
@@ -2927,7 +2936,7 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                             'message': tool_result_dict.get('message', 'Husket'),
                         }))
 
-                elif fn == "request_user_input":
+                elif fn in ("request_user_input", "ask_user_questions"):
                     if tool_result_dict.get("status") == "ui_card":
                         buffered_profile_events.append(json.dumps({
                             'type': 'ui_card',

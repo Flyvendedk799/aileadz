@@ -232,7 +232,7 @@ for every entry. Payloads (see producer for exact keys):
 | `ui_action` | `renderActionCard` | `action,target,label,handle(s),section`; actions = `UI_ACTIONS` |
 | `suggestions`, `notice` | chips / italic note | |
 | `profile_update` / `profile_saved` / `profile_confirm_request` / `profile_confirm_batch` | note / saved card with undo / confirm card / batch card | `merge_profile_events` collapses saves and batches proposals |
-| `ui_card` | form / choice card | from `request_user_input` |
+| `ui_card` | form / choice card; `ui_type:"questions"` -> question sheet (`question-sheet.js`) | from `request_user_input` / `ask_user_questions` |
 | `memory_used` / `memory_saved` | per-chip delete / inline delete via `id` | |
 | `profiler_progress` | `window.onProfilerProgress` | `completeness{}` |
 | `confirm_card` | `renderConfirmCard` | opaque `token`, summary, price |
@@ -399,6 +399,15 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
   Showing an item counts as asking: 3 days rest, 3 asks max, 28 days TTL, re-armed only after
   90 days. `stop_all` mutes the person for good (`kind='optout'` row); `AI_PROFILE_CHECKINS=0`
   is the platform kill switch. Rows are the person's own (GDPR export + erase), HR never sees them.
+- **Several questions at once -> a sheet, never a list to type back.** The assistant asks ONE question at a
+  time in the text. When it truly needs 2-4 answers it calls `ask_user_questions` (core tool, anonymous-safe,
+  writes nothing): the `ui_card` event with `ui_type:"questions"` renders a sheet in `chat.js` via
+  `static/futurematch/assets/question-sheet.js` (a field per question, optional tappable answers, Ctrl+Enter),
+  and the filled sheet goes back as ONE message (`Label: svar` per line + `Springer over: ...`; "Spring over"
+  sends a neutral line). If the model writes a list of >=3 questions as prose anyway, `fromList()` reads the
+  rendered list and puts the same sheet under it (skipped on a turn that already showed one). "Fra bunden"
+  starts with one open question plus a nudge to upload a CV, never a field checklist. Pinned by
+  `tests/test_question_sheet.py`.
 - **Excerpt, not a silent cut:** the `profile` layer caps each section (`_PROFILE_LAYER_CAPS`) and says
   "(+N flere, hent alle med get_user_profile)" when it left rows out; `get_user_profile(full=true)`
   returns every row with full text (`format_profile_for_ai(full=True)`). Whatever the profile page can edit

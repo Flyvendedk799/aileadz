@@ -824,6 +824,7 @@
     forget_about_user: "Glem hukommelse",
     update_learning_path: "Opdater læringssti",
     resolve_checkin: "Luk opfølgning",
+    ask_user_questions: "Stiller spørgsmål",
     record_learning_outcome: "Gem kursusudbytte",
   };
   // What a finished chip says when the count alone would be silent or misleading.
@@ -1460,6 +1461,7 @@
     let buffer = "", textEl = null, fullText = "", suggestions = null, done = false;
     let messageIndex = null;              // from the meta event; used by the feedback POST
     let cardsSeen = 0, productSeen = 0;   // pair structured course_cards with fallback product HTML
+    let questionsSeen = false;            // a question sheet already answers this turn's questions
     let eventsReceived = 0;               // meaningful events (excl. ping) — gates the silent retry
 
     // rAF-throttled rendering: buffer chunks and re-parse markdown at most once
@@ -1569,6 +1571,13 @@
                                    label: forgetting ? "Glemt" : undefined },
               conf.action ? () => saveProfileUpdate(conf.action, conf.data || {}) : null);
           } else if (data.type === "ui_card") {
+            if (data.ui_type === "questions" && window.FmQuestionSheet) {
+              // Several questions at once: one field per question, sent back as ONE message.
+              questionsSeen = true;
+              window.FmQuestionSheet.render(body, { message: data.message || "", fields: data.fields || [] },
+                { send: ask, after: () => down() });
+              return;
+            }
             const choices = (data.choices || []).filter((c) => c && (c.label || c.value));
             if ((data.ui_type === "choice" || (!data.fields || !data.fields.length)) && choices.length) {
               // Choice card: options render as buttons; the pick is sent on.
@@ -1641,6 +1650,11 @@
       if (currentAbort === controller) currentAbort = null;
     }
     renderFinal();
+    // The model wrote a list of questions as prose instead of using the sheet: give the list
+    // fields, so nobody has to type "1: ... 2: ..." into the chat.
+    if (!questionsSeen && textEl && window.FmQuestionSheet) {
+      try { window.FmQuestionSheet.fromList(body, textEl, { send: ask, after: () => down() }); } catch (e) { /* cosmetic */ }
+    }
     // Render suggestion chips last, like the source UI. The server now
     // guarantees a set, but keep a client-side net so a turn never dead-ends
     // even if the suggestions event is dropped.

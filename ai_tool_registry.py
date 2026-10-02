@@ -164,6 +164,10 @@ _EMPLOYEE_META = {
         "record_learning_outcome", auth_required=True, side_effect=True, parallel_safe=False,
         toolset_tags=("memory", "profile"), progress_label="Gemmer udbytte",
     ),
+    # Question sheet: renders a card, writes nothing, safe for anonymous visitors.
+    "ask_user_questions": ToolMeta(
+        "ask_user_questions", parallel_safe=False, toolset_tags=("ui",),
+    ),
     "search_platform_help": ToolMeta(
         "search_platform_help", toolset_tags=("help",), cache_ttl=600,
     ),
@@ -393,6 +397,7 @@ _TOOL_LABELS = {
     "recall_about_user": "Husker tilbage",
     "forget_about_user": "Glem hukommelse",
     "resolve_checkin": "Luk opfølgning",
+    "ask_user_questions": "Stiller spørgsmål",
     "record_learning_outcome": "Gem kursusudbytte",
     "search_platform_help": "Hjælpeartikler",
     "get_my_compliance": "Mine krav",
@@ -1086,6 +1091,7 @@ def get_employee_tool_selection(
     # always available. Cost is tiny (a few small schemas) and worth the reliability.
     names.add("catalog_search")  # can always search the catalog
     names.add("open_in_app")     # cross-surface navigation is always available (no mutation)
+    names.add("ask_user_questions")  # several questions at once -> a sheet, never a numbered list to type back
     if logged_in:
         names.update({"get_user_profile", "request_user_input", "update_user_profile", "remember_about_user"})
 

@@ -1497,3 +1497,32 @@ body.chat-page.light-mode .md blockquote {
 .pbatch { margin: 6px 0 0 16px; padding: 0; font-size: 13.5px; }
 .pcard.choice .pick { cursor: pointer; }
 .pcard.choice .pick.done { background: var(--teal-glow-2); }
+
+/* Question sheet (question-sheet.js): several questions answered in one go. */
+.pcard.qsheet { display: block; max-width: 640px; }
+.qsheet .qs-msg { font-size: 13.5px; font-weight: 600; color: var(--ink); line-height: 1.45; }
+.qsheet .qs-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 14px; counter-reset: qs; }
+.qsheet .qs-item { display: grid; gap: 6px; counter-increment: qs; }
+.qsheet .qs-q { font-size: 13.5px; line-height: 1.45; color: var(--ink-2); cursor: pointer; }
+.qsheet .qs-q::before { content: counter(qs) "."; display: inline-block; min-width: 18px; color: var(--teal); font-family: var(--ff-mono); font-weight: 700; }
+.qsheet .qs-q b { color: var(--ink); }
+.qsheet textarea { width: 100%; min-height: 38px; max-height: 140px; resize: none; padding: 9px 11px; border-radius: 9px; border: 1px solid var(--line-2);
+  background: var(--card-2); color: var(--ink); font: inherit; font-size: 13.5px; line-height: 1.4; }
+.qsheet textarea:focus { outline: none; border-color: var(--teal-3); box-shadow: 0 0 0 3px var(--teal-glow); }
+.qsheet .qs-choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.qsheet .qs-choice { height: 28px; padding: 0 11px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--card-2); color: var(--ink-2);
+  font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.qsheet .qs-choice:hover { border-color: var(--teal-3); color: var(--teal); }
+.qsheet .qs-choice.on { background: var(--teal-glow-2); border-color: var(--teal-3); color: var(--teal); }
+.qsheet .qs-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+.qsheet .qs-count { margin-right: auto; font-size: 12px; color: var(--ink-3); }
+.qsheet .qs-skip { border: none; background: none; color: var(--ink-3); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 6px 8px; }
+.qsheet .qs-skip:hover { color: var(--ink); }
+.qsheet .qs-send { height: 34px; padding: 0 16px; border-radius: 9px; border: none; background: var(--teal); color: #fff; font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; }
+.qsheet .qs-send:disabled { opacity: .45; cursor: default; }
+.qsheet.is-sent { opacity: .7; }
+.qsheet .qs-sent { margin-top: 12px; font-size: 12.5px; font-weight: 650; color: var(--teal); text-align: right; }
+@media (prefers-reduced-motion: reduce) { .qsheet { animation: none; } }
+
+/* A message sent from the question sheet has one answer per line. */
+.msg.user .bubble { white-space: pre-wrap; }

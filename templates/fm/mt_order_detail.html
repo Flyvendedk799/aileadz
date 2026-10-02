@@ -32,7 +32,7 @@
       {% if order.completion_date %}<div style="font-size:12px;color:var(--fm-ink-3);text-align:center;margin-bottom:6px"><i class="fa-solid fa-circle-check" style="color:var(--fm-success)"></i> Afsluttet: {{ order.completion_date }}</div>{% endif %}
       {% if order.approved_by %}<div style="font-size:12px;color:var(--fm-ink-3);text-align:center"><i class="fa-solid fa-user-check"></i> Godkendt af: {{ order.approved_by }}</div>{% endif %}
 
-      {% if company and company.user_role in ['company_admin', 'hr_manager'] %}
+      {% if company and can('hr.manage') %}
       <form method="POST" action="{{ url_for('multitenant_reports.update_order_status', order_id=order.order_id) }}" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--fm-line)">
         <div class="fm-field"><label>Opdater status</label>
           <select class="fm-select" name="status">

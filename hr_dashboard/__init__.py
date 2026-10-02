@@ -13,7 +13,7 @@ import csv
 import io
 
 from perf_cache import ttl_cache
-from auth_decorators import require_company_role, can, department_scope
+from auth_decorators import require_capability, can, department_scope
 
 # k-anon helpers for small-cohort suppression on per-requirement breakdowns.
 # Guarded import: a missing k-anon module must NEVER crash an HR dashboard render
@@ -157,7 +157,7 @@ def create_hr_dashboard_blueprint():
         A department head with no department resolves to '' so they match
         nothing rather than everything (fail closed).
         """
-        if session.get('role') == 'admin' or session.get('company_role') != 'department_head':
+        if department_scope() is None:  # the role matrix decides who is scoped
             return None
         return (company or {}).get('department') or ''
 
@@ -897,8 +897,6 @@ def create_hr_dashboard_blueprint():
             history = order_service.get_history(_ctx, order_id)
             _status = _lc.normalize_status(order.get('status'))
             _bill = _lc.normalize_billing(order.get('billing_status'))
-            _is_admin = session.get('role') == 'admin'
-            _role = session.get('company_role')
             return render_template('fm/order_details.html',
                                    order=order,
                                    company=company,
@@ -912,8 +910,9 @@ def create_hr_dashboard_blueprint():
                                    billing_tone=_lc.BILLING_TONES[_bill],
                                    billing_transitions=sorted(_lc.BILLING_TRANSITIONS[_bill]),
                                    billing_labels=_lc.BILLING_LABELS,
-                                   can_bill=_is_admin or _role in ('company_admin', 'hr_manager'),
-                                   can_manage=_is_admin or _role in ('company_admin', 'hr_manager', 'department_head'),
+                                   # Same capabilities as update_billing / update_company_order_status.
+                                   can_bill=can('company.billing'),
+                                   can_manage=can('hr.manage'),
                                    next_statuses=_lc.allowed_targets(_status, actors={'manager'}))
 
         except Exception as e:
@@ -1526,10 +1525,8 @@ def create_hr_dashboard_blueprint():
             return jsonify({'success': False, 'message': 'Ingen adgang.'}), 401
         # Narrow to a company manager: confirming a NAMED employee's level is
         # people-level, so department_head (allowed for the read pages) is not
-        # enough. A platform admin impersonating a tenant is allowed through.
-        is_impersonating_admin = (session.get('role') == 'admin'
-                                  and session.get('admin_acting_company_id'))
-        if not is_impersonating_admin and session.get('company_role') not in ('company_admin', 'hr_manager'):
+        # enough. The role matrix decides (platform admins hold everything).
+        if not can('company.employees'):
             return jsonify({'success': False, 'message': 'Kun virksomhedsadministrator eller HR-leder kan bekræfte kompetenceløft.'}), 403
 
         company = get_company_context()
@@ -2369,7 +2366,7 @@ def create_hr_dashboard_blueprint():
                                department_anon=department_anon,
                                report_cards=report_cards,
                                schedules=schedules, departments=departments,
-                               can_schedule=(session.get('role') == 'admin' or session.get('company_role') in ('company_admin', 'hr_manager')),
+                               can_schedule=can('company.reports'),
                                filt_department=request.args.get('department', ''),
                                filt_from=request.args.get('from', ''), filt_to=request.args.get('to', ''),
                                active_hr_page='reports')
@@ -2434,7 +2431,7 @@ def create_hr_dashboard_blueprint():
         if action not in ('pause', 'resume', 'cancel'):
             flash("Ukendt handling.", "danger")
             return redirect(url_for('hr_dashboard.reports'))
-        if not (session.get('role') == 'admin' or session.get('company_role') in ('company_admin', 'hr_manager')):
+        if not can('company.reports'):
             flash("Kun HR-ledere kan ændre planlagte rapporter.", "danger")
             return redirect(url_for('hr_dashboard.reports'))
         conn = current_app.mysql.connection
@@ -2461,7 +2458,7 @@ def create_hr_dashboard_blueprint():
         company = get_company_context()
         if not company:
             return redirect(url_for('auth.login'))
-        if not (session.get('role') == 'admin' or session.get('company_role') in ('company_admin', 'hr_manager')):
+        if not can('company.reports'):
             flash("Kun HR-ledere kan planlægge rapporter.", "danger")
             return redirect(url_for('hr_dashboard.reports'))
         import report_exports
@@ -2925,8 +2922,7 @@ def create_hr_dashboard_blueprint():
             """, (company['id'],))
             departments = [r['department'] for r in cur.fetchall()]
             cur.close()
-            can_edit = (session.get('role') == 'admin'
-                        or session.get('company_role') in ('company_admin', 'hr_manager'))
+            can_edit = can('company.billing')
             return render_template('fm/billing.html',
                                    company=company, orders=orders, summary=summary,
                                    departments=departments, can_edit=can_edit,
@@ -3630,8 +3626,7 @@ def create_hr_dashboard_blueprint():
         if 'company_id' not in session:
             return jsonify({'error': 'Ikke logget ind'}), 401
         company_id = session['company_id']
-        role = session.get('company_role', '')
-        if role not in ('company_admin', 'hr_manager', 'department_head'):
+        if not can('company.workspace'):
             flash("Du har ikke rettigheder til at oprette læringsforløb.", "danger")
             return redirect(url_for('hr_dashboard.learning_paths'))
 
@@ -3662,8 +3657,7 @@ def create_hr_dashboard_blueprint():
         if 'company_id' not in session:
             return jsonify({'error': 'Ikke logget ind'}), 401
         company_id = session['company_id']
-        role = session.get('company_role', '')
-        if role not in ('company_admin', 'hr_manager', 'department_head'):
+        if not can('company.workspace'):
             flash("Du har ikke rettigheder til at tildele læringsforløb.", "danger")
             return redirect(url_for('hr_dashboard.learning_paths'))
 
@@ -3718,7 +3712,7 @@ def create_hr_dashboard_blueprint():
         ordered on assignment) or free text (guidance). Every save is versioned."""
         if 'company_id' not in session:
             return jsonify({'error': 'Ikke logget ind'}), 401
-        if session.get('company_role') not in ('company_admin', 'hr_manager'):
+        if not can('company.learning_paths'):
             flash("Kun HR-ledere kan redigere forløbets trin.", "danger")
             return redirect(url_for('hr_dashboard.learning_paths'))
         import learning_path_service
@@ -3751,8 +3745,7 @@ def create_hr_dashboard_blueprint():
         if 'company_id' not in session:
             return jsonify({'error': 'Ikke logget ind'}), 401
         company_id = session['company_id']
-        role = session.get('company_role', '')
-        if role not in ('company_admin', 'hr_manager'):
+        if not can('company.learning_paths'):
             flash("Du har ikke rettigheder.", "danger")
             return redirect(url_for('hr_dashboard.learning_paths'))
         try:
@@ -3774,8 +3767,7 @@ def create_hr_dashboard_blueprint():
         if 'company_id' not in session:
             return jsonify({'error': 'Ikke logget ind'}), 401
         company_id = session['company_id']
-        role = session.get('company_role', '')
-        if role not in ('company_admin', 'hr_manager'):
+        if not can('company.learning_paths'):
             flash("Du har ikke rettigheder.", "danger")
             return redirect(url_for('hr_dashboard.learning_paths'))
         try:
@@ -4410,7 +4402,7 @@ def create_hr_dashboard_blueprint():
     # ══════════════════════════════════════════════════════════
 
     @hr_dashboard_bp.route('/approval-policies')
-    @require_company_role('company_admin', 'hr_manager')
+    @require_capability('company.policies')
     def approval_policies():
         """View and manage auto-approval policies for the company."""
         auth_check = require_hr_access()
@@ -4449,7 +4441,7 @@ def create_hr_dashboard_blueprint():
                                active_hr_page='approval_policies')
 
     @hr_dashboard_bp.route('/approval-policies/save', methods=['POST'])
-    @require_company_role('company_admin', 'hr_manager')
+    @require_capability('company.policies')
     def save_approval_policy():
         """Create or update an auto-approval policy (company-wide or per-dept)."""
         auth_check = require_hr_manager_access()
@@ -4511,7 +4503,7 @@ def create_hr_dashboard_blueprint():
         return redirect(url_for('hr_dashboard.approval_policies'))
 
     @hr_dashboard_bp.route('/approval-policies/<int:policy_id>/delete', methods=['POST'])
-    @require_company_role('company_admin', 'hr_manager')
+    @require_capability('company.policies')
     def delete_approval_policy(policy_id):
         """Delete an auto-approval policy (company-scoped)."""
         auth_check = require_hr_manager_access()
@@ -4540,7 +4532,7 @@ def create_hr_dashboard_blueprint():
     # ══════════════════════════════════════════════════════════
 
     @hr_dashboard_bp.route('/benchmarking')
-    @require_company_role('company_admin', 'hr_manager', 'department_head')
+    @require_capability('company.analytics')
     def benchmarking_view():
         """Anonymous industry benchmark for the company (k-anonymity enforced
         inside benchmarking.benchmark)."""
@@ -4774,8 +4766,7 @@ def create_hr_dashboard_blueprint():
         my_dept = (company.get('department') or '').strip()
         dept = my_dept
         req_dept = (request.args.get('department') or '').strip()
-        if req_dept and (session.get('role') == 'admin'
-                         or session.get('company_role') in ('company_admin', 'hr_manager')):
+        if req_dept and can('company.analytics'):
             dept, scope = req_dept, 'department'
         if scope == 'department' and not dept:
             scope = 'reports'

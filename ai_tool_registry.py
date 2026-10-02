@@ -156,7 +156,8 @@ _EMPLOYEE_META = {
     ),
     # Heartbeat check-ins (profile_checkins.py): both only touch the person's own rows.
     "resolve_checkin": ToolMeta(
-        "resolve_checkin", auth_required=True, parallel_safe=False, toolset_tags=("memory", "profile"),
+        "resolve_checkin", auth_required=True, side_effect=True, parallel_safe=False,
+        toolset_tags=("memory", "profile"),
         progress_label="Lukker opfølgning",
     ),
     "record_learning_outcome": ToolMeta(
@@ -167,7 +168,7 @@ _EMPLOYEE_META = {
         "search_platform_help", toolset_tags=("help",), cache_ttl=600,
     ),
     "save_learning_path": ToolMeta(
-        "save_learning_path", auth_required=True, parallel_safe=False,
+        "save_learning_path", auth_required=True, side_effect=True, parallel_safe=False,
         toolset_tags=("profile", "path"),
     ),
     "get_learning_path": ToolMeta(
@@ -178,13 +179,15 @@ _EMPLOYEE_META = {
         toolset_tags=("profile", "path", "mutation"),
     ),
     "set_learning_goal": ToolMeta(
-        "set_learning_goal", auth_required=True, parallel_safe=False, toolset_tags=("profile", "goals"),
+        "set_learning_goal", auth_required=True, side_effect=True, parallel_safe=False,
+        toolset_tags=("profile", "goals"),
     ),
     "get_learning_goals": ToolMeta(
         "get_learning_goals", auth_required=True, toolset_tags=("profile", "goals"), cache_ttl=20,
     ),
     "update_learning_goal": ToolMeta(
-        "update_learning_goal", auth_required=True, parallel_safe=False, toolset_tags=("profile", "goals"),
+        "update_learning_goal", auth_required=True, side_effect=True, parallel_safe=False,
+        toolset_tags=("profile", "goals"),
     ),
     # --- Specialised employee tools (keyword-gated, NOT in core seed) ---
     "get_my_course_status": ToolMeta(
@@ -217,10 +220,12 @@ _EMPLOYEE_META = {
     ),
     # AI Tooler 2 (Phase 7): employee-facing action tools.
     "save_course_for_later": ToolMeta(
-        "save_course_for_later", auth_required=True, toolset_tags=("wishlist", "memory"),
+        "save_course_for_later", auth_required=True, side_effect=True, parallel_safe=False,
+        toolset_tags=("wishlist", "memory"),
     ),
     "set_course_reminder": ToolMeta(
-        "set_course_reminder", auth_required=True, toolset_tags=("reminder", "memory"),
+        "set_course_reminder", auth_required=True, side_effect=True, parallel_safe=False,
+        toolset_tags=("reminder", "memory"),
     ),
     "manage_my_order": ToolMeta(
         "manage_my_order", auth_required=True,
@@ -1340,6 +1345,11 @@ def get_employee_tool_selection(
                 "save_learning_path", "update_learning_path",
                 # Own-memory write, like remember_about_user: what a course led to.
                 "record_learning_outcome",
+                # Immediate, self-scoped writes (goals, wishlist, reminders, check-ins). They are
+                # flagged side_effect so the provider fallback never replays them and the chip says
+                # "ændrer data"; they keep reaching the menu exactly as before.
+                "set_learning_goal", "update_learning_goal", "save_course_for_later",
+                "set_course_reminder", "resolve_checkin",
         ) and not _explicit_order_confirmation(query):
             continue
         selected.append(tool)

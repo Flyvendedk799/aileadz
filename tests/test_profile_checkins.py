@@ -295,6 +295,25 @@ class RegistryTests(unittest.TestCase):
         missing = sorted({(t.get("function") or t)["name"] for t in OPENAI_TOOLS + PROFILE_TOOLS} - labelled)
         self.assertEqual(missing, [])
 
+    def test_immediate_self_scoped_writes_are_flagged_and_still_reachable(self):
+        """Writes that save at once must be side_effect: the provider fallback never
+        replays them and the chip says "ændrer data". Flagging must not take them
+        off the menu."""
+        from ai_tool_registry import _EMPLOYEE_META, get_employee_tool_selection
+        writers = ("set_learning_goal", "update_learning_goal", "save_learning_path",
+                   "save_course_for_later", "set_course_reminder", "resolve_checkin",
+                   "record_learning_outcome")
+        for name in writers:
+            self.assertTrue(_EMPLOYEE_META[name].side_effect, name)
+        _, meta = get_employee_tool_selection(
+            logged_in=True, company_id=None, intent="discovery", user_query="hvad ved du om mig?", mode="assistant")
+        for name in ("set_learning_goal", "update_learning_goal", "save_learning_path", "resolve_checkin"):
+            self.assertIn(name, meta["tool_names"], name)
+        _, wish = get_employee_tool_selection(
+            logged_in=True, company_id=None, intent="discovery",
+            user_query="gem kurset til senere og sæt en påmindelse", mode="default")
+        self.assertIn("save_course_for_later", wish["tool_names"])
+
     def test_mutating_tool_set_includes_the_outcome_tool(self):
         import app1.agent as agent
         self.assertIn("record_learning_outcome", agent._PROFILE_MUTATING_TOOLS)

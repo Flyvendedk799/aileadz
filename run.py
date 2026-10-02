@@ -216,6 +216,9 @@ def create_app():
         'SESSION_COOKIE_HTTPONLY': True,
         'SESSION_COOKIE_SAMESITE': 'Lax',
         'SESSION_COOKIE_SECURE': (os.environ.get('SANDBOX') != '1'),
+        # "Husk mig" on the login form marks the session permanent (auth._finish_login);
+        # otherwise the cookie ends with the browser session.
+        'PERMANENT_SESSION_LIFETIME': 60 * 60 * 24 * 30,
     })
 
     # Long-lived caching for worker-served static assets. Safe because every

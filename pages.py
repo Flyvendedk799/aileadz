@@ -58,7 +58,8 @@ def about():
 @pages_bp.route('/contact')
 def contact():
     # No dedicated contact page in the Futurematch design; support covers it.
-    return render_template('fm/support.html')
+    # Redirect (not a bare render) so the page gets its contact details.
+    return redirect(url_for('pages.support'))
 
 @pages_bp.route('/support')
 def support():

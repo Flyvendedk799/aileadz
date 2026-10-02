@@ -1161,6 +1161,9 @@ def create_companies_blueprint():
             flash("Branding-adgang opdateret.", "success")
         else:
             flash("Kunne ikke opdatere branding-adgang.", "danger")
+        if company_id and request.form.get('back') == 'branding':
+            # The "Aktivér" button on the branding hub returns there.
+            return redirect(url_for('companies.branding', company_id=company_id))
         if company_id:
             return redirect(url_for('companies.admin_company_detail', company_id=company_id))
         return redirect(request.referrer or url_for('companies.admin_companies_list'))

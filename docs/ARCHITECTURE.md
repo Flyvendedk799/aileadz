@@ -81,6 +81,7 @@ Find a symbol with Grep, then read only that range. Module docstrings at the top
 
 - `templates/fm/` — all current pages (extend `templates/fm_base.html`); `app1/templates/` — legacy chat shell, widget, admin log; `templates/*.html` — a few top-level pages.
 - `static/futurematch/assets/` — `fm.css`, `fm-pages.css`, `chat.css`, `shell.js`, `chat.js`, `ai-stream.js`, `ai-sidebar.js`, `fm-charts.js`, ... Reference with `?v={{ asset_version('futurematch/assets/x.js') }}`.
+- Charts: every chart goes through `window.FMChart` (`fm-charts.js`), loaded by including `templates/fm/_charts.html` in `extra_scripts` before the page script. The loader brings `fm-charts.css` (validated categorical palette `--fm-chart-1..6`, light and dark), Chart.js pinned to 4.4.0, and the helpers (`line`, `bar`, `stackedBar`, `hbarRanked`, `doughnut`, `radar`, `sparkline`). The helpers own Danish number/date formatting, live re-theming on dark-mode toggle, `role="img"` summaries plus a hidden data table, and the empty state. Options are documented in the header of `fm-charts.js`. Templates never call `new Chart(` directly (`tests/test_charts_layer.py`).
 
 ## Tooling
 

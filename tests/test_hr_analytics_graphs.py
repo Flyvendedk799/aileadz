@@ -287,5 +287,51 @@ class SkillEngagementBenchmarkTests(unittest.TestCase):
         self.assertIn("50 er branchens median", html)
 
 
+class OperationsPagesTests(unittest.TestCase):
+    def test_hr_reports_department_chart_is_k_floored(self):
+        def extra(s, params):
+            if s.startswith("select cu.department, count(distinct cu.user_id) as employees"):
+                return [{"department": "Salg", "employees": 7, "orders": 4, "completed": 2, "spend": 12500},
+                        {"department": "Solo", "employees": 1, "orders": 2, "completed": 2, "spend": 9000}]
+            return None
+        resp, _ = _get("/hr/reports", extra, patches=[
+            (("report_exports.REPORTS",), {"new": {}}),
+        ])
+        html = resp.get_data(as_text=True)
+        self.assertEqual(resp.status_code, 200, html[:300])
+        self.assertIn("deptCompletionChart", html)
+        self.assertIn("12.500 kr", html)
+        self.assertNotIn("Solo", html)
+        self.assertIn("Grupper under k=", html)
+
+    def test_compliance_status_is_a_status_coloured_stack(self):
+        html = _render("fm/compliance.html", totals={"requirements": 2, "compliant": 6,
+                                                     "expiring": 1, "overdue": 3},
+                       matrix=[], at_risk_chart=[])
+        self.assertIn("FMChart.stackedBar('complianceStatus'", html)
+        self.assertNotIn("FMChart.doughnut", html)
+        self.assertIn("60% <span", html)
+
+    def test_budget_chart_splits_spent_left_and_overrun(self):
+        html = _render("fm/budgets.html", fiscal_year=2026, total_budget=100000, total_spent=120000,
+                       budgets=[{"department": "Salg", "annual_budget": 50000, "spent": 70000,
+                                 "employee_count": 6}], unbudgeted_depts=[])
+        self.assertIn("Over budget (kr)", html)
+        self.assertIn("Overskredet", html)
+        self.assertIn("20.000", html)
+
+    def test_training_plan_gap_chart_on_fixed_scale(self):
+        plan = {"priority_gaps": [{"skill": "Excel", "gap": 1, "critical": False},
+                                  {"skill": "Python", "gap": 3, "critical": True}],
+                "recommended_courses": [], "next_actions": []}
+        resp, _ = _get("/hr/training-plan", None, patches=[
+            (("hr_ext._tool",), {"return_value": plan}),
+        ])
+        html = resp.get_data(as_text=True)
+        self.assertEqual(resp.status_code, 200, html[:300])
+        self.assertIn("max: 5", html)
+        self.assertIn("største gab øverst", html)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -998,7 +998,7 @@ def create_hr_dashboard_blueprint():
                 for i in range(29, -1, -1):
                     day = today - timedelta(days=i)
                     row = by_day.get(day)
-                    approval_trend['labels'].append(day.strftime('%d/%m'))
+                    approval_trend['labels'].append(day.strftime('%d.%m'))
                     approval_trend['pending'].append(int(row['pending']) if row and row['pending'] else 0)
                     approval_trend['approved'].append(int(row['approved']) if row and row['approved'] else 0)
                     approval_trend['rejected'].append(int(row['rejected']) if row and row['rejected'] else 0)
@@ -2337,6 +2337,8 @@ def create_hr_dashboard_blueprint():
             cur.close()
         except Exception as e:
             current_app.logger.warning(f"HR reports summary error: {e}")
+        # Per-department completion/spend is a people-level breakdown: k-floor it.
+        department_rows, department_anon = _kanon_department_rows(department_rows, 'employees')
 
         import report_exports
         report_cards = [
@@ -2364,6 +2366,7 @@ def create_hr_dashboard_blueprint():
                                company=company,
                                report_summary=report_summary,
                                department_rows=department_rows,
+                               department_anon=department_anon,
                                report_cards=report_cards,
                                schedules=schedules, departments=departments,
                                can_schedule=(session.get('role') == 'admin' or session.get('company_role') in ('company_admin', 'hr_manager')),

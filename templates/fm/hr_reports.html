@@ -22,8 +22,16 @@
     <div class="kpi-tile"><div class="kl">Kompetencedata</div><div class="kv tnum">{{ rs.skills_recorded|default(0) }}</div><div class="kd">{{ rs.skill_targets|default(0) }} kompetencemål</div></div>
   </div>
 
-  <div class="fm-card" style="margin-top:16px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-column"></i></span><h3>Gennemførelsesrate pr. afdeling</h3></div>
-    <div class="fm-card-body"><div class="rep-chart-wrap"><canvas id="deptCompletionChart" role="img" aria-label="Søjlediagram: gennemførelsesrate i procent pr. afdeling"></canvas></div></div>
+  {% set _dr = (department_rows or [])|selectattr('orders')|list %}
+  <div class="fm-card" style="margin-top:16px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-column"></i></span><h3>Gennemførelsesrate pr. afdeling</h3><span style="margin-left:auto;font-size:11px;color:var(--fm-ink-3)">% af kursusordrer · samlet {{ rs.completion_rate|default(0)|dknum }}%</span></div>
+    <div class="fm-card-body">
+      {% if _dr %}
+      <div class="rep-chart-wrap" style="height:{{ [_dr|length * 36 + 56, 180]|max }}px"><canvas id="deptCompletionChart" role="img" aria-label="Liggende søjlediagram: gennemførelsesrate i procent pr. afdeling, højeste først"></canvas></div>
+      {% else %}
+      {{ empty('Ingen afdelinger med kursusordrer', department_anon or 'Når medarbejdere i afdelingerne bestiller kurser, sammenlignes gennemførelsen her.', 'fa-chart-column') }}
+      {% endif %}
+      {% if department_anon and _dr %}<p style="font-size:11px;color:var(--fm-ink-3);margin:10px 0 0"><i class="fa-solid fa-user-shield"></i> {{ department_anon }}</p>{% endif %}
+    </div>
   </div>
 
   <div class="fm-section-head" style="margin-top:24px"><div><span class="fm-eyebrow"><i class="fa-solid fa-download"></i> Eksport</span><h2 class="fm-section-title">Hent rapporter som CSV</h2></div></div>
@@ -78,17 +86,17 @@
     {% for dept in department_rows %}
     {% set completion = ((dept.completed / dept.orders * 100) if dept.orders else 0)|round(1) %}
     <tr>
-      <td style="font-weight:650">{{ dept.department or 'Uden afdeling' }}</td>
+      <td style="font-weight:650">{{ dept.department_label or dept.department or 'Uden afdeling' }}</td>
       <td>{{ dept.employees or 0 }}</td>
       <td>{{ dept.orders or 0 }}</td>
       <td>{{ dept.completed or 0 }}</td>
       <td style="min-width:150px"><div class="fm-prog thin" style="margin-bottom:4px"><span style="width:{{ [completion,100]|min }}%;background:var(--fm-success)"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">{{ completion|dknum }}%</span></td>
-      <td class="mono">{{ '{:,.0f}'.format(dept.spend or 0).replace(',','.') }} kr</td>
+      <td class="mono">{{ (dept.spend or 0)|dknum(0) }} kr</td>
     </tr>
     {% endfor %}
   </tbody></table>
   {% else %}
-  {{ empty('Ingen afdelingsdata endnu', 'Afdelingernes medarbejdere, ordrer og gennemførelse vises her, når der er registreret aktivitet.', 'fa-sitemap') }}
+  {{ empty('Ingen afdelingsdata endnu', department_anon or 'Afdelingernes medarbejdere, ordrer og gennemførelse vises her, når der er registreret aktivitet.', 'fa-sitemap') }}
   {% endif %}
   </div>
 </div>
@@ -98,16 +106,20 @@
 (function(){
   if (typeof FMChart === 'undefined') return;
 
-  var rows = {{ (department_rows or [])|list|tojson|safe }};
-  var labels = rows.map(function (d) { return d.department || 'Uden afdeling'; });
-  var rates = rows.map(function (d) {
-    var orders = Number(d.orders) || 0;
-    if (!orders) return 0;
-    return Math.round((Number(d.completed) || 0) / orders * 1000) / 10;
-  });
+  // k-floored server-side; departments without orders have no rate to show.
+  var rows = {{ (department_rows or [])|list|tojson|safe }}
+    .filter(function (d) { return Number(d.orders) > 0; })
+    .map(function (d) {
+      return { label: d.department_label || d.department || 'Uden afdeling',
+               rate: Math.round((Number(d.completed) || 0) / Number(d.orders) * 1000) / 10 };
+    })
+    .sort(function (a, b) { return b.rate - a.rate; });
+  if (!rows.length || !document.getElementById('deptCompletionChart')) return;
   FMChart.bar('deptCompletionChart', {
-    labels: labels,
-    series: [{ label: 'Gennemførelsesrate (%)', data: rates, color: FMChart.cssVar('--fm-success', '#16a34a') }],
+    horizontal: true,
+    max: 100,
+    labels: rows.map(function (r) { return r.label; }),
+    series: [{ label: 'Gennemførelsesrate (%)', data: rows.map(function (r) { return r.rate; }), color: FMChart.cssVar('--fm-primary', '#0f766e') }],
     empty: 'Ingen afdelingsdata endnu'
   });
 })();

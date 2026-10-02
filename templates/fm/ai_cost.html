@@ -178,74 +178,46 @@
 </div>
 {% endblock %}
 {% block extra_scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% include 'fm/_charts.html' %}
 <script>
   (function () {
-    const styles = getComputedStyle(document.documentElement);
-    const primary = styles.getPropertyValue('--fm-primary').trim() || '#0f766e';
-    const secondary = styles.getPropertyValue('--fm-indigo').trim() || '#2563eb';
-    const accent = styles.getPropertyValue('--fm-clay').trim() || '#f59e0b';
-    const muted = styles.getPropertyValue('--fm-ink-3').trim() || '#64748b';
-    const border = styles.getPropertyValue('--fm-line').trim() || 'rgba(148,163,184,.25)';
-    const palette = [primary, secondary, accent, '#10b981', '#06b6d4', '#64748b', '#ef4444', '#8b5cf6'];
+    if (typeof FMChart !== 'undefined') {
+      // Daily volume: gap-filled over the 30-day window so quiet days read as 0, not as a slope.
+      FMChart.line('dailyRunChart', {
+        labels: {{ daily_run_labels | tojson | safe }},
+        series: [{ label: 'Kørsler', data: {{ daily_run_data | tojson | safe }} }],
+        fillDays: 31, xFormat: 'day', title: 'Daglige AI-kørsler',
+        empty: 'Ingen kørsler i perioden.'
+      });
 
-    Chart.defaults.color = muted;
-    Chart.defaults.borderColor = border;
+      // Model split is part-to-whole over a handful of models; folds past six slices.
+      // tojson sorts keys alphabetically; order slices largest first again.
+      var models = Object.entries({{ model_split | tojson | safe }})
+        .sort(function (a, b) { return b[1] - a[1]; });
+      FMChart.doughnut('modelChart', {
+        labels: models.map(function (m) { return m[0]; }), values: models.map(function (m) { return m[1]; }),
+        title: 'Kørsler pr. model', empty: 'Ingen modeldata.'
+      });
 
-    const shared = {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { position: 'bottom', labels: { boxWidth: 10, usePointStyle: true } },
-        tooltip: { backgroundColor: 'rgba(15, 23, 42, .92)', padding: 12, cornerRadius: 8 }
-      },
-      scales: { x: { grid: { display: false } }, y: { beginAtZero: true, ticks: { precision: 0 } } }
-    };
-
-    function entries(o) { return Object.entries(o || {}); }
-    function doughnut(id, dataObject) {
-      const canvas = document.getElementById(id);
-      if (!canvas) return;
-      const e = entries(dataObject);
-      if (!e.length) return;
-      new Chart(canvas, {
-        type: 'doughnut',
-        data: { labels: e.map(([l]) => l), datasets: [{ data: e.map(([, v]) => v), backgroundColor: palette, borderWidth: 0 }] },
-        options: { responsive: true, maintainAspectRatio: false, cutout: '64%', plugins: shared.plugins }
+      // Scopes and tools are nominal categories → ranked bars in one hue, value at the tip.
+      FMChart.hbarRanked('scopeChart', {
+        data: {{ scope_split | tojson | safe }}, label: 'Kørsler',
+        title: 'Kørsler pr. agent-scope', empty: 'Ingen scope-data.'
+      });
+      var byCount = {{ top_tools_by_count | tojson | safe }};
+      FMChart.hbarRanked('toolCountChart', {
+        labels: byCount.map(function (t) { return t.tool_name; }),
+        values: byCount.map(function (t) { return t.call_count; }),
+        label: 'Kald', title: 'Værktøjskald', empty: 'Ingen værktøjsdata.'
+      });
+      var byLatency = {{ top_tools_by_latency | tojson | safe }};
+      FMChart.hbarRanked('toolLatencyChart', {
+        labels: byLatency.map(function (t) { return t.tool_name; }),
+        values: byLatency.map(function (t) { return t.avg_latency; }),
+        label: 'Gns. latency', valueSuffix: ' ms', other: false,
+        title: 'Langsomste værktøjer', empty: 'Ingen latency-data.'
       });
     }
-    function barChart(id, dataArray, labelKey, valueKey, label, color) {
-      const canvas = document.getElementById(id);
-      if (!canvas || !dataArray.length) return;
-      new Chart(canvas, {
-        type: 'bar',
-        data: { labels: dataArray.map(d => d[labelKey]), datasets: [{ label: label, data: dataArray.map(d => d[valueKey]), backgroundColor: color, borderRadius: 8, maxBarThickness: 36 }] },
-        options: { ...shared, indexAxis: 'y' }
-      });
-    }
-
-    const dailyCanvas = document.getElementById('dailyRunChart');
-    if (dailyCanvas) {
-      new Chart(dailyCanvas, {
-        type: 'line',
-        data: {
-          labels: {{ daily_run_labels | tojson | safe }},
-          datasets: [{
-            label: 'Kørsler',
-            data: {{ daily_run_data | tojson | safe }},
-            borderColor: primary, backgroundColor: 'rgba(15, 118, 110, .1)',
-            fill: true, tension: .35, pointRadius: 3, pointBackgroundColor: primary, borderWidth: 2
-          }]
-        },
-        options: shared
-      });
-    }
-
-    doughnut('modelChart', {{ model_split | tojson | safe }});
-    doughnut('scopeChart', {{ scope_split | tojson | safe }});
-
-    barChart('toolCountChart', {{ top_tools_by_count | tojson | safe }}, 'tool_name', 'call_count', 'Kald', primary);
-    barChart('toolLatencyChart', {{ top_tools_by_latency | tojson | safe }}, 'tool_name', 'avg_latency', 'Gns. latency (ms)', accent);
 
     document.querySelectorAll('[data-table-search]').forEach(function (input) {
       const table = document.getElementById(input.dataset.tableSearch);

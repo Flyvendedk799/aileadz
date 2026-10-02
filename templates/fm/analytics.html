@@ -36,15 +36,15 @@
         <section class="an-charts">
           <div class="chart-card" data-reveal data-d="1">
             <div class="chart-head">
-              <div><h3>Forbrug over tid</h3><p>Daglig kreditaktivitet sorteret kronologisk.</p></div>
+              <div><h3>Forbrug over tid</h3><p>Kreditter pr. dag; dage uden forbrug tæller som 0.</p></div>
               <span class="fm-chip" style="height:30px;font-size:12px"><i class="fa-regular fa-calendar"></i> {{ labels|length if labels else 0 }} dage</span>
             </div>
             <div class="chart-box"><canvas id="lineChart" role="img" aria-label="Linjediagram over kreditforbrug over tid"></canvas></div>
           </div>
           <div class="chart-card" data-reveal data-d="2">
             <div class="chart-head">
-              <div><h3>Seneste 7 dage</h3><p>Hurtig sammenligning af de nyeste dage.</p></div>
-              <span class="fm-chip" style="height:30px;font-size:12px"><i class="fa-solid fa-bolt"></i> {{ last7_usage|sum if last7_usage else 0 }}</span>
+              <div><h3>Seneste 7 dage</h3><p>Forbrug pr. dag den seneste uge, mod dit daglige snit.</p></div>
+              <span class="fm-chip" style="height:30px;font-size:12px"><i class="fa-solid fa-bolt"></i> <span id="last7Total">{{ last7_usage|sum if last7_usage else 0 }}</span></span>
             </div>
             <div class="chart-box"><canvas id="barChart" role="img" aria-label="Søjlediagram over kreditforbrug de seneste 7 dage"></canvas></div>
           </div>
@@ -77,15 +77,26 @@
 <script>
   (function () {
     if (typeof FMChart !== 'undefined') {
+      var labels = {{ labels|tojson }};
+      var usage = {{ usage|tojson }};
       FMChart.line('lineChart', {
-        labels: {{ labels|tojson }},
-        series: [{ label: 'Kreditter', data: {{ usage|tojson }} }],
+        labels: labels,
+        series: [{ label: 'Kreditter', data: usage }],
+        fillDays: true, xFormat: 'day', title: 'Kreditforbrug pr. dag',
         empty: 'Intet kreditforbrug i perioden endnu'
       });
 
+      // Calendar week ending today (not the last seven active days), against the daily average.
+      var week = FMChart.fillDays(labels, usage, 7);
+      var weekTotal = week.data.reduce(function (a, b) { return a + b; }, 0);
+      var totalEl = document.getElementById('last7Total');
+      if (totalEl) totalEl.textContent = FMChart.format(weekTotal);
+      var avg = {{ (average_usage or 0)|float|round(1) }};
       FMChart.bar('barChart', {
-        labels: {{ last7_labels|tojson }},
-        series: [{ label: 'Kreditter', data: {{ last7_usage|tojson }} }],
+        labels: week.labels,
+        series: [{ label: 'Kreditter', data: week.data }],
+        xFormat: 'day', title: 'Kreditforbrug de seneste 7 dage',
+        reference: avg > 0 ? { value: avg, label: 'Dagligt snit' } : null,
         empty: 'Intet forbrug de seneste 7 dage'
       });
     }

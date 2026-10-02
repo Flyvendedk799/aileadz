@@ -66,6 +66,15 @@
     </div>
 
     <div class="adm-stack">
+      {% if companies %}
+      <div class="fm-card">
+        <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-ranking-star"></i></span><h3>Omsætning pr. virksomhed</h3></div>
+        <div class="fm-card-body" style="padding-top:6px">
+          <p class="muted" style="font-size:12px;margin:0 0 10px">Top 6 blandt de {{ companies|length }} senest oprettede virksomheder i tabellen.</p>
+          <div class="fm-chart-box sm"><canvas id="admRevenueChart"></canvas></div>
+        </div>
+      </div>
+      {% endif %}
       <div class="fm-card">
         <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-receipt"></i></span><h3>Seneste ordrer</h3></div>
         <div class="fm-card-body" style="padding-top:6px">
@@ -110,4 +119,19 @@
     </div>
   </div>
 </div>
+{% endblock %}
+{% block extra_scripts %}
+{% include 'fm/_charts.html' %}
+<script>
+  (function () {
+    if (typeof FMChart === 'undefined') return;
+    var rows = {{ (companies or []) | map(attribute='company_name') | list | tojson }};
+    var revenue = {{ (companies or []) | map(attribute='revenue') | map('float') | list | tojson }};
+    FMChart.hbarRanked('admRevenueChart', {
+      labels: rows, values: revenue, label: 'Omsætning', format: 'currency',
+      limit: 6, other: false, labelMax: 22, title: 'Omsætning pr. virksomhed',
+      empty: 'Ingen omsætning endnu'
+    });
+  })();
+</script>
 {% endblock %}

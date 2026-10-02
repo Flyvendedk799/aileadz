@@ -185,18 +185,18 @@
 (function () {
   if (typeof FMChart === 'undefined') return;
 
-  // ── Skill radar — actual vs. target, token-bound & dark-aware (was raw new Chart()) ──
+  // ── Skill radar — actual vs. target; the target is a dashed outline, not a second fill ──
   var skillLabels  = {{ employee_skills|map(attribute='skill_name')|list|tojson|safe }};
   var skillCurrent = {{ employee_skills|map(attribute='current_level')|map('default', 0)|list|tojson|safe }};
   var skillTarget  = {{ employee_skills|map(attribute='target_level')|map('default', 0)|list|tojson|safe }};
   if (skillLabels.length) {
     var radarSeries = [
       { label: 'Nuværende niveau', data: skillCurrent.map(function (v) { return Number(v) || 0; }),
-        color: FMChart.cssVar('--fm-primary', '#0f766e') }
+        color: '--fm-chart-1' }
     ];
     if (skillTarget.some(function (v) { return Number(v) > 0; })) {
       radarSeries.push({ label: 'Mål', data: skillTarget.map(function (v) { return Number(v) || 0; }),
-        color: FMChart.cssVar('--fm-success', '#16a34a') });
+        color: '--fm-ink-2', dashed: true });
     }
     FMChart.radar('skillRadar', {
       labels: skillLabels, series: radarSeries, max: 5, step: 1,
@@ -209,7 +209,7 @@
   var spark = {{ course_history|map(attribute='time_spent_minutes')|map('default', 0)|list|tojson|safe }};
   spark = spark.map(function (v) { return Number(v) || 0; }).reverse();
   FMChart.sparkline('empCourseSpark', {
-    data: spark, color: FMChart.cssVar('--fm-indigo', '#4f46e5'),
+    data: spark, color: '--fm-chart-3', valueSuffix: ' min',
     empty: 'Ingen læringsaktivitet endnu'
   });
 })();

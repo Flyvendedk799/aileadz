@@ -9,7 +9,7 @@
   .fn-chart-card { padding: 18px; display: flex; flex-direction: column; }
   .fn-chart-card h3 { font-size: 15px; font-weight: 700; margin: 0; }
   .fn-chart-card p { font-size: 12.5px; color: var(--fm-ink-2); margin: 3px 0 12px; }
-  .fn-chart-wrap { position: relative; min-height: 280px; }
+  .fn-chart-wrap { position: relative; height: 280px; }
 
   /* Funnel bars */
   .funnel { display: flex; flex-direction: column; gap: 12px; padding: 8px 2px 4px; }
@@ -19,10 +19,12 @@
   .funnel-bar-track { position: relative; height: 46px; border-radius: 10px; background: var(--fm-surface-3); overflow: hidden; }
   .funnel-bar-fill { position: absolute; inset: 0 auto 0 0; display: flex; align-items: center; padding: 0 14px; min-width: 64px;
     border-radius: 10px; color: #fff; font-weight: 700; font-size: 14px; white-space: nowrap;
-    background: linear-gradient(90deg, var(--fm-primary), color-mix(in srgb, var(--fm-primary) 60%, var(--fm-indigo))); }
-  .funnel-bar-fill.s2 { background: linear-gradient(90deg, var(--fm-indigo), color-mix(in srgb, var(--fm-indigo) 55%, var(--fm-primary))); }
-  .funnel-bar-fill.s3 { background: linear-gradient(90deg, #06b6d4, #0ea5e9); }
-  .funnel-bar-fill.s4 { background: linear-gradient(90deg, var(--fm-clay), #d97706); }
+    background: color-mix(in srgb, var(--fm-chart-1, #069488), #000 56%); }
+  /* Funnel stages are ordinal: one hue, monotone lightness (dark = top of funnel). White
+     labels stay >= 4.5:1 on every step. */
+  .funnel-bar-fill.s2 { background: color-mix(in srgb, var(--fm-chart-1, #069488), #000 44%); }
+  .funnel-bar-fill.s3 { background: color-mix(in srgb, var(--fm-chart-1, #069488), #000 32%); }
+  .funnel-bar-fill.s4 { background: color-mix(in srgb, var(--fm-chart-1, #069488), #000 20%); }
   .funnel-bar-fill .fn-pct { margin-left: 10px; font-weight: 600; font-size: 12px; opacity: .9; }
   .fn-rate-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 18px; }
   .fn-rate { padding: 12px 14px; border: 1px solid var(--fm-line); border-radius: 10px; background: var(--fm-surface-2); }
@@ -162,35 +164,15 @@
 </div>
 {% endblock %}
 {% block extra_scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% include 'fm/_charts.html' %}
 <script>
   (function () {
-    const dailyCanvas = document.getElementById('dailyVolumeChart');
-    if (!dailyCanvas || typeof Chart === 'undefined') {
-      // Still wire up table search even if the chart can't render.
-    } else {
-      const styles = getComputedStyle(document.documentElement);
-      const primary = styles.getPropertyValue('--fm-primary').trim() || '#0f766e';
-      const muted = styles.getPropertyValue('--fm-ink-3').trim() || '#64748b';
-      const border = styles.getPropertyValue('--fm-line').trim() || 'rgba(148,163,184,.25)';
-      Chart.defaults.color = muted;
-      Chart.defaults.borderColor = border;
-      new Chart(dailyCanvas, {
-        type: 'line',
-        data: {
-          labels: {{ daily_labels | tojson | safe }},
-          datasets: [{
-            label: 'Interaktioner',
-            data: {{ daily_data | tojson | safe }},
-            borderColor: primary, backgroundColor: 'rgba(15, 118, 110, .1)',
-            fill: true, tension: .35, pointRadius: 2, pointBackgroundColor: primary, borderWidth: 2
-          }]
-        },
-        options: {
-          responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(15, 23, 42, .92)', padding: 12, cornerRadius: 8 } },
-          scales: { x: { grid: { display: false } }, y: { beginAtZero: true, ticks: { precision: 0 } } }
-        }
+    if (typeof FMChart !== 'undefined') {
+      FMChart.line('dailyVolumeChart', {
+        labels: {{ daily_labels | tojson | safe }},
+        series: [{ label: 'Interaktioner', data: {{ daily_data | tojson | safe }} }],
+        fillDays: {{ ((days or 30) | int) + 1 }}, xFormat: 'day', title: 'Daglig samtalevolumen',
+        empty: 'Ingen samtaler i perioden'
       });
     }
 

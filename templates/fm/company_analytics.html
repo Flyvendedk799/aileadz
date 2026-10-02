@@ -30,7 +30,7 @@
 </div>
 
 <div class="split">
-  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-column"></i></span><h3>Daglig aktivitet</h3></div><div class="fm-card-body"><canvas id="activityChart" height="220"></canvas></div></div>
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-column"></i></span><h3>Daglig aktivitet</h3></div><div class="fm-card-body"><p style="font-size:12.5px;color:var(--fm-ink-2);margin:0 0 10px">Chatbot-interaktioner pr. dag de seneste {{ days }} dage.</p><div class="fm-chart-box"><canvas id="activityChart"></canvas></div></div></div>
   <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-robot"></i></span><h3>Chatbot-kvalitet</h3></div><div class="fm-card-body">
     <div style="text-align:center;padding:8px 0 14px"><div class="kv tnum" style="font-size:32px">{{ "%.1f"|format((chat_stats.avg_quality or 0) * 100) }}%</div><div class="kl">Tilfredshedsscore</div></div>
     <div class="info-list">
@@ -73,26 +73,16 @@
 </div>
 {% endblock %}
 {% block extra_scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% include 'fm/_charts.html' %}
 <script>
-const labels = {{ (daily_activity | map(attribute='day') | list) | tojson | safe }};
-const data = {{ (daily_activity | map(attribute='interactions') | list) | tojson | safe }};
-const fmtLabels = labels.map(d => {
-  if (!d) return '';
-  const dt = new Date(d);
-  return dt.toLocaleDateString('da-DK', {day:'numeric', month:'short'});
-});
-const css = getComputedStyle(document.documentElement);
-const primary = (css.getPropertyValue('--fm-primary') || '#0b6b63').trim();
-new Chart(document.getElementById('activityChart'), {
-  type: 'line',
-  data: { labels: fmtLabels, datasets: [{
-    label: 'Chatbot-interaktioner', data: data,
-    borderColor: primary, backgroundColor: 'rgba(11,107,99,0.10)',
-    fill: true, tension: 0.4, pointRadius: 3, pointBackgroundColor: primary
-  }]},
-  options: { responsive: true, plugins: { legend: { display: false } },
-    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } }, x: { grid: { display: false } } } }
-});
+(function () {
+  if (typeof FMChart === 'undefined') return;
+  FMChart.line('activityChart', {
+    labels: {{ (daily_activity | map(attribute='day') | map('string') | list) | tojson | safe }},
+    series: [{ label: 'Chatbot-interaktioner', data: {{ (daily_activity | map(attribute='interactions') | list) | tojson | safe }} }],
+    fillDays: {{ (days or 30) | int }}, xFormat: 'day', title: 'Daglig aktivitet',
+    empty: 'Ingen chatbot-aktivitet i perioden'
+  });
+})();
 </script>
 {% endblock %}

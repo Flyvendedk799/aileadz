@@ -21,6 +21,22 @@
 </style>
 {% endblock %}
 {% block content %}
+{# A two-value comparison is a meter, not a chart: one bar split by share, numbers below. #}
+{% macro share_bar(a_label, a_value, b_label, b_value, aria) %}
+  {% set _total = (a_value or 0) + (b_value or 0) %}
+  {% if _total > 0 %}
+  {% set _pa = ((a_value or 0) / _total * 100)|round(0)|int %}
+  <div class="fm-share" role="img" aria-label="{{ aria }}: {{ a_label }} {{ a_value }} ({{ _pa }}%), {{ b_label }} {{ b_value }} ({{ 100 - _pa }}%)">
+    <div class="fm-share-bar"><span style="flex:{{ a_value or 0 }} 1 0"></span><span style="flex:{{ b_value or 0 }} 1 0"></span></div>
+    <div class="fm-share-legend">
+      <div><div class="k">{{ a_label }}</div><div class="v tnum">{{ "{:,}".format(a_value or 0).replace(",", ".") }}</div><div class="s">{{ _pa }}% af {{ "{:,}".format(_total).replace(",", ".") }}</div></div>
+      <div><div class="k">{{ b_label }}</div><div class="v tnum">{{ "{:,}".format(b_value or 0).replace(",", ".") }}</div><div class="s">{{ 100 - _pa }}%</div></div>
+    </div>
+  </div>
+  {% else %}
+  <div class="fm-chart-empty" role="note"><i class="fa-solid fa-chart-line" aria-hidden="true"></i><span>Ingen data endnu</span></div>
+  {% endif %}
+{% endmacro %}
 <div class="fm-wrap">
   <div class="pg-subnav">
     <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Oversigt</a>
@@ -76,7 +92,10 @@
     <div class="fm-card bi-chart-card">
       <h3><i class="fa-solid fa-user-check"></i> Brugertype</h3>
       <p>Loggede ind vs. anonyme brugere.</p>
-      <div class="bi-chart-wrap"><canvas id="loginChart"></canvas></div>
+      {{ share_bar('Logget ind', logged_in_count, 'Anonym', anonymous_count, 'Brugertype') }}
+      <h3 style="margin-top:22px"><i class="fa-solid fa-face-smile"></i> Feedback</h3>
+      <p>Brugernes vurdering af chatbottens svar.</p>
+      {{ share_bar('Godt svar', (feedback_distribution or {}).get('Godt svar', 0), 'Dårligt svar', (feedback_distribution or {}).get('Dårligt svar', 0), 'Feedback') }}
     </div>
   </div>
 
@@ -84,10 +103,9 @@
     <div class="fm-card bi-chart-card"><h3><i class="fa-solid fa-tags"></i> Spørgsmålstyper</h3><p>Hvilke intent-typer fylder mest.</p><div class="bi-chart-wrap"><canvas id="queryTypeChart"></canvas></div></div>
     <div class="fm-card bi-chart-card"><h3><i class="fa-solid fa-layer-group"></i> Kategorier</h3><p>Produkt- og samtalekategorier.</p><div class="bi-chart-wrap"><canvas id="categoryChart"></canvas></div></div>
     <div class="fm-card bi-chart-card"><h3><i class="fa-solid fa-location-dot"></i> Lokationer</h3><p>Registrerede brugerområder.</p><div class="bi-chart-wrap"><canvas id="locationChart"></canvas></div></div>
-    <div class="fm-card bi-chart-card"><h3><i class="fa-solid fa-screwdriver-wrench"></i> Tool usage</h3><p>Hvilke chatbotværktøjer bruges mest.</p><div class="bi-chart-wrap"><canvas id="toolUsageChart"></canvas></div></div>
-    <div class="fm-card bi-chart-card"><h3><i class="fa-solid fa-face-smile"></i> Feedback</h3><p>Fordeling af brugerfeedback.</p><div class="bi-chart-wrap"><canvas id="feedbackChart"></canvas></div></div>
+    <div class="fm-card bi-chart-card"><h3><i class="fa-solid fa-screwdriver-wrench"></i> Værktøjsbrug</h3><p>Hvilke chatbotværktøjer bruges mest.</p><div class="bi-chart-wrap"><canvas id="toolUsageChart"></canvas></div></div>
     {% if conversion_by_tool %}
-    <div class="fm-card bi-chart-card"><h3><i class="fa-solid fa-filter-circle-dollar"></i> Conversion pr. tool</h3><p>Værktøjer der ender i ordreflow.</p><div class="bi-chart-wrap"><canvas id="conversionToolChart"></canvas></div></div>
+    <div class="fm-card bi-chart-card"><h3><i class="fa-solid fa-filter-circle-dollar"></i> Konvertering pr. værktøj</h3><p>Ordrer fordelt på det værktøj, der anbefalede kurset.</p><div class="bi-chart-wrap"><canvas id="conversionToolChart"></canvas></div></div>
     {% endif %}
   </div>
 
@@ -199,85 +217,30 @@
 </div>
 {% endblock %}
 {% block extra_scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% include 'fm/_charts.html' %}
 <script>
   (function () {
-    const styles = getComputedStyle(document.documentElement);
-    const primary = styles.getPropertyValue('--fm-primary').trim() || '#0f766e';
-    const secondary = styles.getPropertyValue('--fm-indigo').trim() || '#2563eb';
-    const accent = styles.getPropertyValue('--fm-clay').trim() || '#f59e0b';
-    const muted = styles.getPropertyValue('--fm-ink-3').trim() || '#64748b';
-    const border = styles.getPropertyValue('--fm-line').trim() || 'rgba(148,163,184,.25)';
-    const palette = [primary, secondary, accent, '#10b981', '#06b6d4', '#64748b', '#ef4444', '#8b5cf6'];
-
-    Chart.defaults.color = muted;
-    Chart.defaults.borderColor = border;
-
-    const shared = {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { position: 'bottom', labels: { boxWidth: 10, usePointStyle: true } },
-        tooltip: { backgroundColor: 'rgba(15, 23, 42, .92)', padding: 12, cornerRadius: 8 }
-      },
-      scales: { x: { grid: { display: false } }, y: { beginAtZero: true, ticks: { precision: 0 } } }
-    };
-
-    function entries(o) { return Object.entries(o || {}); }
-    function doughnut(id, dataObject) {
-      const canvas = document.getElementById(id);
-      if (!canvas) return;
-      const e = entries(dataObject);
-      new Chart(canvas, {
-        type: 'doughnut',
-        data: { labels: e.map(([l]) => l), datasets: [{ data: e.map(([, v]) => v), backgroundColor: palette, borderWidth: 0 }] },
-        options: { responsive: true, maintainAspectRatio: false, cutout: '64%', plugins: shared.plugins }
+    if (typeof FMChart !== 'undefined') {
+      FMChart.line('dailyActivityChart', {
+        labels: {{ daily_chatbot_query_labels | tojson | safe }},
+        series: [{ label: 'Forespørgsler', data: {{ daily_chatbot_query_data | tojson | safe }} }],
+        fillDays: 31, xFormat: 'day', title: 'Daglige chatbot-forespørgsler',
+        empty: 'Ingen forespørgsler de seneste 30 dage'
       });
+      // Nominal distributions (up to 10 rows each) → ranked bars, one hue, value at the tip.
+      FMChart.hbarRanked('queryTypeChart', { data: {{ query_type_distribution | tojson | safe }}, label: 'Forespørgsler',
+        title: 'Spørgsmålstyper', empty: 'Ingen spørgsmålstyper registreret endnu' });
+      FMChart.hbarRanked('categoryChart', { data: {{ category_distribution | tojson | safe }}, label: 'Forespørgsler',
+        title: 'Kategorier', empty: 'Ingen kategorier registreret endnu' });
+      FMChart.hbarRanked('locationChart', { data: {{ user_locations | tojson | safe }}, label: 'Forespørgsler',
+        title: 'Lokationer', empty: 'Ingen lokationer registreret endnu' });
+      FMChart.hbarRanked('toolUsageChart', { data: {{ tool_usage | tojson | safe }}, label: 'Kald',
+        title: 'Værktøjsbrug', empty: 'Ingen værktøjskald registreret endnu' });
+      {% if conversion_by_tool %}
+      FMChart.hbarRanked('conversionToolChart', { data: {{ conversion_by_tool | tojson | safe }}, label: 'Ordrer',
+        title: 'Ordrer pr. anbefalende værktøj', empty: 'Ingen konverteringer endnu' });
+      {% endif %}
     }
-
-    const dailyCanvas = document.getElementById('dailyActivityChart');
-    if (dailyCanvas) {
-      new Chart(dailyCanvas, {
-        type: 'line',
-        data: {
-          labels: {{ daily_chatbot_query_labels | tojson | safe }},
-          datasets: [{
-            label: 'Forespørgsler',
-            data: {{ daily_chatbot_query_data | tojson | safe }},
-            borderColor: primary, backgroundColor: 'rgba(15, 118, 110, .1)',
-            fill: true, tension: .35, pointRadius: 3, pointBackgroundColor: primary, borderWidth: 2
-          }]
-        },
-        options: shared
-      });
-    }
-
-    doughnut('queryTypeChart', {{ query_type_distribution | tojson | safe }});
-    doughnut('categoryChart', {{ category_distribution | tojson | safe }});
-    doughnut('locationChart', {{ user_locations | tojson | safe }});
-    doughnut('toolUsageChart', {{ tool_usage | tojson | safe }});
-    doughnut('feedbackChart', {{ feedback_distribution | tojson | safe }});
-
-    const loginCanvas = document.getElementById('loginChart');
-    if (loginCanvas) {
-      new Chart(loginCanvas, {
-        type: 'bar',
-        data: { labels: ['Logget ind', 'Anonym'], datasets: [{ label: 'Brugere', data: [{{ logged_in_count }}, {{ anonymous_count }}], backgroundColor: [primary, secondary], borderRadius: 8, maxBarThickness: 52 }] },
-        options: shared
-      });
-    }
-
-    {% if conversion_by_tool %}
-    const conversionToolCanvas = document.getElementById('conversionToolChart');
-    if (conversionToolCanvas) {
-      const conversionToolData = {{ conversion_by_tool | tojson | safe }};
-      new Chart(conversionToolCanvas, {
-        type: 'bar',
-        data: { labels: Object.keys(conversionToolData), datasets: [{ label: 'Conversions', data: Object.values(conversionToolData), backgroundColor: accent, borderRadius: 8, maxBarThickness: 42 }] },
-        options: shared
-      });
-    }
-    {% endif %}
 
     document.querySelectorAll('[data-table-search]').forEach(function (input) {
       const table = document.getElementById(input.dataset.tableSearch);

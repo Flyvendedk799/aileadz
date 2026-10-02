@@ -28,13 +28,13 @@
   <section class="cs-charts">
     <div class="fm-card cs-chart-card" data-reveal data-d="1">
       <div class="ch-head"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--fm-indigo) 13%,transparent);color:var(--fm-indigo)"><i class="fa-solid fa-chart-line"></i></span><h3>Aktivitet over tid</h3></div>
-      <p>Antal sessioner og beskeder pr. dag, baseret på sessionens start.</p>
-      <div class="fm-chart-wrap"><canvas id="csVolumeChart" aria-label="Linjediagram: antal sessioner og beskeder pr. dag over tid" role="img"></canvas></div>
+      <p>Sessioner pr. dag efter sessionens start. Hold musen over en dag for antal beskeder.</p>
+      <div class="fm-chart-wrap"><canvas id="csVolumeChart" aria-label="Søjlediagram: antal sessioner pr. dag" role="img"></canvas></div>
     </div>
     <div class="fm-card cs-chart-card" data-reveal data-d="2">
       <div class="ch-head"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-star-half-stroke"></i></span><h3>Kvalitetsfordeling</h3></div>
-      <p>Sessioner grupperet efter gennemsnitlig kvalitetsscore.</p>
-      <div class="fm-chart-wrap"><canvas id="csQualityChart" aria-label="Cirkeldiagram: fordeling af sessioner efter gennemsnitlig kvalitetsscore" role="img"></canvas></div>
+      <p>Sessioner grupperet efter gennemsnitlig kvalitetsscore (1–5).</p>
+      <div class="fm-chart-wrap"><canvas id="csQualityChart" aria-label="Søjlediagram: antal sessioner pr. kvalitetsbånd" role="img"></canvas></div>
     </div>
   </section>
   {% endif %}
@@ -81,7 +81,9 @@
   var sessions = {{ (sessions or [])|list|tojson|safe }};
   if (!sessions.length) return;
 
-  // --- Line: sessions + messages per day (from started_at) ---
+  // --- Sessions per day (from started_at), gap-filled so quiet days show as 0 ---
+  // Messages are a different scale (many per session), so they ride the tooltip
+  // instead of sharing one axis with sessions.
   var byDay = {}; // key -> { sessions, messages }
   sessions.forEach(function (s) {
     if (!s.started_at) return;
@@ -93,17 +95,20 @@
     byDay[key].messages += Number(s.message_count) || 0;
   });
   var dayKeys = Object.keys(byDay).sort();
-  var monthNames = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
-  FMChart.line('csVolumeChart', {
-    labels: dayKeys.map(function (k) { var p = k.split('-'); return parseInt(p[2], 10) + '. ' + monthNames[parseInt(p[1], 10) - 1]; }),
-    series: [
-      { label: 'Sessioner', data: dayKeys.map(function (k) { return byDay[k].sessions; }), color: FMChart.cssVar('--fm-indigo', '#4f46e5') },
-      { label: 'Beskeder', data: dayKeys.map(function (k) { return byDay[k].messages; }), color: FMChart.cssVar('--fm-primary', '#0f766e') }
-    ],
+  var filled = FMChart.fillDays(dayKeys, [
+    { label: 'Sessioner', data: dayKeys.map(function (k) { return byDay[k].sessions; }) },
+    { label: 'Beskeder', data: dayKeys.map(function (k) { return byDay[k].messages; }) }
+  ]);
+  var msgs = filled.data[1].data;
+  FMChart.bar('csVolumeChart', {
+    labels: filled.labels,
+    series: [filled.data[0]],
+    xFormat: 'day', title: 'Sessioner pr. dag',
+    footer: function (i) { return FMChart.format(msgs[i]) + ' beskeder'; },
     empty: 'Ingen daterede sessioner endnu'
   });
 
-  // --- Doughnut: quality-score distribution (banded from avg_quality) ---
+  // --- Quality bands: ordered, so one hue light→dark; "Ikke vurderet" stays neutral ---
   var bands = { high: 0, mid: 0, low: 0, none: 0 };
   sessions.forEach(function (s) {
     var q = Number(s.avg_quality) || 0;
@@ -112,9 +117,11 @@
     else if (q > 0) bands.low += 1;
     else bands.none += 1;
   });
-  FMChart.doughnut('csQualityChart', {
-    labels: ['Høj (≥4.0)', 'Middel (3.0–3.9)', 'Lav (<3.0)', 'Ikke vurderet'],
-    values: [bands.high, bands.mid, bands.low, bands.none],
+  FMChart.bar('csQualityChart', {
+    labels: ['Høj (≥4,0)', 'Middel (3,0–3,9)', 'Lav (<3,0)', 'Ikke vurderet'],
+    series: [{ label: 'Sessioner', data: [bands.high, bands.mid, bands.low, bands.none],
+               color: ['ramp:0/3', 'ramp:1/3', 'ramp:2/3', '--fm-chart-muted'] }],
+    valueLabels: true, title: 'Sessioner pr. kvalitetsbånd',
     empty: 'Ingen kvalitetsdata endnu'
   });
 })();

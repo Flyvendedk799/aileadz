@@ -153,6 +153,7 @@ def login(slug=None):
     if request.method == 'POST':
         username = (request.form.get('username') or '').strip()
         password = request.form.get('password') or ''
+        remember = bool(request.form.get('remember'))   # "Husk mig" on the login form
         ip = login_guard.client_ip()
 
         def _back():
@@ -191,9 +192,9 @@ def login(slug=None):
                 return _back()
             if has_2fa:
                 session.clear()
-                session['twofa_pending'] = {'uid': user['id'], 'ts': time.time()}
+                session['twofa_pending'] = {'uid': user['id'], 'ts': time.time(), 'remember': remember}
                 return redirect(url_for('auth.login_2fa'))
-            return _finish_login(user, twofa_done=False)
+            return _finish_login(user, twofa_done=False, remember=remember)
 
         locked = login_guard.record_failure(username, ip)
         if locked:
@@ -443,9 +444,13 @@ TWOFA_PENDING_SECONDS = 300
 _TWOFA_OPEN_ENDPOINTS = {'auth.account_2fa', 'auth.logout', 'auth.login_2fa', 'static'}
 
 
-def _finish_login(user, twofa_done):
-    """Create the real session after every required factor has passed."""
+def _finish_login(user, twofa_done, remember=False):
+    """Create the real session after every required factor has passed.
+
+    ``remember`` ("Husk mig") makes the cookie outlive the browser session for
+    PERMANENT_SESSION_LIFETIME; without it the session ends with the browser."""
     session.clear()  # new identity, new session (no fixation)
+    session.permanent = bool(remember)
     _apply_session_user_context(user)
     session['twofa_ok'] = bool(twofa_done)
     if not twofa_done and two_factor.enrollment_required(user.get('role'), session.get('company_role')):
@@ -499,7 +504,7 @@ def login_2fa():
             if not user:
                 session.pop('twofa_pending', None)
                 return redirect(url_for('auth.login'))
-            return _finish_login(user, twofa_done=True)
+            return _finish_login(user, twofa_done=True, remember=bool(pending.get('remember')))
         login_guard.record_failure(guard_key, ip)
         flash('Koden er forkert eller udløbet. Prøv igen.', 'danger')
         return redirect(url_for('auth.login_2fa'))

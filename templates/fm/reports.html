@@ -18,12 +18,12 @@
   <div class="kpi-row" style="grid-template-columns:repeat(3,1fr)">
     <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Total kreditter forbrugt</div><div class="kv tnum">{{ total_used }}</div></div></div>
     <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-wallet"></i></span><div><div class="kl">Tilgængelige kreditter</div><div class="kv tnum">{{ current_credits }}</div></div></div>
-    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-share-nodes"></i></span><div><div class="kl">Social exposure</div><div class="kv tnum">{{ total_impressions }}</div><div class="kd">{{ total_followers }} følgere</div></div></div>
+    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-share-nodes"></i></span><div><div class="kl">Social rækkevidde</div><div class="kv tnum">{{ total_impressions }}</div><div class="kd">visninger · {{ total_followers|dknum }} følgere</div></div></div>
   </div>
   <div class="kpi-row" style="grid-template-columns:repeat(3,1fr);margin-top:14px">
-    <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-gauge"></i></span><div><div class="kl">Gns. dagligt forbrug</div><div class="kv tnum">{{ average_usage | round(2) }}</div></div></div>
-    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-arrow-trend-up"></i></span><div><div class="kl">Maks. dagligt forbrug</div><div class="kv tnum">{{ peak_usage }}</div><div class="kd">På {{ peak_day }}</div></div></div>
-    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-grip"></i></span><div><div class="kl">App usage</div>
+    <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-gauge"></i></span><div><div class="kl">Gns. dagligt forbrug</div><div class="kv tnum">{{ (average_usage or 0)|dknum(1) }}</div><div class="kd">kreditter pr. dag med forbrug</div></div></div>
+    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-arrow-trend-up"></i></span><div><div class="kl">Maks. dagligt forbrug</div><div class="kv tnum">{{ peak_usage }}</div><div class="kd">{{ ("den " ~ (peak_day|dkdate)) if peak_day else "intet forbrug endnu" }}</div></div></div>
+    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-grip"></i></span><div><div class="kl">Brug pr. app</div>
       {% if app_usage %}
       <div style="font-size:12.5px;color:var(--fm-ink-2);margin-top:4px">
         {% for app, usage in app_usage.items() %}<div class="fm-spread" style="padding:2px 0"><span>{{ app }}</span><strong>{{ usage }}</strong></div>{% endfor %}
@@ -34,11 +34,11 @@
 
   <div class="rp-charts">
     <div class="fm-card rp-chart-card">
-      <h3><i class="fa-solid fa-chart-line"></i> Dagligt kreditforbrug</h3>
+      <h3><i class="fa-solid fa-chart-line"></i> Kreditforbrug pr. dag</h3>
       <div class="rp-chart-wrap"><canvas id="usageChart" role="img" aria-label="Linjediagram over dagligt kreditforbrug over tid"></canvas></div>
     </div>
     <div class="fm-card rp-chart-card">
-      <h3><i class="fa-solid fa-chart-column"></i> Sidste 7 dage</h3>
+      <h3><i class="fa-solid fa-chart-column"></i> De seneste 7 dage</h3>
       <div class="rp-chart-wrap"><canvas id="last7Chart" role="img" aria-label="Søjlediagram over kreditforbrug de seneste 7 dage"></canvas></div>
     </div>
   </div>
@@ -52,7 +52,7 @@
             <thead><tr><th>Dato</th><th style="text-align:right">Kreditter forbrugt</th></tr></thead>
             <tbody>
               {% for detail in daily_details %}
-              <tr><td>{{ detail.date }}</td><td style="text-align:right">{{ detail.credits_used }}</td></tr>
+              <tr><td>{{ detail.date|dkdate }}</td><td style="text-align:right">{{ detail.credits_used }}</td></tr>
               {% else %}
               <tr><td colspan="2" class="muted" style="text-align:center;padding:20px">Ingen data endnu.</td></tr>
               {% endfor %}
@@ -71,7 +71,7 @@
             <tbody>
               {% for transaction in credit_records %}
               <tr>
-                <td>{{ transaction.timestamp.strftime('%Y-%m-%d %H:%M:%S') if transaction.timestamp else '' }}</td>
+                <td>{{ transaction.timestamp|dkdate(true) if transaction.timestamp else '' }}</td>
                 <td>{{ transaction.credits_used }}</td>
                 <td class="muted">{{ transaction.description }}</td>
               </tr>
@@ -92,15 +92,16 @@
   (function () {
     if (typeof FMChart === 'undefined') return;
 
+    function dk(d) { d = String(d); return d.slice(8, 10) + '.' + d.slice(5, 7); }
     FMChart.line('usageChart', {
-      labels: {{ chart_labels|tojson }},
-      series: [{ label: 'Dagligt kreditforbrug', data: {{ chart_data|tojson }} }],
+      labels: {{ (chart_labels or [])|tojson }}.map(dk),
+      series: [{ label: 'Kreditter', data: {{ (chart_data or [])|tojson }} }],
       empty: 'Intet kreditforbrug i perioden endnu'
     });
 
     FMChart.bar('last7Chart', {
-      labels: {{ last7_labels|tojson }},
-      series: [{ label: 'Kreditter (sidste 7 dage)', data: {{ last7_usage|tojson }} }],
+      labels: {{ (last7_labels or [])|tojson }}.map(dk),
+      series: [{ label: 'Kreditter', data: {{ (last7_usage or [])|tojson }} }],
       empty: 'Intet forbrug de seneste 7 dage'
     });
   })();

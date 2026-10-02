@@ -437,8 +437,6 @@ def create_multitenant_reports_blueprint():
         except Exception as e:
             current_app.logger.error(f"Error fetching company analytics: {e}")
             # Provide fallback data
-            if not daily_chatbot_usage:
-                daily_chatbot_usage['2024-01-01'] = 0
             if not query_type_distribution:
                 query_type_distribution['general'] = 0
             if not category_distribution:
@@ -465,9 +463,11 @@ def create_multitenant_reports_blueprint():
                 'conversion_rate': conversion_rate_for_course
             })
         
-        # Daily usage data for charts
-        sorted_dates = sorted(daily_chatbot_usage.keys())
-        daily_usage_data = [daily_chatbot_usage[d] for d in sorted_dates]
+        # Daily usage for the chart: a gap-free 90-day calendar axis ending
+        # today, so quiet days are zeros instead of being squeezed out.
+        _today = datetime.date.today()
+        sorted_dates = [(_today - datetime.timedelta(days=i)).isoformat() for i in range(89, -1, -1)]
+        daily_usage_data = [int(daily_chatbot_usage.get(d, 0) or 0) for d in sorted_dates]
         
         # Calculate engagement metrics
         if company_stats['total_employees'] > 0:

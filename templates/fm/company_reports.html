@@ -9,10 +9,10 @@
 {% set active_hr_page = 'reports' %}{% include 'fm/_hr_subnav.html' %}
 
 <div class="kpi-row">
-  <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-comments"></i></span><div><div class="kl">Chatbot-forespørgsler</div><div class="kv tnum">{{ total_chatbot_queries }}</div><div class="kd">{{ total_conversations }} samtaler</div></div></div>
-  <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-filter"></i></span><div><div class="kl">Konvertering</div><div class="kv tnum">{{ conversion_rate }}%</div><div class="kd">{{ completed_orders_count }} af / {{ pending_orders_count }} afventer</div></div></div>
-  <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-users"></i></span><div><div class="kl">Engagement</div><div class="kv tnum">{{ employee_engagement_rate }}%</div><div class="kd">{{ company_stats.active_users_30d if company_stats else 0 }} aktive (30 d)</div></div></div>
-  <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Omsætning</div><div class="kv tnum">{{ "{:,.0f}".format(total_revenue) }}</div><div class="kd">kr fra {{ completed_orders_count }} ordrer</div></div></div>
+  <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-comments"></i></span><div><div class="kl">Beskeder til AI-assistenten</div><div class="kv tnum">{{ (total_chatbot_queries or 0)|dknum }}</div><div class="kd">{{ total_conversations }} samtaler</div></div></div>
+  <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-filter"></i></span><div><div class="kl">Konvertering</div><div class="kv tnum">{{ (conversion_rate or 0)|dknum }}%</div><div class="kd">{{ completed_orders_count or 0 }} gennemførte · {{ pending_orders_count or 0 }} afventer</div></div></div>
+  <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-users"></i></span><div><div class="kl">Engagement</div><div class="kv tnum">{{ (employee_engagement_rate or 0)|dknum }}%</div><div class="kd">{{ company_stats.active_users_30d if company_stats else 0 }} aktive (30 d)</div></div></div>
+  <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Kursusforbrug</div><div class="kv tnum">{{ (total_revenue or 0)|dknum(0) }}</div><div class="kd">kr fra {{ completed_orders_count }} ordrer</div></div></div>
 </div>
 
 <div class="fm-card" style="margin-top:18px">
@@ -29,7 +29,7 @@
 </div>
 
 <div class="split">
-  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-column"></i></span><h3>Daglig aktivitet</h3><span class="fm-badge teal" style="margin-left:auto">samtaler</span></div><div class="fm-card-body"><div style="position:relative;height:220px"><canvas id="dailyChart" role="img" aria-label="Søjlediagram over daglige chatbot-forespørgsler"></canvas></div></div></div>
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-column"></i></span><h3>Brug af AI-assistenten</h3><span class="fm-badge teal" style="margin-left:auto">beskeder pr. dag · 90 dage</span></div><div class="fm-card-body"><div style="position:relative;height:220px"><canvas id="dailyChart" role="img" aria-label="Linjediagram: beskeder til AI-assistenten pr. dag de seneste 90 dage"></canvas></div></div></div>
   <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-fire"></i></span><h3>Populære kurser</h3>{% if popular_courses %}<span class="fm-badge" style="margin-left:auto">{{ popular_courses|length }} kurser</span>{% endif %}</div><div class="fm-card-body" style="padding-top:6px">
     {% if popular_courses %}
     {% set _top_views = popular_courses[0].views or 1 %}
@@ -58,11 +58,11 @@
         <td><div style="font-weight:600">{{ o.product_title or o.product_handle }}</div>{% if o.variant_location %}<div class="muted" style="font-size:11.5px"><i class="fa-solid fa-location-dot"></i> {{ o.variant_location }}</div>{% endif %}</td>
         <td><div>{{ o.user_name or '—' }}</div><div class="muted" style="font-size:11.5px">{{ o.user_email or '' }}</div></td>
         <td><span class="fm-badge">{{ o.department or '—' }}</span></td>
-        <td class="mono">{{ o.price }} kr</td>
+        <td class="mono">{{ (o.price or 0)|dknum(0) }} kr</td>
         <td>
           <span class="fm-badge {{ order_status_tone(o.status) }} dot" style="font-size:11.5px">{{ order_status_label(o.status, short=True) }}</span>
         </td>
-        <td class="muted" style="font-size:11.5px">{{ o.created_at }}</td>
+        <td class="muted" style="font-size:11.5px">{{ o.created_at|dkdate }}</td>
         <td style="text-align:right"><a href="{{ url_for('hr_dashboard.company_order_details', order_id=o.order_id) }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-eye"></i></a></td>
       </tr>
       {% endfor %}
@@ -84,7 +84,7 @@
           {% for c in recent_conversations %}
           <tr>
             <td><span class="mono" style="font-size:12px">{{ c.session_id }}</span></td>
-            <td class="muted" style="font-size:12px">{{ c.start_time }}</td>
+            <td class="muted" style="font-size:12px">{{ c.start_time|dkdate(true) }}</td>
             <td class="mono">{{ c.query_count }}</td>
             <td>{% for t in c.topics %}<span class="fm-badge teal" style="margin-right:4px">{{ t }}</span>{% endfor %}</td>
             <td><span class="fm-badge">{{ c.department or '—' }}</span></td>
@@ -105,9 +105,9 @@
 <script>
   (function () {
     if (typeof FMChart === 'undefined') return;
-    FMChart.bar('dailyChart', {
-      labels: {{ daily_chatbot_query_labels | tojson | safe }},
-      series: [{ label: 'Forespørgsler', data: {{ daily_chatbot_query_data | tojson | safe }} }],
+    FMChart.line('dailyChart', {
+      labels: {{ (daily_chatbot_query_labels or []) | tojson | safe }}.map(function (d) { d = String(d); return d.slice(8, 10) + '.' + d.slice(5, 7); }),
+      series: [{ label: 'Beskeder', data: {{ (daily_chatbot_query_data or []) | tojson | safe }} }],
       empty: 'Ingen samtaler i perioden endnu'
     });
   })();

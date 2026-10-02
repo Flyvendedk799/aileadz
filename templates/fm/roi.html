@@ -99,10 +99,37 @@
 
   <!-- ===== REAL HEADLINE / CFO FIGURES (grounded in actual data) ===== -->
   <div class="kpi-row">
-    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-sack-dollar"></i></span><div><div class="kl">Samlet uddannelsesudgift</div><div class="kv tnum">{{ '{:,.0f}'.format(r.total_training_spend|default(0)|float).replace(',','.') }}</div><div class="kd">kr · {{ r.courses_total|default(0) }} ordrer</div></div></div>
+    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-sack-dollar"></i></span><div><div class="kl">Samlet uddannelsesudgift</div><div class="kv tnum">{{ r.total_training_spend|default(0)|dknum(0) }}</div><div class="kd">kr · {{ r.courses_total|default(0) }} ordrer</div></div></div>
     <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-users"></i></span><div><div class="kl">Medarbejdere trænet</div><div class="kv tnum">{{ r.employees_trained|default(0) }}</div><div class="kd">{{ r.courses_completed|default(0) }} kurser gennemført</div></div></div>
     <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-percent"></i></span><div><div class="kl">Gennemførelsesrate</div><div class="kv tnum">{{ r.completion_rate|default(0)|dknum }}<span style="font-size:14px">%</span></div><div class="kd">{{ r.courses_completed|default(0) }} / {{ r.courses_total|default(0) }}</div></div></div>
-    <div class="kpi-tile ico"><span class="ki clay"><i class="fa-solid fa-receipt"></i></span><div><div class="kl">Pris pr. gennemførelse</div><div class="kv tnum">{{ '{:,.0f}'.format(r.cost_per_completion|default(0)|float).replace(',','.') }}</div><div class="kd">kr · {{ r.spend_per_employee|default(0)|dknum }} kr/medarbejder</div></div></div>
+    <div class="kpi-tile ico"><span class="ki clay"><i class="fa-solid fa-receipt"></i></span><div><div class="kl">Pris pr. gennemførelse</div><div class="kv tnum">{{ r.cost_per_completion|default(0)|dknum(0) }}</div><div class="kd">kr · {{ r.spend_per_employee|default(0)|dknum(0) }} kr pr. trænet medarbejder</div></div></div>
+  </div>
+
+  <!-- ===== WHEN + WHERE the money went (real) ===== -->
+  {% set ms = monthly_spend or {} %}
+  {% set _droi = r.department_roi or [] %}
+  <div class="split even" style="margin-top:16px">
+    <div class="fm-card">
+      <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-calendar-days"></i></span><h3>Udgift pr. måned</h3><span class="fm-ch-sub" style="margin-left:auto;font-size:11px;color:var(--fm-ink-3)">kr · {{ r.fiscal_year or fiscal_year }}</span></div>
+      <div class="fm-card-body" style="padding-top:6px">
+        {% if ms.spend and ms.spend|sum > 0 %}
+        <div class="fm-chart-wrap sm"><canvas id="roiMonthlyChart" role="img" aria-label="Søjlediagram: uddannelsesudgift i kroner pr. måned i regnskabsåret"></canvas></div>
+        {% else %}
+        {{ ui.empty('Ingen udgifter fordelt på måneder', 'Månedsfordelingen vises, når der er bestilt kurser i regnskabsåret.', 'fa-calendar-days') }}
+        {% endif %}
+      </div>
+    </div>
+    <div class="fm-card">
+      <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-sitemap"></i></span><h3>Udgift pr. afdeling</h3><span class="fm-ch-sub" style="margin-left:auto;font-size:11px;color:var(--fm-ink-3)">kr · højeste først</span></div>
+      <div class="fm-card-body" style="padding-top:6px">
+        {% if _droi %}
+        <div class="fm-chart-wrap" style="height:{{ [_droi|length * 34 + 48, 180]|max }}px"><canvas id="roiDeptChart" role="img" aria-label="Liggende søjlediagram: uddannelsesudgift i kroner pr. afdeling, højeste først"></canvas></div>
+        {% else %}
+        {{ ui.empty('Ingen afdelingsfordeling', r.department_roi_anon_note or 'Udgiften fordeles på afdelinger, når ordrer er knyttet til en afdeling.', 'fa-sitemap') }}
+        {% endif %}
+        {% if r.department_roi_anon_note and _droi %}<p style="font-size:11px;color:var(--fm-ink-3);margin:10px 0 0"><i class="fa-solid fa-user-shield"></i> {{ r.department_roi_anon_note }}</p>{% endif %}
+      </div>
+    </div>
   </div>
 
   <!-- ===== BUDGET UTILISATION (real) ===== -->
@@ -226,20 +253,16 @@
     <div class="fm-card">
       <div class="fm-card-head">
         <span class="fm-ch-icon"><i class="fa-solid fa-magnifying-glass-chart"></i></span>
-        <h3>Trender (søgninger)</h3>
+        <h3>Hvad søger medarbejderne efter?</h3>
       </div>
       <div class="fm-card-body" style="padding-top:6px">
         {% if trending %}
-        <div class="fm-chart-wrap" style="min-height:200px"><canvas id="roiTrendChart"></canvas></div>
-        {% for t in trending %}
-        <div class="fm-spread" style="padding:9px 0;border-bottom:1px solid var(--fm-line)">
-          <span style="font-weight:600;font-size:13px">{{ t.query_text|default('—') }}</span>
-          <span class="status-pill teal">{{ t.cnt|default(0) }}</span>
-        </div>
-        {% endfor %}
+        <p class="muted" style="font-size:12px;color:var(--fm-ink-3);margin:0 0 8px">De hyppigste kursussøgninger i AI-assistenten de seneste 14 dage — et tidligt signal om efterspørgsel.</p>
+        <div class="fm-chart-wrap" style="height:{{ [trending|length * 30 + 48, 160]|max }}px"><canvas id="roiTrendChart" role="img" aria-label="Liggende søjlediagram: antal søgninger pr. søgeord de seneste 14 dage"></canvas></div>
         {% else %}
-        {{ ui.empty('Ingen trender endnu', 'Populære kursussøgninger samles her, når medarbejdere begynder at søge.', 'fa-magnifying-glass') }}
+        {{ ui.empty('Ingen trender endnu', 'Populære kursussøgninger samles her, når flere medarbejdere søger efter det samme i AI-assistenten.', 'fa-magnifying-glass') }}
         {% endif %}
+        {% if trend_anon_note %}<p style="font-size:11px;color:var(--fm-ink-3);margin:10px 0 0"><i class="fa-solid fa-user-shield"></i> {{ trend_anon_note }}</p>{% endif %}
       </div>
     </div>
 
@@ -284,12 +307,32 @@
   (function () {
     if (typeof FMChart === 'undefined') return;
     var trend = {{ ((predictions.trending_courses if (predictions and not predictions.get('error')) else []) or [])|tojson }};
-    if (trend && trend.length) {
+    if (trend && trend.length && document.getElementById('roiTrendChart')) {
       FMChart.bar('roiTrendChart', {
         labels: trend.map(function (t) { return (t.query_text || '—'); }),
         series: [{ label: 'Søgninger', data: trend.map(function (t) { return Number(t.cnt) || 0; }) }],
         horizontal: true,
-        empty: 'Ingen trender endnu'
+        empty: 'Ingen søgninger endnu'
+      });
+    }
+
+    var ms = {{ (monthly_spend or {'labels': [], 'spend': []})|tojson }};
+    if (document.getElementById('roiMonthlyChart')) {
+      FMChart.bar('roiMonthlyChart', {
+        labels: ms.labels || [],
+        series: [{ label: 'Udgift (kr)', data: ms.spend || [], color: FMChart.cssVar('--fm-primary', '#0f766e') }],
+        empty: 'Ingen udgifter i perioden'
+      });
+    }
+
+    // department_roi is k-floored server-side (insights_engine) and sorted by spend.
+    var droi = {{ ((roi.department_roi if roi else []) or [])|list|tojson|safe }};
+    if (droi.length && document.getElementById('roiDeptChart')) {
+      FMChart.bar('roiDeptChart', {
+        horizontal: true,
+        labels: droi.map(function (d) { return d.department; }),
+        series: [{ label: 'Udgift (kr)', data: droi.map(function (d) { return Math.round(Number(d.spend) || 0); }), color: FMChart.cssVar('--fm-primary', '#0f766e') }],
+        empty: 'Ingen afdelingsudgifter endnu'
       });
     }
   })();

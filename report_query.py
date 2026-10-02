@@ -556,10 +556,14 @@ def cohort_retention(company_id=None, months=6):
         dict::
             {'cohorts': [
                 {'cohort': 'YYYY-MM', 'size': int,
-                 'retention': [{'offset': 0, 'count': int, 'pct': float}, ...]},
+                 'retention': [{'offset': 0, 'count': int, 'pct': float,
+                                'future': bool}, ...]},
                 ...],
              'max_offset': int, 'months': int, 'company_id': company_id,
              'anon_note': str|None}
+        ``future`` is True for a cell whose month has not happened yet (a
+        recent cohort cannot have M+3 data), so the UI can tell "not yet" apart
+        from a real 0%.
         Always safe; never raises.
     """
     m = _int(months, 6)
@@ -656,16 +660,25 @@ def cohort_retention(company_id=None, months=6):
 
         # Assemble cohort rows (only cohorts that have a known size).
         cohort_rows = []
+        import datetime as _dt
+        _today = _dt.date.today()
+        _now_idx = _today.year * 12 + (_today.month - 1)
         for cm in sorted(sizes.keys()):
             size = sizes[cm]
             retention = []
             offsets = grid.get(cm, {})
+            try:
+                _cy, _cmo = str(cm).split('-')[:2]
+                _cohort_idx = int(_cy) * 12 + (int(_cmo) - 1)
+            except Exception:
+                _cohort_idx = None
             for off in range(0, m + 1):
                 cnt = _int(offsets.get(off))
                 retention.append({
                     'offset': off,
                     'count': cnt,
                     'pct': _rate(cnt, size),
+                    'future': bool(_cohort_idx is not None and _cohort_idx + off > _now_idx),
                 })
             cohort_rows.append({
                 'cohort': cm,

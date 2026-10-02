@@ -10,9 +10,9 @@
   {% set tb = total_budget|float %}
   {% set ts = total_spent|float %}
   <div class="kpi-row k3">
-    <div class="kpi-tile"><div class="kl">Samlet budget</div><div class="kv tnum">{{ '{:,.0f}'.format(tb).replace(',','.') }}</div><div class="kd">kr for {{ fiscal_year }}</div></div>
-    <div class="kpi-tile"><div class="kl">Brugt</div><div class="kv tnum">{{ '{:,.0f}'.format(ts).replace(',','.') }}</div><div class="kd">{{ ((ts/tb*100)|round(0)|int) if tb > 0 else 0 }}% af budget</div></div>
-    <div class="kpi-tile"><div class="kl">Resterende</div><div class="kv tnum" style="color:var(--fm-success)">{{ '{:,.0f}'.format(tb-ts).replace(',','.') }}</div><div class="kd">kr tilbage</div></div>
+    <div class="kpi-tile"><div class="kl">Samlet budget</div><div class="kv tnum">{{ tb|dknum(0) }}</div><div class="kd">kr for {{ fiscal_year }}</div></div>
+    <div class="kpi-tile"><div class="kl">Brugt</div><div class="kv tnum">{{ ts|dknum(0) }}</div><div class="kd">{{ ((ts/tb*100)|round(0)|int) if tb > 0 else 0 }}% af budget</div></div>
+    <div class="kpi-tile"><div class="kl">{{ 'Overskredet' if ts > tb else 'Resterende' }}</div><div class="kv tnum" style="color:{{ 'var(--fm-danger)' if ts > tb else 'var(--fm-success)' }}">{{ (ts - tb if ts > tb else tb - ts)|dknum(0) }}</div><div class="kd">{{ 'kr over budget' if ts > tb else 'kr tilbage' }}</div></div>
   </div>
 
   <div class="fm-flex fm-gap8" style="margin-bottom:14px;flex-wrap:wrap;align-items:center">
@@ -27,8 +27,8 @@
       <span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-chart-column"></i></span>
       <h3 style="font-size:14.5px;font-weight:700">Budget vs. forbrug pr. afdeling</h3>
     </div>
-    <p style="font-size:12px;color:var(--fm-ink-2);margin:0 0 12px">Tildelt årsbudget mod faktisk forbrug for {{ fiscal_year }}.</p>
-    <div style="position:relative;height:300px"><canvas id="budgetChart" aria-label="Søjlediagram: tildelt budget og forbrug pr. afdeling" role="img"></canvas></div>
+    <p style="font-size:12px;color:var(--fm-ink-2);margin:0 0 12px">Hver søjle er afdelingens årsbudget for {{ fiscal_year }} (kr): brugt, tilbage og eventuel overskridelse. Højeste forbrugsandel øverst.</p>
+    <div style="position:relative;height:{{ [budgets|length * 36 + 60, 180]|max }}px"><canvas id="budgetChart" aria-label="Liggende stablet søjlediagram: forbrug, resterende budget og overskridelse i kroner pr. afdeling" role="img"></canvas></div>
   </div>
   {% endif %}
 
@@ -46,7 +46,7 @@
       <td class="mono">{{ '{:,.0f}'.format(budget_val).replace(',','.') }} kr</td>
       <td class="mono">{{ '{:,.0f}'.format(spent_val).replace(',','.') }} kr</td>
       <td class="mono" style="{{ 'color:var(--fm-danger);font-weight:700' if remaining < 0 else 'color:var(--fm-success)' }}">{{ '{:,.0f}'.format(remaining).replace(',','.') }} kr</td>
-      <td style="min-width:160px"><div class="fm-prog thin" style="margin-bottom:4px"><span style="width:{{ [util_pct,100]|min }}%;background:{{ barcol }}"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">{{ util_pct }}%</span></td>
+      <td style="min-width:160px"><div class="fm-prog thin" style="margin-bottom:4px"><span style="width:{{ [util_pct,100]|min }}%;background:{{ barcol }}"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">{{ util_pct|dknum }}%</span></td>
     </tr>
     {% else %}
     <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--fm-ink-3)"><i class="fa-solid fa-wallet" style="display:block;font-size:22px;margin-bottom:8px"></i>Ingen budgetter oprettet for {{ fiscal_year }}.</td></tr>
@@ -76,15 +76,25 @@
 <script>
 (function () {
   if (typeof FMChart === 'undefined') return;
-  var rows = {{ budgets|list|tojson|safe }};
-  if (!rows.length) return;
-  FMChart.bar('budgetChart', {
-    labels: rows.map(function (b) { return b.department || '—'; }),
+  var rows = {{ (budgets or [])|list|tojson|safe }};
+  if (!rows.length || !document.getElementById('budgetChart')) return;
+  // Each bar is the budget split into spent / left, with any overrun appended,
+  // so "how close is each department to its limit" reads straight off it.
+  rows = rows.map(function (b) {
+    var budget = Number(b.annual_budget) || 0, spent = Number(b.spent) || 0;
+    return { label: b.department || 'Uden afdeling', budget: budget, spent: spent,
+             util: budget > 0 ? spent / budget : (spent > 0 ? Infinity : 0) };
+  }).sort(function (a, b) { return b.util - a.util; });
+  FMChart.stackedBar('budgetChart', {
+    horizontal: true,
+    labels: rows.map(function (r) { return r.label; }),
     series: [
-      { label: 'Budget', data: rows.map(function (b) { return Number(b.annual_budget) || 0; }),
+      { label: 'Brugt (kr)', data: rows.map(function (r) { return Math.round(Math.min(r.spent, r.budget)); }),
+        color: FMChart.cssVar('--fm-primary', '#0f766e') },
+      { label: 'Tilbage (kr)', data: rows.map(function (r) { return Math.round(Math.max(r.budget - r.spent, 0)); }),
         color: FMChart.cssVar('--fm-line-2', '#cbd5e1') },
-      { label: 'Brugt', data: rows.map(function (b) { return Number(b.spent) || 0; }),
-        color: FMChart.cssVar('--fm-primary', '#0f766e') }
+      { label: 'Over budget (kr)', data: rows.map(function (r) { return Math.round(Math.max(r.spent - r.budget, 0)); }),
+        color: FMChart.cssVar('--fm-danger', '#dc2626') }
     ],
     empty: 'Ingen budgetter oprettet endnu'
   });

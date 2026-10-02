@@ -42,6 +42,59 @@ def _parse_when(value):
     return None
 
 
+NO_DEPARTMENT_LABEL = 'Uden afdeling'
+
+
+def _kanon_department_rows(rows, count_key):
+    """Drop per-department rows whose cohort (``count_key``) is below k.
+
+    Used for the department breakdowns that feed charts and tables on the HR
+    analytics pages, so a one- or two-person department can never be read off
+    an "aggregate" bar. Rows get a display label under ``department_label``
+    (NULL/empty department -> 'Uden afdeling'). Fails closed: without the
+    k-anon helper nothing is shown. Returns ``(rows, note_da_or_None)``.
+    """
+    rows = [dict(r) for r in (rows or []) if isinstance(r, dict)]
+    for r in rows:
+        r['department_label'] = (str(r.get('department') or '').strip() or NO_DEPARTMENT_LABEL)
+    if not rows:
+        return [], None
+    if _kanon is None:
+        return [], 'Afdelinger er skjult af hensyn til anonymitet'
+    try:
+        kept, note = _kanon.suppress_small_groups(rows, count_key)
+        kept = [r for r in kept if isinstance(r, dict) and count_key in r]
+        return kept, (note.get('note_da') if note and note.get('suppressed') else None)
+    except Exception:
+        return [], 'Afdelinger er skjult af hensyn til anonymitet'
+
+
+def _dense_daily_series(counts_by_day, days, end=None):
+    """Fill a {date: value} map into a gap-free daily series ending today.
+
+    A day without activity is a real zero, not a missing point: plotting only
+    the days that have rows squeezes quiet weeks out of the time axis and makes
+    a trend look steadier than it is. Returns ``(iso_dates, values)``.
+    """
+    end = end or date.today()
+    norm = {}
+    for k, v in (counts_by_day or {}).items():
+        d = k.date() if isinstance(k, datetime) else k
+        if isinstance(d, str):
+            try:
+                d = datetime.strptime(d[:10], '%Y-%m-%d').date()
+            except ValueError:
+                continue
+        if isinstance(d, date):
+            norm[d] = norm.get(d, 0) + (v or 0)
+    out_days, out_vals = [], []
+    for i in range(int(days) - 1, -1, -1):
+        d = end - timedelta(days=i)
+        out_days.append(d.isoformat())
+        out_vals.append(norm.get(d, 0))
+    return out_days, out_vals
+
+
 def create_hr_dashboard_blueprint():
     hr_dashboard_bp = Blueprint('hr_dashboard', __name__, template_folder='templates')
 
@@ -682,6 +735,11 @@ def create_hr_dashboard_blueprint():
 
             cur.close()
 
+            # Department breakdown for the overview charts and list: k-floored on
+            # head-count so a tiny department's completion can't be read off it.
+            department_chart, department_anon_note = _kanon_department_rows(
+                department_performance, 'employee_count')
+
             # Calculate additional metrics
             if total_employees > 0:
                 engagement_rate = round((engagement_metrics['employees_using_chatbot'] / total_employees) * 100, 1) if engagement_metrics['employees_using_chatbot'] else 0
@@ -706,6 +764,8 @@ def create_hr_dashboard_blueprint():
                                  learning_metrics=learning_metrics,
                                  engagement_metrics=engagement_metrics,
                                  department_performance=department_performance,
+                                 department_chart=department_chart,
+                                 department_anon_note=department_anon_note,
                                  recent_alerts=recent_alerts,
                                  top_performers=top_performers,
                                  learning_paths_progress=learning_paths_progress,
@@ -938,7 +998,7 @@ def create_hr_dashboard_blueprint():
                 for i in range(29, -1, -1):
                     day = today - timedelta(days=i)
                     row = by_day.get(day)
-                    approval_trend['labels'].append(day.strftime('%d/%m'))
+                    approval_trend['labels'].append(day.strftime('%d.%m'))
                     approval_trend['pending'].append(int(row['pending']) if row and row['pending'] else 0)
                     approval_trend['approved'].append(int(row['approved']) if row and row['approved'] else 0)
                     approval_trend['rejected'].append(int(row['rejected']) if row and row['rejected'] else 0)
@@ -1571,6 +1631,18 @@ def create_hr_dashboard_blueprint():
             # Canonical ROI engine — single source of truth, real headline data.
             roi = get_roi_metrics(current_app._get_current_object(), company['id'], fiscal_year)
             predictions = get_predictive_data(current_app._get_current_object(), company['id'])
+            # Search terms are verbatim employee wording: keep only terms searched
+            # at least k times (same floor as aggregate_workforce_risk) so one
+            # person's exact query never shows up on the chart. Fail closed.
+            trend_anon_note = None
+            if isinstance(predictions, dict) and predictions.get('trending_courses'):
+                raw_terms = list(predictions.get('trending_courses') or [])
+                safe_terms = [t for t in raw_terms if isinstance(t, dict) and _kanon is not None
+                              and _kanon.is_cohort_safe(t.get('cnt'))]
+                if len(safe_terms) < len(raw_terms):
+                    trend_anon_note = (_kanon.anon_note() if _kanon is not None
+                                       else 'Sjældne søgninger er skjult af hensyn til anonymitet')
+                predictions = dict(predictions, trending_courses=safe_terms)
 
             # Skill-uplift loop (plan #19): MEASURED aggregate skill lift vs
             # spend for the year — upgrades ROI from cost/throughput to measured
@@ -1599,9 +1671,37 @@ def create_hr_dashboard_blueprint():
                 current_app.logger.warning(f"attributed_revenue (HR) failed: {_e}")
                 ai_revenue = None
 
+            # Monthly spend for the fiscal year (company-wide total, same filter
+            # as the ROI headline) so the page shows WHEN the money went out,
+            # not just how much. Future months of the current year are omitted.
+            monthly_spend = {'labels': [], 'spend': []}
+            try:
+                mcur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+                mcur.execute("""
+                    SELECT MONTH(created_at) AS m, COALESCE(SUM(price), 0) AS spend
+                    FROM course_orders
+                    WHERE company_id = %s
+                      AND status NOT IN ('cancelled', 'rejected')
+                      AND YEAR(created_at) = %s
+                    GROUP BY MONTH(created_at)
+                """, (company['id'], fiscal_year))
+                by_month = {int(r['m']): float(r['spend'] or 0) for r in (mcur.fetchall() or []) if r.get('m')}
+                mcur.close()
+                now = _dt.datetime.now()
+                last_month = 12 if fiscal_year < now.year else (now.month if fiscal_year == now.year else 0)
+                month_names = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec']
+                for m in range(1, last_month + 1):
+                    monthly_spend['labels'].append(month_names[m - 1])
+                    monthly_spend['spend'].append(round(by_month.get(m, 0)))
+            except Exception as _e:
+                current_app.logger.warning(f"ROI monthly spend failed: {_e}")
+                monthly_spend = {'labels': [], 'spend': []}
+
             return render_template('fm/roi.html',
                                    company=company, roi=roi, predictions=predictions,
                                    ai_revenue=ai_revenue, uplift=uplift,
+                                   monthly_spend=monthly_spend,
+                                   trend_anon_note=trend_anon_note,
                                    fiscal_year=fiscal_year)
         except Exception as e:
             current_app.logger.error(f"ROI dashboard error: {e}")
@@ -1649,11 +1749,14 @@ def create_hr_dashboard_blueprint():
             current_app.logger.warning(f"HR funnel report failed: {e}")
 
         has_data = bool(funnel.get('sessions'))
+        # Gap-free daily axis: a day without conversations is a zero.
+        daily_labels, daily_data = _dense_daily_series(
+            dict(zip(daily.get('labels', []), daily.get('data', []))), days)
         return render_template('fm/hr_funnel.html',
                                company=company,
                                funnel=funnel,
-                               daily_labels=daily.get('labels', []),
-                               daily_data=daily.get('data', []),
+                               daily_labels=daily_labels,
+                               daily_data=daily_data,
                                days=days,
                                has_data=has_data,
                                active_hr_page='funnel')
@@ -1956,12 +2059,42 @@ def create_hr_dashboard_blueprint():
             
             cur.close()
 
-            # Prepare chart data
+            # Prepare chart data. The trend is gap-free: a day without orders is
+            # a zero, not a missing point. A year is bucketed by month so the
+            # line stays readable (365 daily points are noise).
+            enr_by_day = {t['date']: int(t.get('enrollments') or 0) for t in learning_trends if t.get('date')}
+            comp_by_day = {t['date']: int(t.get('completions') or 0) for t in learning_trends if t.get('date')}
+            trend_days, trend_enr = _dense_daily_series(enr_by_day, period_days)
+            _, trend_comp = _dense_daily_series(comp_by_day, period_days)
+            if period_days > 90:
+                _mn = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec']
+                buckets = {}
+                for d, e, c in zip(trend_days, trend_enr, trend_comp):
+                    b = buckets.setdefault(d[:7], [0, 0])
+                    b[0] += e
+                    b[1] += c
+                keys = sorted(buckets)
+                trend_labels = ['%s %s' % (_mn[int(k[5:7]) - 1], k[2:4]) for k in keys]
+                trend_enr = [buckets[k][0] for k in keys]
+                trend_comp = [buckets[k][1] for k in keys]
+            else:
+                trend_labels = ['%s.%s' % (d[8:10], d[5:7]) for d in trend_days]
+
+            # Course-title keyword buckets come out of SQL as English keys.
+            _category_da = {'Leadership': 'Ledelse', 'Project Management': 'Projektledelse',
+                            'Communication': 'Kommunikation', 'Technology': 'IT og teknologi',
+                            'Sales': 'Salg', 'Other': 'Andet'}
+
+            # Department comparison: k-floored on head-count before charting.
+            department_chart, department_anon = _kanon_department_rows(
+                department_comparison, 'total_employees')
+
             chart_data = {
                 'learning_trends': {
-                    'dates': [trend['date'].strftime('%Y-%m-%d') for trend in learning_trends],
-                    'enrollments': [trend['enrollments'] for trend in learning_trends],
-                    'completions': [trend['completions'] for trend in learning_trends]
+                    'dates': trend_labels,
+                    'enrollments': trend_enr,
+                    'completions': trend_comp,
+                    'granularity': 'month' if period_days > 90 else 'day',
                 },
                 'hourly_engagement': {
                     'hours': [f"{hour:02d}:00" for hour in range(24)],
@@ -2051,7 +2184,7 @@ def create_hr_dashboard_blueprint():
                         continue
                     completed = int(row.get('supply') or 0)
                     candidates.append({
-                        'skill_category': row.get('skill_category') or 'Andet',
+                        'skill_category': _category_da.get(row.get('skill_category'), row.get('skill_category') or 'Andet'),
                         'ordered': ordered,
                         'completed': completed,
                         'interested_employees': int(row.get('interested_employees') or 0),
@@ -2092,7 +2225,9 @@ def create_hr_dashboard_blueprint():
                     WHERE company_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
                     GROUP BY DATE(created_at) ORDER BY day
                 """, (company['id'], period_days))
-                ai_daily = [{'day': str(r['day']), 'interactions': int(r['interactions'] or 0)} for r in cur.fetchall()]
+                _ai_days, _ai_vals = _dense_daily_series(
+                    {r['day']: int(r['interactions'] or 0) for r in cur.fetchall() if r.get('day')}, period_days)
+                ai_daily = [{'day': d, 'interactions': v} for d, v in zip(_ai_days, _ai_vals)]
                 cur.execute("""
                     SELECT COUNT(*) AS total,
                            COUNT(CASE WHEN status = 'active' THEN 1 END) AS active,
@@ -2111,6 +2246,8 @@ def create_hr_dashboard_blueprint():
                                  learning_trends=learning_trends,
                                  popular_courses=popular_courses,
                                  department_comparison=department_comparison,
+                                 department_chart=department_chart,
+                                 department_anon=department_anon,
                                  learning_path_effectiveness=learning_path_effectiveness,
                                  hourly_engagement=hourly_engagement,
                                  skills_gap_analysis=skills_gap_analysis,
@@ -2200,6 +2337,8 @@ def create_hr_dashboard_blueprint():
             cur.close()
         except Exception as e:
             current_app.logger.warning(f"HR reports summary error: {e}")
+        # Per-department completion/spend is a people-level breakdown: k-floor it.
+        department_rows, department_anon = _kanon_department_rows(department_rows, 'employees')
 
         import report_exports
         report_cards = [
@@ -2227,6 +2366,7 @@ def create_hr_dashboard_blueprint():
                                company=company,
                                report_summary=report_summary,
                                department_rows=department_rows,
+                               department_anon=department_anon,
                                report_cards=report_cards,
                                schedules=schedules, departments=departments,
                                can_schedule=(session.get('role') == 'admin' or session.get('company_role') in ('company_admin', 'hr_manager')),

@@ -813,6 +813,25 @@
     set_course_reminder: "Sæt påmindelse",
     manage_my_order: "Administrer ordre",
     request_manager_approval: "Anmod om godkendelse",
+    // Profile / memory / platform tools (the backend label wins; this is the offline fallback)
+    show_cv_summary: "CV-oversigt",
+    show_mindmap_preview: "Mind-Map",
+    show_skill_gaps: "Kompetencegab",
+    get_my_agenda: "Min agenda",
+    get_my_compliance: "Mine krav",
+    search_platform_help: "Hjælpeartikler",
+    recall_about_user: "Husker tilbage",
+    forget_about_user: "Glem hukommelse",
+    update_learning_path: "Opdater læringssti",
+    resolve_checkin: "Luk opfølgning",
+    record_learning_outcome: "Gem kursusudbytte",
+  };
+  // What a finished chip says when the count alone would be silent or misleading.
+  const TOOL_STATUS_NOTES = {
+    empty: "ingen resultater",
+    proposed: "afventer din bekræftelse",
+    ui_card: "mangler dit svar",
+    memory_saved: "gemt",
   };
   function toolLabel(tool) {
     const name = typeof tool === "string" ? tool : tool && tool.name;
@@ -852,7 +871,12 @@
       + (running ? " running" : "");
     const meta = [];
     if (data.category) meta.push(data.category);
-    if (Number(data.results_count) > 0) meta.push(Number(data.results_count) + " resultater");
+    const statusNote = !running && TOOL_STATUS_NOTES[data.status];
+    if (statusNote) meta.push(statusNote);
+    else if (Number(data.results_count) > 0) {
+      const n = Number(data.results_count);
+      meta.push(n === 1 ? "1 resultat" : n + " resultater");
+    }
     if (data.cache_hit) {
       const ttl = data.cache_ttl ? Math.round(data.cache_ttl) + "s" : "";
       meta.push(ttl ? "cache " + ttl : "cache");
@@ -862,6 +886,9 @@
     if (Number(data.latency_ms) > 0) meta.push(Number(data.latency_ms) + "ms");
     const icon = data.ui_icon ? `<i class="fa-solid ${esc(data.ui_icon)}"></i>` : "";
     chip.innerHTML = `${icon}<span>${esc(toolLabel(data))}</span>${meta.length ? `<span class="meta">${esc(meta.join(" · "))}</span>` : ""}`;
+    // Hover / screen reader: the server's one-line outcome ("Hukommelse gemt.", a safe error).
+    const note = (data.status === "error" && data.safe_error) || data.message || "";
+    if (note) { chip.title = note; chip.setAttribute("aria-label", toolLabel(data) + ": " + note); }
     // Progress bar for running chips (shown when progress_label is set or always for running)
     if (running) {
       const progWrap = document.createElement("div");

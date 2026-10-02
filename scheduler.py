@@ -614,6 +614,17 @@ def _job_data_retention(app):
         return run_retention(app.mysql.connection)
 
 
+def _job_profile_checkin_heartbeat(app):
+    """Weekly: queue short follow-ups (recent course, stale goal, unknown direction)
+    for people who used the assistant lately; the assistant offers them next time.
+    See profile_checkins.py."""
+    try:
+        from profile_checkins import run_heartbeat
+    except Exception as e:
+        return {'error': "profile_checkins import failed: %s" % e}
+    return run_heartbeat(app)
+
+
 # ── Job registry ─────────────────────────────────────────────────────────────
 # Each job: name, interval_seconds, fn(app)->summary(dict), enabled.
 # Ordered so the cheap, frequent outbox drain runs first.
@@ -694,6 +705,12 @@ JOBS = [
         'name': 'data_retention',
         'interval_seconds': 86400,        # daily -- personal data does not live forever
         'fn': _job_data_retention,
+        'enabled': True,
+    },
+    {
+        'name': 'profile_checkin_heartbeat',
+        'interval_seconds': 604800,       # weekly (7 days)
+        'fn': _job_profile_checkin_heartbeat,
         'enabled': True,
     },
     {

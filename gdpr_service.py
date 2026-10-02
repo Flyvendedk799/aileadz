@@ -156,6 +156,7 @@ _EXPORT_QUERIES = [
     ("conversation_history", "SELECT * FROM conversation_history WHERE username=%s"),
     ("user_learning_goals", "SELECT * FROM user_learning_goals WHERE username=%s"),
     ("user_learning_paths", "SELECT * FROM user_learning_paths WHERE username=%s"),
+    ("user_profile_checkins", "SELECT * FROM user_profile_checkins WHERE username=%s"),
     # 2026-06 profile tables (certificeringer, sprog, portfolio-links).
     ("user_certifications", "SELECT * FROM user_certifications WHERE username=%s"),
     ("user_languages", "SELECT * FROM user_languages WHERE username=%s"),
@@ -344,6 +345,7 @@ _DELETE_TABLES = [
     ("conversation_history", "username"),
     ("user_learning_goals", "username"),
     ("user_learning_paths", "username"),
+    ("user_profile_checkins", "username"),
     # 2026-06 profile tables (certificeringer, sprog, portfolio-links).
     ("user_certifications", "username"),
     ("user_languages", "username"),
@@ -983,7 +985,7 @@ COVERAGE = {
     **{t: _cov("delete") for t in (
         "user_skills", "user_experience", "user_education", "user_completed_courses",
         "user_profile_summary", "user_conversations", "conversation_history", "user_learning_goals",
-        "user_learning_paths", "user_certifications", "user_languages", "user_portfolio_links",
+        "user_learning_paths", "user_profile_checkins", "user_certifications", "user_languages", "user_portfolio_links",
         "user_memories", "user_active_sessions", "user_conversation_summaries", "user_knowledge",
         "notifications",
         "ai_agent_runs", "ai_tool_runs", "hr_chatbot_interactions", "ai_cv_parse_jobs", "ai_confirm_tokens",

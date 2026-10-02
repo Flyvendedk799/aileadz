@@ -154,6 +154,15 @@ _EMPLOYEE_META = {
     "forget_about_user": ToolMeta(
         "forget_about_user", auth_required=True, parallel_safe=False, toolset_tags=("memory", "profile"),
     ),
+    # Heartbeat check-ins (profile_checkins.py): both only touch the person's own rows.
+    "resolve_checkin": ToolMeta(
+        "resolve_checkin", auth_required=True, parallel_safe=False, toolset_tags=("memory", "profile"),
+        progress_label="Lukker opfølgning",
+    ),
+    "record_learning_outcome": ToolMeta(
+        "record_learning_outcome", auth_required=True, side_effect=True, parallel_safe=False,
+        toolset_tags=("memory", "profile"), progress_label="Gemmer udbytte",
+    ),
     "search_platform_help": ToolMeta(
         "search_platform_help", toolset_tags=("help",), cache_ttl=600,
     ),
@@ -378,6 +387,8 @@ _TOOL_LABELS = {
     "get_my_agenda": "Min agenda",
     "recall_about_user": "Husker tilbage",
     "forget_about_user": "Glem hukommelse",
+    "resolve_checkin": "Luk opfølgning",
+    "record_learning_outcome": "Gem kursusudbytte",
     "search_platform_help": "Hjælpeartikler",
     "get_my_compliance": "Mine krav",
     "save_learning_path": "Gem læringssti",
@@ -943,6 +954,11 @@ _TOOL_TRIGGERS = {
         "what did we talk about", "last time we talked", "husker du hvad jeg sagde",
         "do you remember what i said", "vi snakkede om",
     ),
+    "record_learning_outcome": (
+        "det lærte jeg", "jeg har brugt det", "har brugt det i praksis", "lærte jeg af kurset",
+        "fik jeg ud af kurset", "delt det med kolleger", "undervist andre", "what i learned",
+        "i have used it", "taught my team",
+    ),
     "forget_about_user": (
         "glem at", "glem det", "forget that", "forget about", "husk ikke", "stop med at huske",
         "det passer ikke længere", "slet hukommelsen", "fjern hukommelsen", "du husker forkert",
@@ -1081,6 +1097,7 @@ def get_employee_tool_selection(
             "set_learning_goal", "get_learning_goals", "update_learning_goal",
             "analyze_skill_gaps", "catalog_search", "recall_about_user",
             "forget_about_user", "show_mindmap_preview",
+            "resolve_checkin", "record_learning_outcome",
         })
 
     # Pure small-talk fast-path: only for genuine greetings/thanks with NO substantive
@@ -1321,6 +1338,8 @@ def get_employee_tool_selection(
                 # Learning-path lifecycle: user-scoped writes that modify the user's
                 # own learning plan. Needed in profiler mode on every turn.
                 "save_learning_path", "update_learning_path",
+                # Own-memory write, like remember_about_user: what a course led to.
+                "record_learning_outcome",
         ) and not _explicit_order_confirmation(query):
             continue
         selected.append(tool)

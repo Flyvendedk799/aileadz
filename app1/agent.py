@@ -132,7 +132,7 @@ _MEMORY_RELEVANCE_MIN = 0.35
 _PROFILE_MUTATING_TOOLS = frozenset({
     "update_user_profile", "request_user_input", "remember_about_user",
     "set_learning_goal", "update_learning_goal", "save_learning_path",
-    "update_learning_path", "mark_course_complete",
+    "update_learning_path", "mark_course_complete", "record_learning_outcome",
 })
 
 
@@ -1789,6 +1789,27 @@ def _company_context_layers(company_id, logged_in_user, company_name=None):
     return layers
 
 
+def _checkin_layers(username):
+    """The ``checkins`` layer for this conversation (empty list when nothing is
+    queued, the person muted it, or the feature is off). Showing an item counts as
+    asking it: it rests for a few days before it can come back."""
+    try:
+        import profile_checkins as _pc
+        from app1 import user_profile_db as _db
+        if not _pc.checkins_enabled():
+            return []
+        _db.ensure_tables()
+        rows = _db.get_pending_checkins(username, limit=_pc.MAX_SHOWN)
+        body = _pc.checkin_layer(rows)
+        if not body:
+            return []
+        _db.mark_checkins_asked(username, [r["id"] for r in rows])
+        return [_ctx.layer("checkins", body, header="OPFØLGNINGER DU KAN TAGE OP (valgfrit):")]
+    except Exception as e:
+        print(f"[Check-ins] {e}")
+        return []
+
+
 def _returning_note(mode):
     if mode == "profiler":
         return ("Brugeren vender tilbage til profilsamtalen. Tag udgangspunkt i det, du allerede "
@@ -2393,6 +2414,12 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                     context_layers.append(_hr_layer)
                 if _cv_note:
                     context_layers.append(_ctx.layer("cv_just_applied", _cv_note))
+
+                # Weekly heartbeat follow-ups: offered only at the start of a conversation,
+                # and not when the person arrived with an agenda of their own (a handoff
+                # with focus/intent, or a CV they just applied).
+                if mode == "assistant" and user_turns <= 1 and not surface_context and not _cv_note:
+                    context_layers.extend(_checkin_layers(logged_in_user))
 
                 if mode in PROFILING_MODES:
                     try:

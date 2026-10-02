@@ -39,6 +39,7 @@ For the AI internals see [ai-framework.md](ai-framework.md). For standing constr
 | `catalog_service.py`, `catalog_routes.py`, `catalog_admin_routes.py`, `catalog_freshness.py`, `shopify_sync.py` | the ONE course catalog (source file `CATALOG_SOURCE_FILE`, vendor submissions, Shopify sync) |
 | `learner_orders.py`, `learner_context.py`, `completion_service.py`, `competency.py`, `skill_history.py`, `learning_path_service.py`, `goal_sharing.py`, `goal_sharing_ui.py` | learner order detail, learner view of own HR data, completion moment, skills |
 | `cv_ingest.py`, `cv_parse_store.py` | CV / job-ad ingestion for the profiler |
+| `profile_checkins.py` | weekly heartbeat: queues reasoned follow-ups (recent course, stale goal, unknown direction) the assistant may raise next time; `resolve_checkin` / `record_learning_outcome` tools |
 | `dashboard/`, `pages.py`, `api.py` | learner dashboard, static-ish pages, `/api/...` JSON endpoints for the UI (notifications, profile, credits, CV upload/parse, learner events) |
 
 ### HR, company and enterprise

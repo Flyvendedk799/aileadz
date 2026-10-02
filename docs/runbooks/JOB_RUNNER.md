@@ -64,6 +64,7 @@ stamps the outcome and returns `{'ran', 'skipped', 'errors', 'results'}`. It nev
 | `shopify_sync` | 24 h | `shopify_sync.sync()`; skips cleanly without `SHOPIFY_STORE` / `SHOPIFY_ADMIN_TOKEN`. |
 | `catalog_embed` | 6 h | `rag.embed_missing()`: embed catalog products that have no vector yet. |
 | `data_retention` | 24 h | `retention_service.run_retention`: apply the per-table retention policy. |
+| `profile_checkin_heartbeat` | 7 d | per person who used the AI assistant in the last 90 days: queue short follow-ups (`profile_checkins.run_heartbeat`); `AI_PROFILE_CHECKINS=0` turns it off. |
 | `weekly_manager_digest` | 7 d | per active company: `digest_service.send_company_digest`. |
 
 "Active company" = `companies.status = 'active'` (all companies if that column is

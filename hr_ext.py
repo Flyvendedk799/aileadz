@@ -3,8 +3,9 @@ hr_ext.py — NEW HR dashboard feature pages that surface dormant AI/data
 capabilities (Pillar B) without touching the 4346-line hr_dashboard factory.
 
 Registered with url_prefix='/hr' alongside hr_dashboard_bp. Every page:
-  * gates on the same company-role rule as require_hr_access (company_admin /
-    hr_manager / department_head, plus platform-admin bypass),
+  * is gated by a capability from the role matrix in auth_decorators (never by
+    comparing role strings): ``company.workspace`` for the HR-workspace pages,
+    ``company.analytics`` for the company-wide Engagement and AI-kvalitet pages,
   * is strictly company_id-scoped via session['company_id'] (the HR tool
     executors read it themselves),
   * reuses existing logic (hr_tools._execute_*, calendar_service.build_ics,
@@ -25,18 +26,16 @@ logger = logging.getLogger(__name__)
 
 hr_ext_bp = Blueprint('hr_ext', __name__)
 
-_HR_ROLES = ('company_admin', 'hr_manager', 'department_head')
-
 
 # ---------------------------------------------------------------------------
-# Gating + company resolution (mirrors hr_dashboard.require_hr_access, which is
-# nested in a factory and not importable).
+# Gating + company resolution. Who may do what is decided by the role matrix in
+# auth_decorators; each route here only names the capability it needs.
 # ---------------------------------------------------------------------------
-def _hr_ok():
+def _hr_ok(capability='company.workspace'):
     if 'user' not in session or not session.get('company_id'):
         return False
-    return (session.get('company_role') in _HR_ROLES
-            or session.get('role') == 'admin')
+    from auth_decorators import can
+    return can(capability)
 
 
 def _company():
@@ -47,9 +46,9 @@ def _company():
     }
 
 
-def _guard_html():
-    if not _hr_ok():
-        flash("Du har ikke adgang til HR-funktioner.", "danger")
+def _guard_html(capability='company.workspace'):
+    if not _hr_ok(capability):
+        flash("Du har ikke adgang til denne side.", "danger")
         return redirect(url_for('dashboard.dashboard'))
     return None
 
@@ -132,7 +131,7 @@ def procurement():
 # ---------------------------------------------------------------------------
 @hr_ext_bp.route('/ai-quality')
 def ai_quality():
-    g = _guard_html()
+    g = _guard_html('company.analytics')
     if g:
         return g
     risks = _tool('_execute_hr_get_ai_usage_risks', {})
@@ -192,7 +191,7 @@ def _deadline_reminders_enabled():
 
 @hr_ext_bp.route('/engagement')
 def engagement():
-    g = _guard_html()
+    g = _guard_html('company.analytics')
     if g:
         return g
     non_starters = _tool('_execute_get_team_non_starters', {})
@@ -215,7 +214,7 @@ def set_deadline_reminders():
     HR-gated; persists to company_settings (upsert) so a fresh tenant can opt in
     without an admin first creating a settings row.
     """
-    if not _hr_ok():
+    if not _hr_ok('company.settings'):
         return jsonify({'success': False, 'message': 'Ikke autoriseret'}), 401
     data = request.get_json(silent=True) or request.form
     raw = data.get('enabled')
@@ -252,7 +251,7 @@ def set_deadline_reminders():
 
 @hr_ext_bp.route('/engagement/nudge', methods=['POST'])
 def engagement_nudge():
-    if not _hr_ok():
+    if not _hr_ok('company.analytics'):
         return jsonify({'success': False, 'message': 'Ikke autoriseret'}), 401
     data = request.get_json(silent=True) or request.form
     raw_ids = data.get('user_ids') or data.getlist('user_ids') if hasattr(data, 'getlist') else data.get('user_ids')

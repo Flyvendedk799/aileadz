@@ -42,6 +42,59 @@ def _parse_when(value):
     return None
 
 
+NO_DEPARTMENT_LABEL = 'Uden afdeling'
+
+
+def _kanon_department_rows(rows, count_key):
+    """Drop per-department rows whose cohort (``count_key``) is below k.
+
+    Used for the department breakdowns that feed charts and tables on the HR
+    analytics pages, so a one- or two-person department can never be read off
+    an "aggregate" bar. Rows get a display label under ``department_label``
+    (NULL/empty department -> 'Uden afdeling'). Fails closed: without the
+    k-anon helper nothing is shown. Returns ``(rows, note_da_or_None)``.
+    """
+    rows = [dict(r) for r in (rows or []) if isinstance(r, dict)]
+    for r in rows:
+        r['department_label'] = (str(r.get('department') or '').strip() or NO_DEPARTMENT_LABEL)
+    if not rows:
+        return [], None
+    if _kanon is None:
+        return [], 'Afdelinger er skjult af hensyn til anonymitet'
+    try:
+        kept, note = _kanon.suppress_small_groups(rows, count_key)
+        kept = [r for r in kept if isinstance(r, dict) and count_key in r]
+        return kept, (note.get('note_da') if note and note.get('suppressed') else None)
+    except Exception:
+        return [], 'Afdelinger er skjult af hensyn til anonymitet'
+
+
+def _dense_daily_series(counts_by_day, days, end=None):
+    """Fill a {date: value} map into a gap-free daily series ending today.
+
+    A day without activity is a real zero, not a missing point: plotting only
+    the days that have rows squeezes quiet weeks out of the time axis and makes
+    a trend look steadier than it is. Returns ``(iso_dates, values)``.
+    """
+    end = end or date.today()
+    norm = {}
+    for k, v in (counts_by_day or {}).items():
+        d = k.date() if isinstance(k, datetime) else k
+        if isinstance(d, str):
+            try:
+                d = datetime.strptime(d[:10], '%Y-%m-%d').date()
+            except ValueError:
+                continue
+        if isinstance(d, date):
+            norm[d] = norm.get(d, 0) + (v or 0)
+    out_days, out_vals = [], []
+    for i in range(int(days) - 1, -1, -1):
+        d = end - timedelta(days=i)
+        out_days.append(d.isoformat())
+        out_vals.append(norm.get(d, 0))
+    return out_days, out_vals
+
+
 def create_hr_dashboard_blueprint():
     hr_dashboard_bp = Blueprint('hr_dashboard', __name__, template_folder='templates')
 
@@ -682,6 +735,11 @@ def create_hr_dashboard_blueprint():
 
             cur.close()
 
+            # Department breakdown for the overview charts and list: k-floored on
+            # head-count so a tiny department's completion can't be read off it.
+            department_chart, department_anon_note = _kanon_department_rows(
+                department_performance, 'employee_count')
+
             # Calculate additional metrics
             if total_employees > 0:
                 engagement_rate = round((engagement_metrics['employees_using_chatbot'] / total_employees) * 100, 1) if engagement_metrics['employees_using_chatbot'] else 0
@@ -706,6 +764,8 @@ def create_hr_dashboard_blueprint():
                                  learning_metrics=learning_metrics,
                                  engagement_metrics=engagement_metrics,
                                  department_performance=department_performance,
+                                 department_chart=department_chart,
+                                 department_anon_note=department_anon_note,
                                  recent_alerts=recent_alerts,
                                  top_performers=top_performers,
                                  learning_paths_progress=learning_paths_progress,

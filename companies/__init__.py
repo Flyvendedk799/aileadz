@@ -567,7 +567,7 @@ def create_companies_blueprint():
                     hashed_password = generate_password_hash(password or secrets.token_urlsafe(48))
                     cur.execute("""
                         INSERT INTO users (username, email, password, credits, role)
-                        VALUES (%s, %s, %s, 100, 'employee')
+                        VALUES (%s, %s, %s, 100, 'user')
                     """, (username, email, hashed_password))
                     user_id = cur.lastrowid
                 

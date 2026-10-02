@@ -1294,6 +1294,12 @@ OPENAI_TOOLS.extend([
 ])
 
 
+# Anchors on /profile (ids in templates/fm/my_profile.html); open_in_app(open_profile, section=...).
+_PROFILE_PAGE_SECTIONS = frozenset({
+    "cv", "skills", "experience", "education", "languages", "portfolio", "certifications",
+    "courses", "goals", "learning-paths",
+})
+
 # Cross-surface action tool: lets the assistant MOVE the user through the SPA
 # (open a product, the compare view, a profile section, the catalog, the
 # mind-map, or start an enrolment) instead of only describing links. It returns
@@ -1307,7 +1313,7 @@ OPENAI_TOOLS.append({
             "Åbn noget i appen for brugeren (navigation/handling i UI'et). Brug dette når du vil "
             "FØRE brugeren et sted hen i stedet for kun at beskrive et link: vis et konkret kursus, "
             "åbn sammenligningsvisning, åbn profil/CV, åbn kataloget (evt. filtreret), åbn mind-map, "
-            "skift til AI Profiler, eller start en tilmelding. Du kan også åbne brugerens egne sider: "
+            "åbn brugerens Futurematch-CV (open_my_cv), eller start en tilmelding. Du kan også åbne brugerens egne sider: "
             "open_my_learning (læringsoverblikket), open_goals (udviklingsmål) og open_timeline "
             "(tidslinjen med frister og godkendelser). Det opretter IKKE en ordre — start_order "
             "åbner kun tilmeldingsflowet. Foretræk dette frem for at skrive rå URL'er i teksten."
@@ -1318,7 +1324,7 @@ OPENAI_TOOLS.append({
                 "action": {
                     "type": "string",
                     "enum": ["view_product", "open_compare", "open_profile", "open_mind_map",
-                             "open_cv_upload", "open_learning_path", "open_catalog", "start_order", "open_profiler",
+                             "open_cv_upload", "open_my_cv", "open_learning_path", "open_catalog", "start_order", "open_profiler",
                              "open_advisor", "open_my_learning", "open_goals", "open_timeline"],
                     "description": "Hvilken handling/navigation der skal udføres i UI'et."
                 },
@@ -2929,10 +2935,13 @@ PROFILE_TOOLS = [
         "type": "function",
         "function": {
             "name": "get_user_profile",
-            "description": "Hent brugerens fulde profil som data: kompetencer, erfaring, uddannelse, certificeringer, sprog, gennemførte kurser og præferencer. Brug det når du selv skal bruge baggrunden for at ræsonnere — fx målrette en anbefaling eller vurdere om et kursus ligger på det rigtige niveau. Det viser ikke noget til brugeren: skal de SE deres profil, er show_cv_summary det rigtige, og skal du bruge profil, budget og ordrer på én gang, er get_learning_context ét kald i stedet for flere. Returnerer kun det der er gemt — ikke noget brugeren har nævnt i denne samtale uden at det blev gemt.",
+            "description": "Hent brugerens fulde profil som data: kompetencer, erfaring, uddannelse, certificeringer, sprog, gennemførte kurser og præferencer. Profilen i konteksten er et uddrag og siger '+N flere', når der er skåret rækker væk: kald med full=true, når du skal bruge det hele (fx finde et bestemt punkt at rette eller fjerne, eller når du vurderer, om noget mangler). Brug det når du selv skal bruge baggrunden for at ræsonnere — fx målrette en anbefaling eller vurdere om et kursus ligger på det rigtige niveau. Det viser ikke noget til brugeren: skal de SE deres profil, er show_cv_summary det rigtige, og skal du bruge profil, budget og ordrer på én gang, er get_learning_context ét kald i stedet for flere. Returnerer kun det der er gemt — ikke noget brugeren har nævnt i denne samtale uden at det blev gemt.",
             "parameters": {
                 "type": "object",
-                "properties": {},
+                "properties": {
+                    "full": {"type": "boolean",
+                             "description": "Hent alle rækker uden nedskæring (standard: kompakt uddrag)."}
+                },
                 "required": []
             }
         }
@@ -3132,7 +3141,9 @@ def _execute_get_user_profile(args, username):
         from app1.user_profile_db import get_full_profile, format_profile_for_ai, ensure_tables
         ensure_tables()
         profile = get_full_profile(username)
-        formatted = format_profile_for_ai(profile, include_ids=True)
+        full = bool(args.get("full")) if isinstance(args, dict) else False
+        formatted = format_profile_for_ai(profile, include_ids=True, full=full)
+        row_cap = 100 if full else 25
         # update_*/remove_* actions need row ids; hand them over structured too.
         labels = {
             "experience": lambda r: f"{r.get('title')} @ {r.get('company')}",
@@ -3149,7 +3160,7 @@ def _execute_get_user_profile(args, username):
             rows = [{"id": r.get("id"), "label": label(r)}
                     for r in (profile.get(section) or []) if r.get("id") is not None]
             if rows:
-                items[section] = rows[:25]
+                items[section] = rows[:row_cap]
         return _model_tool_json(
             status="success",
             profile_text=formatted if formatted else "Brugeren har endnu ikke udfyldt sin profil.",
@@ -6152,6 +6163,9 @@ def _execute_open_in_app(args, username=None):
     elif action == "open_profile":
         section = (args.get("section") or "").strip()
         out["section"] = section
+        # Only anchors that exist on the profile page; anything else opens the page itself.
+        section = section if section in _PROFILE_PAGE_SECTIONS else ""
+        out["section"] = section
         out["target"] = "/profile" + (f"#{section}" if section else "")
         out["label"] = label or "Åbn profil"
 
@@ -6165,6 +6179,10 @@ def _execute_open_in_app(args, username=None):
     elif action == "open_cv_upload":
         out["target"] = "/profil#cv"
         out["label"] = label or "Upload / opdater CV"
+
+    elif action == "open_my_cv":
+        out["target"] = "/profil/cv"
+        out["label"] = label or "Se dit Futurematch-CV"
 
     elif action == "open_learning_path":
         out["target"] = "/profile#learning-paths"

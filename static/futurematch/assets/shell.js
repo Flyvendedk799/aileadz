@@ -247,7 +247,7 @@
     // standalone prototype). Role-awareness mirrors the NAV entries above:
     // these learner/account actions are available to both roles.
     const actions = [
-      { icon: "fa-comment-dots", title: "Spørg AI-assistenten", sub: "Kursusrådgiver", href: "/chat", group: "Handlinger" },
+      { icon: "fa-comment-dots", title: "Spørg AI-assistenten", sub: "Kurser og karriere", href: "/chat", group: "Handlinger" },
       { icon: "fa-bullseye", title: "Opret udviklingsmål", sub: "Udviklingsmål", href: "/mine-maal", group: "Handlinger" },
       { icon: "fa-bell", title: "Mine notifikationer", sub: "Konto", href: "/notifications", group: "Handlinger" },
       { icon: "fa-graduation-cap", title: "Browse katalog", sub: "Katalog", href: "/catalog", group: "Handlinger" },

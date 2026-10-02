@@ -1128,7 +1128,7 @@
   const ACTION_ICONS = {
     view_product: "fa-up-right-from-square", open_compare: "fa-scale-balanced",
     open_profile: "fa-user-pen", open_mind_map: "fa-brain",
-    open_cv_upload: "fa-file-arrow-up",
+    open_cv_upload: "fa-file-arrow-up", open_my_cv: "fa-file-lines",
     open_learning_path: "fa-route", open_catalog: "fa-magnifying-glass",
     start_order: "fa-cart-plus", open_profiler: "fa-user-check", open_advisor: "fa-comments",
   };

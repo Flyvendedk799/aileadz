@@ -737,8 +737,9 @@ def get_company_branding_api():
                 'widget_token': widget.get('widget_token') if widget else None,
             },
         })
-    except Exception as e:
-        return jsonify({'error': f'Failed to retrieve branding: {str(e)}'}), 500
+    except Exception:
+        logging.exception("enterprise_api: branding lookup failed for company %s", getattr(g, "company_id", None))
+        return jsonify({'error': 'Brandingoplysningerne kunne ikke hentes'}), 500
 
 
 @api_enterprise_bp.route('/api/v1/company/info')

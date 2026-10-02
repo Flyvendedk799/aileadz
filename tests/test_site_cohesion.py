@@ -60,8 +60,8 @@ ROUTE_CAPABILITY = {
     "hr_dashboard.retention_dashboard": "company.analytics",
     "hr_dashboard.benchmarking_view": "company.analytics",
     "hr_dashboard.skill_gaps_view": "company.analytics",
-    "hr_ext.engagement": "company.workspace",
-    "hr_ext.ai_quality": "company.workspace",
+    "hr_ext.engagement": "company.analytics",
+    "hr_ext.ai_quality": "company.analytics",
     "hr_ext.training_plan": "company.workspace",
     "hr_dashboard.learning_paths": "company.workspace",
     "hr_dashboard.internal_courses": "company.workspace",
@@ -130,6 +130,20 @@ class NavResolvesTests(unittest.TestCase):
         side = dict(re.findall(r"url_for\('([^']+)'\) }}\"><i class=\"fa-solid [^\"]+\"></i><span>([^<]+)</span>", admin_block))
         tabs = dict(re.findall(r"url_for\('([^']+)'\) }}\"><i class=\"fa-solid [^\"]+\"></i> ([^<]+)</a>", admin_src))
         self.assertEqual(side, tabs)
+
+    def test_hr_assistant_destination_labels_match_the_subnav(self):
+        """The HR assistant's navigation buttons use the sub-nav's words."""
+        import html as _html
+        from app1 import sse_events
+        tabs = {ep: _html.unescape(label).strip() for ep, label in re.findall(
+            r"url_for\('([^']+)'\) }}\"><i class=\"fa-solid [^\"]+\"></i> ([^<]+)</a>", _src("fm/_hr_subnav.html"))}
+        # "employees" is the assistant's word for the people overview it opens
+        # (Fremdrift); its own sub-nav tab "Medarbejdere" is the admin list.
+        known = {"employees"}
+        for key, (endpoint, _path, label) in sse_events.HR_DESTINATIONS.items():
+            if key in known:
+                continue
+            self.assertEqual(label, tabs.get(endpoint), key)
 
     def test_sidebar_hr_labels_match_their_subnav_tab(self):
         base, hr_src = _src("fm_base.html"), _src("fm/_hr_subnav.html")
@@ -276,6 +290,22 @@ class ActiveStateTests(unittest.TestCase):
         self._check("/admin/users", "/admin/users", "/admin/users", page_id="admin", subnav="admin", role="admin")
         self._check("/companies/admin/3", "/companies/admin", "/companies/admin", page_id="", subnav="admin",
                     role="admin")
+        # Secondary admin pages light their parent entry (they carry no tab bar of their own).
+        self._check("/admin/ai-quality", "/admin/ai-quality", "/admin/ai-quality", page_id="aiquality",
+                    subnav="admin", role="admin")
+        self._check("/admin/catalog/products", "/admin/catalog", "/admin/catalog", page_id="acatalog",
+                    subnav="admin", role="admin")
+        self._check("/admin/credits/companies", "/admin/credits", "/admin/credits", page_id="ausers",
+                    subnav="admin", role="admin")
+
+    def test_admin_pages_use_the_shared_admin_subnav(self):
+        import glob
+        for path in sorted(glob.glob(os.path.join(TEMPLATES, "fm", "admin_*.html"))):
+            src = open(path, encoding="utf-8").read()
+            self.assertNotIn('class="pg-subnav"', src,
+                             f"{os.path.basename(path)} has its own tab bar; include fm/_admin_subnav.html")
+        for name in ("admin_ai_quality.html", "admin_catalog_products.html", "admin_credits_companies.html"):
+            self.assertIn("{% include 'fm/_admin_subnav.html' %}", _src("fm/" + name), name)
 
     def test_page_id_fallback_outside_a_known_route(self):
         # The /ui design gallery renders pages outside their route; the page id decides.

@@ -35,22 +35,20 @@ def search():
     groups = []
 
     company_id = session.get('company_id')
-    is_admin = session.get('role') == 'admin'
-    company_role = session.get('company_role')
+    from auth_decorators import can, department_scope
+    is_admin = can('platform.admin')
 
     # --- Employees in the current company -------------------------------
     # S-1.5: only HR roles may look colleagues up. Department heads are limited
     # to their own department; plain employees get no employee results at all
     # (otherwise any employee could harvest colleagues' emails).
-    can_search_people = bool(company_id) and (
-        company_role in ('company_admin', 'hr_manager', 'department_head')
-    )
+    can_search_people = bool(company_id) and can('hr.employees.view')
     if can_search_people:
         try:
             cur = _cursor()
             dept_clause = ""
             params = [company_id]
-            if company_role == 'department_head' and not is_admin:
+            if department_scope() is not None:
                 dept_clause = (
                     " AND cu.department = (SELECT d.department FROM company_users d"
                     " WHERE d.user_id = %s AND d.company_id = %s LIMIT 1)"

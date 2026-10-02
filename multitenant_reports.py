@@ -5,12 +5,11 @@ Replaces the single-tenant reports.py with company-scoped analytics
 """
 
 from flask import Blueprint, render_template, session, redirect, url_for, flash, current_app, request, jsonify
-from auth_decorators import require_company_role
+from auth_decorators import require_capability
 
 # S-1.5: these pages expose colleagues' orders and PII (names, emails). Employees
-# must not reach them; department heads only get their own department view.
-_hr_only = require_company_role('company_admin', 'hr_manager')
-_hr_or_dept_head = require_company_role('company_admin', 'hr_manager', 'department_head')
+# must not reach them; department heads only get their own department view. Each
+# route names the capability it needs; the role matrix in auth_decorators decides.
 import MySQLdb.cursors
 from collections import defaultdict
 import datetime
@@ -115,7 +114,7 @@ def create_multitenant_reports_blueprint():
 
     @multitenant_reports_bp.route('')
     @multitenant_reports_bp.route('/')
-    @_hr_only
+    @require_capability('company.analytics')
     def reports():
         """
         Company-specific reports dashboard
@@ -535,14 +534,14 @@ def create_multitenant_reports_blueprint():
         )
 
     @multitenant_reports_bp.route('/order/<order_id>')
-    @_hr_only
+    @require_capability('company.analytics')
     def order_detail(order_id):
         """Canonical order detail lives in the HR workspace (N-4.1); this copy
         redirects there so old links keep working."""
         return redirect(url_for('hr_dashboard.company_order_details', order_id=order_id))
 
     @multitenant_reports_bp.route('/order/<order_id>/update', methods=['POST'])
-    @_hr_only
+    @require_capability('hr.manage')
     def update_order_status(order_id):
         """Update order status (company-scoped). Only HR managers and company
         admins. Goes through the ONE order service (transition rules, budget
@@ -550,9 +549,6 @@ def create_multitenant_reports_blueprint():
         company = get_company_context()
         if not company:
             return jsonify({'success': False, 'message': 'Virksomheden blev ikke fundet.'}), 404
-
-        if company['user_role'] not in ['company_admin', 'hr_manager']:
-            return jsonify({'success': False, 'message': 'Du har ikke rettigheder til at ændre ordrer.'}), 403
 
         if request.is_json:
             new_status = request.json.get('status')
@@ -584,7 +580,7 @@ def create_multitenant_reports_blueprint():
             return jsonify({'success': False, 'message': 'Der opstod en fejl ved opdatering af ordren.'}), 500
 
     @multitenant_reports_bp.route('/analytics/export')
-    @_hr_only
+    @require_capability('company.reports')
     def export_analytics():
         """
         Export company-specific analytics data as JSON
@@ -592,10 +588,6 @@ def create_multitenant_reports_blueprint():
         company = get_company_context()
         if not company:
             return jsonify({'error': 'Virksomheden blev ikke fundet.'}), 404
-        
-        # Check permissions
-        if company['user_role'] not in ['company_admin', 'hr_manager', 'department_head']:
-            return jsonify({'error': 'Du har ikke adgang til at eksportere analysedata.'}), 403
         
         analytics_data = {
             'export_date': datetime.datetime.now().isoformat(),
@@ -706,7 +698,7 @@ def create_multitenant_reports_blueprint():
         return response
 
     @multitenant_reports_bp.route('/department/<department_name>')
-    @_hr_or_dept_head
+    @require_capability('company.team')
     def department_analytics(department_name):
         """Merged into the one "Mit team" page (N-3.5). Permission is enforced
         there: HR roles may open any department, others only their own."""

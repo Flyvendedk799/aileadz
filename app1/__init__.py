@@ -1677,8 +1677,8 @@ def confirm_tool_action():
         return jsonify({"status": "already_confirmed"})
 
     scope = entry["scope"]
-    if scope == "hr" and not (session.get("role") == "admin" or (
-            session.get("company_id") and session.get("company_role") in ("company_admin", "hr_manager", "department_head"))):
+    from auth_decorators import can as _can
+    if scope == "hr" and not _can("company.workspace"):
         # An HR confirmation is only honoured for someone who still holds an HR role.
         return jsonify({"status": "error", "message": "Ingen adgang til HR-handlinger."}), 403
     tool_name = entry["tool_name"]

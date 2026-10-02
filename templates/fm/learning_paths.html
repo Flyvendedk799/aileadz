@@ -8,8 +8,8 @@
 <div class="fm-wrap">
 {% set active_hr_page = 'learning_paths' %}{% include 'fm/_hr_subnav.html' %}
 
-  {% set can_create = session.get('company_role') in ['company_admin', 'hr_manager', 'department_head'] %}
-  {% set can_manage = session.get('company_role') in ['company_admin', 'hr_manager'] %}
+  {% set can_create = can('company.workspace') %}
+  {% set can_manage = can('company.learning_paths') %}
   {% set total_avg = paths|sum(attribute='avg_progress') %}
   {% set active_enrolled = paths|selectattr('enrolled_count', 'gt', 0)|list|length %}
   <div class="kpi-row k4">

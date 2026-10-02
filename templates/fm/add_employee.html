@@ -52,7 +52,7 @@
             <option value="employee">Medarbejder</option>
             <option value="department_head">Afdelingsleder</option>
             <option value="hr_manager">HR Manager</option>
-            {% if session.get('company_role') == 'company_admin' %}<option value="company_admin">Admin</option>{% endif %}
+            {% if can('company.admins') %}<option value="company_admin">Admin</option>{% endif %}
           </select>
         </div>
         <div class="form-grid">

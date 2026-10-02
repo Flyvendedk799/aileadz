@@ -43,8 +43,8 @@
   {% if _an %}<a class="pg-tab {{ 'active' if _hp == 'retention' }}" href="{{ url_for('hr_dashboard.retention_dashboard') }}"><i class="fa-solid fa-people-group"></i> Fastholdelse</a>{% endif %}
   {% if _an %}<a class="pg-tab {{ 'active' if _hp == 'benchmarking' }}" href="{{ url_for('hr_dashboard.benchmarking_view') }}"><i class="fa-solid fa-ranking-star"></i> Benchmarking</a>{% endif %}
   {% if _an %}<a class="pg-tab {{ 'active' if _hp == 'skill_gaps' }}" href="{{ url_for('hr_dashboard.skill_gaps_view') }}"><i class="fa-solid fa-puzzle-piece"></i> Kompetencer</a>{% endif %}
-  {% if _ws %}<a class="pg-tab {{ 'active' if _hp == 'engagement' }}" href="{{ url_for('hr_ext.engagement') }}"><i class="fa-solid fa-hand-holding-heart"></i> Engagement</a>{% endif %}
-  {% if _ws %}<a class="pg-tab {{ 'active' if _hp == 'ai_quality' }}" href="{{ url_for('hr_ext.ai_quality') }}"><i class="fa-solid fa-wand-magic-sparkles"></i> AI-kvalitet</a>{% endif %}
+  {% if _an %}<a class="pg-tab {{ 'active' if _hp == 'engagement' }}" href="{{ url_for('hr_ext.engagement') }}"><i class="fa-solid fa-hand-holding-heart"></i> Engagement</a>{% endif %}
+  {% if _an %}<a class="pg-tab {{ 'active' if _hp == 'ai_quality' }}" href="{{ url_for('hr_ext.ai_quality') }}"><i class="fa-solid fa-wand-magic-sparkles"></i> AI-kvalitet</a>{% endif %}
   {% if _ws %}<span class="pg-sep" role="separator" aria-hidden="true"></span>{% endif %}
   {% if _ws %}<a class="pg-tab {{ 'active' if _hp == 'training_plan' }}" href="{{ url_for('hr_ext.training_plan') }}"><i class="fa-solid fa-list-check"></i> Træningsplan</a>{% endif %}
   {% if _ws %}<a class="pg-tab {{ 'active' if _hp == 'learning_paths' }}" href="{{ url_for('hr_dashboard.learning_paths') }}"><i class="fa-solid fa-route"></i> Læringsforløb</a>{% endif %}

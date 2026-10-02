@@ -40,7 +40,7 @@ class RingMacroTests(unittest.TestCase):
 
 class RingIsTheOnlyRingTests(unittest.TestCase):
     def test_pages_use_the_macro_not_their_own_ring_css(self):
-        for rel in ("templates/fm/my_profile.html", "templates/fm/ai_profiler.html"):
+        for rel in ("templates/fm/my_profile.html",):
             src = _read(rel)
             self.assertIn("{% from 'fm/_ring.html' import ring %}", src, rel)
             self.assertNotRegex(src, r"\.(ring-big|prof-ring)\b", rel)
@@ -72,10 +72,13 @@ class PagesRenderTheRingTests(unittest.TestCase):
         self.assertIn('class="fm-ring fm-ring--lg" id="ringBig"', html)
         self.assertIn('id="ringPct"', html)
 
-    def test_profiler_page(self):
-        html = self.c.get("/ai-profiler").get_data(as_text=True)
-        self.assertIn('class="fm-ring fm-ring--sm" id="profRing"', html)
-        self.assertIn('id="profPct"', html)
+    def test_legacy_profiler_url_lands_in_the_assistant(self):
+        resp = self.c.get("/ai-profiler?from=profile&c=7")
+        self.assertEqual(resp.status_code, 301)
+        loc = resp.headers["Location"]
+        self.assertTrue(loc.startswith("/chat?"), loc)
+        self.assertIn("from=profile", loc)
+        self.assertIn("c=7", loc)
 
 
 if __name__ == "__main__":

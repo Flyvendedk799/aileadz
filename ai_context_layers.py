@@ -73,6 +73,8 @@ LAYER_SPECS: Dict[str, LayerSpec] = {
     "memories": LayerSpec(20, 2000, 600, KNOWLEDGE),
     "session_summary": LayerSpec(22, 2000, 800, KNOWLEDGE),
     "flow_playbooks": LayerSpec(25, 3000, 1200, STEERING),
+    # Weekly heartbeat follow-ups (profile_checkins.py): optional, dropped first among steering.
+    "checkins": LayerSpec(26, 900, 0, STEERING),
     "hr_learning": LayerSpec(30, 1800, 600, KNOWLEDGE),
     "mode_digest": LayerSpec(32, 1500, 500, KNOWLEDGE),
     "shown_products": LayerSpec(35, 1500, 400, STEERING),

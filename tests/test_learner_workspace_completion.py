@@ -263,7 +263,7 @@ def test_navigation_shell_unification_and_modebar():
     assert "futurematch.cv_upload" in modebar
     assert "CV-portal" in modebar
     assert "futurematch.chat" in modebar
-    assert "futurematch.ai_profiler" in modebar
+    assert "futurematch.ai_profiler" not in modebar  # the profiler is part of the assistant
     assert "futurematch.mind_map" in modebar
 
     cv_upload = open("templates/fm/cv_upload.html", encoding="utf-8").read()
@@ -277,7 +277,7 @@ def test_navigation_shell_unification_and_modebar():
 
 def test_profile_page_intent_bridging_and_cv_widget():
     profile_src = open("templates/fm/my_profile.html", encoding="utf-8").read()
-    assert "futurematch.ai_profiler" in profile_src
+    assert "futurematch.chat" in profile_src
     assert "&amp;intent=" in profile_src  # intent links ride with a from=profile handoff
     assert "from=profile" in profile_src
     assert "cvWidgetCard" in profile_src

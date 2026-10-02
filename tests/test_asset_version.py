@@ -43,7 +43,6 @@ class AssetVersionTests(unittest.TestCase):
     def test_ai_chat_assets_are_content_versioned_in_templates(self):
         checks = {
             os.path.join("fm", "chat.html"): ("futurematch/assets/chat.js", "futurematch/assets/chat.css"),
-            os.path.join("fm", "ai_profiler.html"): ("futurematch/assets/chat.js", "futurematch/assets/chat.css"),
             # fm-pages.css sat at a hand-bumped ?v=15 after the HR panel's [hidden] fix, so
             # browsers that had cached the earlier file kept an HR popup that could not be closed.
             "fm_base.html": (

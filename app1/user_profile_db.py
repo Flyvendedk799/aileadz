@@ -120,6 +120,23 @@ _TABLES_SQL = [
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_username (username)
     )""",
+    # Weekly heartbeat queue (profile_checkins.py): things the assistant may take up
+    # the next time this person opens it. Own rows only; erased with the profile.
+    """CREATE TABLE IF NOT EXISTS user_profile_checkins (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        username VARCHAR(255) NOT NULL,
+        kind VARCHAR(30) NOT NULL,
+        ref VARCHAR(120) NOT NULL DEFAULT '',
+        topic VARCHAR(255) NOT NULL,
+        reason VARCHAR(500) DEFAULT NULL,
+        status ENUM('pending','asked','answered','dismissed') NOT NULL DEFAULT 'pending',
+        ask_count INT NOT NULL DEFAULT 0,
+        asked_at TIMESTAMP NULL DEFAULT NULL,
+        resolved_at TIMESTAMP NULL DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_user_kind_ref (username, kind, ref),
+        INDEX idx_user_status (username, status)
+    )""",
     """CREATE TABLE IF NOT EXISTS user_certifications (
         id INT AUTO_INCREMENT PRIMARY KEY,
         username VARCHAR(255) NOT NULL,
@@ -2074,3 +2091,159 @@ def delete_conversation(username, conv_id):
     affected = cur.rowcount
     cur.close()
     return affected > 0
+
+
+# ── Heartbeat check-ins (profile_checkins.py) ──
+# A weekly job queues short, reasoned follow-ups; the assistant sees the open ones
+# at the start of a conversation and takes them up only if they fit. ``kind='optout'``
+# is the person's own "no more check-ins" switch and blocks every other row.
+
+CHECKIN_MAX_ASKS = 3          # asked this many times without an answer -> stop
+CHECKIN_COOLDOWN_DAYS = 3     # an asked item is not shown again sooner than this
+CHECKIN_TTL_DAYS = 28         # an unanswered item expires after this
+CHECKIN_REARM_DAYS = 90       # a resolved item may be queued again after this
+
+_CHECKIN_OUTCOMES = ("answered", "dismissed")
+
+
+def checkins_muted(username):
+    cur = current_app.mysql.connection.cursor()
+    cur.execute("SELECT 1 FROM user_profile_checkins WHERE username = %s AND kind = 'optout' LIMIT 1", (username,))
+    row = cur.fetchone()
+    cur.close()
+    return bool(row)
+
+
+def set_checkins_muted(username, muted):
+    cur = current_app.mysql.connection.cursor()
+    if muted:
+        cur.execute(
+            "INSERT INTO user_profile_checkins (username, kind, ref, topic, status, resolved_at) "
+            "VALUES (%s, 'optout', 'all', 'Ingen check-ins', 'dismissed', NOW()) "
+            "ON DUPLICATE KEY UPDATE status = 'dismissed'",
+            (username,),
+        )
+    else:
+        cur.execute("DELETE FROM user_profile_checkins WHERE username = %s AND kind = 'optout'", (username,))
+    current_app.mysql.connection.commit()
+    cur.close()
+    return True
+
+
+def add_checkin(username, kind, ref, topic, reason=None):
+    """Queue one check-in. Idempotent per (username, kind, ref): an item that is
+    still open is left alone, a resolved one is re-armed only after
+    CHECKIN_REARM_DAYS. Returns True when a new row was queued or re-armed."""
+    kind = (kind or "").strip()[:30]
+    ref = (ref or "").strip().lower()[:120]
+    topic = (topic or "").strip()[:255]
+    if not (username and kind and topic) or kind == "optout":
+        return False
+    cur = current_app.mysql.connection.cursor()
+    cur.execute(
+        "INSERT INTO user_profile_checkins (username, kind, ref, topic, reason) VALUES (%s, %s, %s, %s, %s) "
+        "ON DUPLICATE KEY UPDATE "
+        "ask_count = IF(status IN ('answered','dismissed') AND resolved_at < NOW() - INTERVAL %s DAY, 0, ask_count), "
+        "status = IF(status IN ('answered','dismissed') AND resolved_at < NOW() - INTERVAL %s DAY, 'pending', status), "
+        "topic = VALUES(topic), reason = VALUES(reason)",
+        (username, kind, ref, topic, (reason or "").strip()[:500] or None, CHECKIN_REARM_DAYS, CHECKIN_REARM_DAYS),
+    )
+    changed = cur.rowcount > 0
+    current_app.mysql.connection.commit()
+    cur.close()
+    return changed
+
+
+def open_checkin_count(username):
+    cur = current_app.mysql.connection.cursor()
+    cur.execute(
+        "SELECT COUNT(*) FROM user_profile_checkins WHERE username = %s AND kind <> 'optout' "
+        "AND status IN ('pending','asked') AND created_at > NOW() - INTERVAL %s DAY",
+        (username, CHECKIN_TTL_DAYS),
+    )
+    row = cur.fetchone()
+    cur.close()
+    if row is None:
+        return 0
+    return int(row["COUNT(*)"] if isinstance(row, dict) else row[0])
+
+
+def get_pending_checkins(username, limit=2):
+    """Open items that may be shown now: not muted, not expired, asked fewer than
+    CHECKIN_MAX_ASKS times and not within the cooldown. Least-asked first."""
+    if checkins_muted(username):
+        return []
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cur.execute(
+        "SELECT id, kind, ref, topic, reason, status, ask_count FROM user_profile_checkins "
+        "WHERE username = %s AND kind <> 'optout' AND status IN ('pending','asked') "
+        "AND ask_count < %s AND created_at > NOW() - INTERVAL %s DAY "
+        "AND (asked_at IS NULL OR asked_at < NOW() - INTERVAL %s DAY) "
+        "ORDER BY ask_count ASC, id ASC LIMIT %s",
+        (username, CHECKIN_MAX_ASKS, CHECKIN_TTL_DAYS, CHECKIN_COOLDOWN_DAYS, int(limit)),
+    )
+    rows = cur.fetchall()
+    cur.close()
+    return list(rows)
+
+
+def mark_checkins_asked(username, ids):
+    ids = [int(i) for i in ids or []]
+    if not ids:
+        return 0
+    cur = current_app.mysql.connection.cursor()
+    cur.execute(
+        "UPDATE user_profile_checkins SET status = 'asked', ask_count = ask_count + 1, asked_at = NOW() "
+        "WHERE username = %s AND status IN ('pending','asked') AND id IN (" + ",".join(["%s"] * len(ids)) + ")",
+        (username, *ids),
+    )
+    affected = cur.rowcount
+    current_app.mysql.connection.commit()
+    cur.close()
+    return affected
+
+
+def resolve_checkin(username, checkin_id, outcome):
+    """Close one of the user's own check-ins (answered | dismissed)."""
+    if outcome not in _CHECKIN_OUTCOMES:
+        return False
+    cur = current_app.mysql.connection.cursor()
+    cur.execute(
+        "UPDATE user_profile_checkins SET status = %s, resolved_at = NOW() "
+        "WHERE username = %s AND id = %s AND kind <> 'optout' AND status IN ('pending','asked')",
+        (outcome, username, int(checkin_id)),
+    )
+    affected = cur.rowcount
+    current_app.mysql.connection.commit()
+    cur.close()
+    return affected > 0
+
+
+def resolve_checkins_for(username, kind, ref, outcome="answered"):
+    """Close the open check-in about ``ref`` (e.g. the course a person just
+    reported on) so the assistant does not ask again."""
+    if outcome not in _CHECKIN_OUTCOMES:
+        return 0
+    cur = current_app.mysql.connection.cursor()
+    cur.execute(
+        "UPDATE user_profile_checkins SET status = %s, resolved_at = NOW() "
+        "WHERE username = %s AND kind = %s AND ref = %s AND status IN ('pending','asked')",
+        (outcome, username, kind, (ref or "").strip().lower()[:120]),
+    )
+    affected = cur.rowcount
+    current_app.mysql.connection.commit()
+    cur.close()
+    return affected
+
+
+def active_assistant_users(limit=500, days=90):
+    """People who used the assistant recently (the heartbeat's audience)."""
+    cur = current_app.mysql.connection.cursor()
+    cur.execute(
+        "SELECT DISTINCT username FROM conversation_history "
+        "WHERE updated_at > NOW() - INTERVAL %s DAY AND username <> '' LIMIT %s",
+        (int(days), int(limit)),
+    )
+    rows = cur.fetchall()
+    cur.close()
+    return [(r["username"] if isinstance(r, dict) else r[0]) for r in rows]

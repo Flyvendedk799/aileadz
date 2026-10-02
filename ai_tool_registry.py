@@ -154,11 +154,21 @@ _EMPLOYEE_META = {
     "forget_about_user": ToolMeta(
         "forget_about_user", auth_required=True, parallel_safe=False, toolset_tags=("memory", "profile"),
     ),
+    # Heartbeat check-ins (profile_checkins.py): both only touch the person's own rows.
+    "resolve_checkin": ToolMeta(
+        "resolve_checkin", auth_required=True, side_effect=True, parallel_safe=False,
+        toolset_tags=("memory", "profile"),
+        progress_label="Lukker opfølgning",
+    ),
+    "record_learning_outcome": ToolMeta(
+        "record_learning_outcome", auth_required=True, side_effect=True, parallel_safe=False,
+        toolset_tags=("memory", "profile"), progress_label="Gemmer udbytte",
+    ),
     "search_platform_help": ToolMeta(
         "search_platform_help", toolset_tags=("help",), cache_ttl=600,
     ),
     "save_learning_path": ToolMeta(
-        "save_learning_path", auth_required=True, parallel_safe=False,
+        "save_learning_path", auth_required=True, side_effect=True, parallel_safe=False,
         toolset_tags=("profile", "path"),
     ),
     "get_learning_path": ToolMeta(
@@ -169,13 +179,15 @@ _EMPLOYEE_META = {
         toolset_tags=("profile", "path", "mutation"),
     ),
     "set_learning_goal": ToolMeta(
-        "set_learning_goal", auth_required=True, parallel_safe=False, toolset_tags=("profile", "goals"),
+        "set_learning_goal", auth_required=True, side_effect=True, parallel_safe=False,
+        toolset_tags=("profile", "goals"),
     ),
     "get_learning_goals": ToolMeta(
         "get_learning_goals", auth_required=True, toolset_tags=("profile", "goals"), cache_ttl=20,
     ),
     "update_learning_goal": ToolMeta(
-        "update_learning_goal", auth_required=True, parallel_safe=False, toolset_tags=("profile", "goals"),
+        "update_learning_goal", auth_required=True, side_effect=True, parallel_safe=False,
+        toolset_tags=("profile", "goals"),
     ),
     # --- Specialised employee tools (keyword-gated, NOT in core seed) ---
     "get_my_course_status": ToolMeta(
@@ -208,10 +220,12 @@ _EMPLOYEE_META = {
     ),
     # AI Tooler 2 (Phase 7): employee-facing action tools.
     "save_course_for_later": ToolMeta(
-        "save_course_for_later", auth_required=True, toolset_tags=("wishlist", "memory"),
+        "save_course_for_later", auth_required=True, side_effect=True, parallel_safe=False,
+        toolset_tags=("wishlist", "memory"),
     ),
     "set_course_reminder": ToolMeta(
-        "set_course_reminder", auth_required=True, toolset_tags=("reminder", "memory"),
+        "set_course_reminder", auth_required=True, side_effect=True, parallel_safe=False,
+        toolset_tags=("reminder", "memory"),
     ),
     "manage_my_order": ToolMeta(
         "manage_my_order", auth_required=True,
@@ -378,6 +392,8 @@ _TOOL_LABELS = {
     "get_my_agenda": "Min agenda",
     "recall_about_user": "Husker tilbage",
     "forget_about_user": "Glem hukommelse",
+    "resolve_checkin": "Luk opfølgning",
+    "record_learning_outcome": "Gem kursusudbytte",
     "search_platform_help": "Hjælpeartikler",
     "get_my_compliance": "Mine krav",
     "save_learning_path": "Gem læringssti",
@@ -943,6 +959,11 @@ _TOOL_TRIGGERS = {
         "what did we talk about", "last time we talked", "husker du hvad jeg sagde",
         "do you remember what i said", "vi snakkede om",
     ),
+    "record_learning_outcome": (
+        "det lærte jeg", "jeg har brugt det", "har brugt det i praksis", "lærte jeg af kurset",
+        "fik jeg ud af kurset", "delt det med kolleger", "undervist andre", "what i learned",
+        "i have used it", "taught my team",
+    ),
     "forget_about_user": (
         "glem at", "glem det", "forget that", "forget about", "husk ikke", "stop med at huske",
         "det passer ikke længere", "slet hukommelsen", "fjern hukommelsen", "du husker forkert",
@@ -1037,7 +1058,7 @@ def get_employee_tool_selection(
     confirmation turn matched nothing and took them off the menu — leaving the
     model to tell the user to go and order on the course page instead.
 
-    ``mode`` is the chat surface mode ("default" or "profiler").  In profiler mode
+    ``mode`` is the chat surface mode ("default", "assistant" or "profiler").  In the profiling modes
     the full set of profile, learning-path, goal, and gap tools are always on the
     menu so the model can save data and recommend without waiting for a keyword hit.
 
@@ -1072,7 +1093,7 @@ def get_employee_tool_selection(
     # can save data, suggest paths, show gaps, and recommend courses on any turn
     # without waiting for a keyword match. This is the single biggest lever for
     # making the profiler "smart" — it can always act on what it learns.
-    if mode == "profiler" and logged_in:
+    if mode in ("profiler", "assistant") and logged_in:
         names.update({
             "get_user_profile", "update_user_profile", "request_user_input",
             "remember_about_user", "recommend_for_profile",
@@ -1081,6 +1102,7 @@ def get_employee_tool_selection(
             "set_learning_goal", "get_learning_goals", "update_learning_goal",
             "analyze_skill_gaps", "catalog_search", "recall_about_user",
             "forget_about_user", "show_mindmap_preview",
+            "resolve_checkin", "record_learning_outcome",
         })
 
     # Pure small-talk fast-path: only for genuine greetings/thanks with NO substantive
@@ -1321,6 +1343,13 @@ def get_employee_tool_selection(
                 # Learning-path lifecycle: user-scoped writes that modify the user's
                 # own learning plan. Needed in profiler mode on every turn.
                 "save_learning_path", "update_learning_path",
+                # Own-memory write, like remember_about_user: what a course led to.
+                "record_learning_outcome",
+                # Immediate, self-scoped writes (goals, wishlist, reminders, check-ins). They are
+                # flagged side_effect so the provider fallback never replays them and the chip says
+                # "ændrer data"; they keep reaching the menu exactly as before.
+                "set_learning_goal", "update_learning_goal", "save_course_for_later",
+                "set_course_reminder", "resolve_checkin",
         ) and not _explicit_order_confirmation(query):
             continue
         selected.append(tool)

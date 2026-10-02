@@ -152,24 +152,17 @@ class ProfilerContinuationTests(unittest.TestCase):
 
         PROFILER_HANDOFFS.discard(sid)
 
-    def test_ai_profiler_template_contracts(self):
-        """ai_profiler.html sends neutral SEED turns (no section-scripted
-        sentences that match the profile-update patterns), keeps the dynamic
-        Start/Fortsæt CTA and paints the banner from the shared workspace event."""
-        tmpl_path = os.path.join(_REPO_ROOT, "templates", "fm", "ai_profiler.html")
-        with open(tmpl_path, encoding="utf-8") as fh:
-            content = fh.read()
-
-        self.assertIn("'fm:workspace'", content)
-        self.assertNotIn("/api/profile/mindmap", content)  # no second graph fetch
-        self.assertIn("window.fmSendSeed", content)
-        self.assertIn("'Start profilsamtalen'", content)
-        self.assertIn("'Fortsæt profilsamtalen'", content)
-        self.assertNotIn("formatSeedSection", content)
-        self.assertNotIn("Start med min", content)
-        self.assertIn("profStartLabel", content)
-        self.assertIn("updateCtaState", content)
-        self.assertIn("Fortsæt", content)
+    def test_profiler_page_is_gone_and_chat_sends_neutral_seeds(self):
+        """The profiler page was merged into the assistant: its template is gone,
+        and the chat still exposes the neutral-seed sender (no section-scripted
+        sentences that match the profile-update patterns)."""
+        self.assertFalse(os.path.exists(os.path.join(_REPO_ROOT, "templates", "fm", "ai_profiler.html")))
+        with open(os.path.join(_REPO_ROOT, "static", "futurematch", "assets", "chat.js"), encoding="utf-8") as fh:
+            js = fh.read()
+        self.assertIn("window.fmSendSeed", js)
+        self.assertIn("/api/profile/workspace", js)
+        self.assertNotIn("formatSeedSection", js)
+        self.assertNotIn("Start med min", js)
 
     def test_seed_titles_are_not_used_as_sidebar_titles(self):
         from app1.user_profile_db import _extract_title
@@ -177,15 +170,15 @@ class ProfilerContinuationTests(unittest.TestCase):
                 {"role": "assistant", "content": "Hej"}]
         self.assertEqual(_extract_title(msgs, mode="profiler"), "Profilsamtale")
 
-    def test_ai_sidebar_cross_surface_redirection(self):
-        """ai-sidebar.js checks surfaceMatches to redirect cross-surface when modes differ."""
+    def test_ai_sidebar_opens_every_conversation_in_the_chat(self):
+        """Old profiler conversations resume in /chat; there is no second surface."""
         js_path = os.path.join(_REPO_ROOT, "static", "futurematch", "assets", "ai-sidebar.js")
         with open(js_path, encoding="utf-8") as fh:
             js = fh.read()
 
-        self.assertIn("surfaceMatches", js)
-        self.assertIn('page === "profiler" && convMode === "profiler"', js)
-        self.assertIn('page === "chat" && convMode === "chat"', js)
+        self.assertNotIn("surfaceMatches", js)
+        self.assertNotIn("/ai-profiler", js)
+        self.assertIn('"/chat?c="', js)
 
 
 class ConfirmProfileUpdateEndpointTests(unittest.TestCase):

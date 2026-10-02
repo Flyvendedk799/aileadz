@@ -2007,7 +2007,7 @@ class Component extends DCLogic {
     const sn=this._selId?this._byId[this._selId]:null;
     if(!sn)return;
     this._track('mindmap_ask_ai',{kind:sn.type,section:sn.category||''});
-    this._go(this._handoffUrl('/ai-profiler',this._focusFor(sn),''));
+    this._go(this._handoffUrl('/chat',this._focusFor(sn),''));
   };
   _openAdd=()=>{this.setState({addOpen:true,addEditId:null,addLabel:'',addDetail:'',addCat:'praeference'});
     this._focusComposer();
@@ -2453,7 +2453,7 @@ class Component extends DCLogic {
           this._focusFor(sn)
         );
       },
-      onOpenProfiler:()=>this._go('/ai-profiler?from=mind_map'),
+      onOpenProfiler:()=>this._go('/chat?from=mind_map'),
       onOpenCv:()=>this._go('/profil-upload'),
     };
   }

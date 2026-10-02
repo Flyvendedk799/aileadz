@@ -270,11 +270,10 @@ class SaveConversationModeTests(unittest.TestCase):
 
 
 class AiSidebarTemplateTests(unittest.TestCase):
-    def test_all_three_ai_pages_mount_the_shared_panel(self):
+    def test_ai_pages_mount_the_shared_panel(self):
         env = _env()
         for tmpl, page in (
             ("fm/chat.html", "chat"),
-            ("fm/ai_profiler.html", "profiler"),
             ("fm/mind_map.html", "mindmap"),
         ):
             html = env.get_template(tmpl).render()
@@ -296,11 +295,13 @@ class AiSidebarTemplateTests(unittest.TestCase):
         path = os.path.join(os.path.dirname(__file__), "..", "static/futurematch/assets/ai-sidebar.js")
         with open(path, encoding="utf-8") as fh:
             js = fh.read()
-        for needle in ("aiConvSearch", "data-ai-filter", "profiler", "fmOpenConversation", "/ai-profiler?c="):
+        for needle in ("aiConvSearch", "data-ai-filter", "fmOpenConversation", "/chat?c="):
             self.assertIn(needle, js)
+        # The profiler is part of the assistant: no conversation opens on a separate page.
+        self.assertNotIn("/ai-profiler", js)
 
     def test_chat_js_opens_a_new_chat_and_keeps_open_threads_in_the_url(self):
-        """Like every mainstream AI chat: opening /chat or /ai-profiler starts a
+        """Like every mainstream AI chat: opening /chat starts a
         new conversation; past ones live in the sidebar, and the conversation
         you are in is pinned in the URL (?c=<id>) so a reload keeps it."""
         path = os.path.join(os.path.dirname(__file__), "..", "static/futurematch/assets/chat.js")

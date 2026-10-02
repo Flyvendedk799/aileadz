@@ -39,6 +39,7 @@ For the AI internals see [ai-framework.md](ai-framework.md). For standing constr
 | `catalog_service.py`, `catalog_routes.py`, `catalog_admin_routes.py`, `catalog_freshness.py`, `shopify_sync.py` | the ONE course catalog (source file `CATALOG_SOURCE_FILE`, vendor submissions, Shopify sync) |
 | `learner_orders.py`, `learner_context.py`, `completion_service.py`, `competency.py`, `skill_history.py`, `learning_path_service.py`, `goal_sharing.py`, `goal_sharing_ui.py` | learner order detail, learner view of own HR data, completion moment, skills |
 | `cv_ingest.py`, `cv_parse_store.py` | CV / job-ad ingestion for the profiler |
+| `profile_checkins.py` | weekly heartbeat: queues reasoned follow-ups (recent course, stale goal, unknown direction) the assistant may raise next time; `resolve_checkin` / `record_learning_outcome` tools |
 | `dashboard/`, `pages.py`, `api.py` | learner dashboard, static-ish pages, `/api/...` JSON endpoints for the UI (notifications, profile, credits, CV upload/parse, learner events) |
 
 ### HR, company and enterprise
@@ -57,7 +58,7 @@ For the AI internals see [ai-framework.md](ai-framework.md). For standing constr
 ### AI
 | Module | Role |
 |---|---|
-| `app1/` | employee AI advisor and profiler: `agent.py` (prompts + turn loop), `tools.py` (tool implementations), `rag.py` (hybrid retrieval), `memory_store.py`, `user_knowledge.py`, `user_profile_db.py`, `conversation_state.py`, `help_kb.py` + `help_kb/*.md`, `order_handler.py`, `sse_events.py`; routes under `/app1` (`/ask` SSE, `/widget/<token>`) |
+| `app1/` | employee AI assistant (advisor + profiler in one): `agent.py` (prompts + turn loop), `tools.py` (tool implementations), `rag.py` (hybrid retrieval), `memory_store.py`, `user_knowledge.py`, `user_profile_db.py`, `conversation_state.py`, `help_kb.py` + `help_kb/*.md`, `order_handler.py`, `sse_events.py`; routes under `/app1` (`/ask` SSE, `/widget/<token>`) |
 | `ai_runtime.py`, `ai_provider.py`, `ai_provider_anthropic.py` | shared tool-loop runtime; OpenAI <-> Claude provider switch (`AI_PROVIDER` setting) |
 | `ai_tool_registry.py`, `anon_migration.py` (anonymous -> logged-in memory), `ai_context.py`, `ai_context_layers.py`, `ai_cost_model.py`, `ai_secrets.py`, `ai_reply.py`, `grounding.py`, `tool_confirm.py` | tool selection policy, context assembly, cost model, encrypted provider keys, grounding/prompt-injection hardening, confirm-before-mutate |
 | `hr_agent.py`, `hr_tools.py`, `hr_conversations.py` | HR assistant and its tools |

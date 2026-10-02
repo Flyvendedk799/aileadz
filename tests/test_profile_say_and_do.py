@@ -106,7 +106,7 @@ class NeedDrivenFramingTests(unittest.TestCase):
         for banned in ("FORETRUKKEN METODE", "ui_type=form", "Fortæl om min"):
             self.assertNotIn(banned, text)
         root = os.path.join(os.path.dirname(__file__), "..")
-        banner = open(os.path.join(root, "templates/fm/ai_profiler.html"), encoding="utf-8").read()
+        banner = open(os.path.join(root, "static/futurematch/assets/chat.js"), encoding="utf-8").read()
         self.assertNotIn("Profilen er komplet", banner)
         self.assertNotIn("Mangler:", banner)
         self.assertNotIn(">felter<", banner)

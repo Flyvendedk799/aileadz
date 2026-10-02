@@ -3024,7 +3024,7 @@ PROFILE_TOOLS = [
         "type": "function",
         "function": {
             "name": "recall_about_user",
-            "description": "Slå op i det du ved om brugeren på tværs af tid: hukommelser, profilfakta og opsummeringer af tidligere samtaler (både Kursusrådgiveren og AI Profiler). Brug det når brugeren henviser til noget fra tidligere ('som vi talte om sidst', 'husker du …'), eller når du mangler en bestemt detalje der ikke står i konteksten. Returnerer korte uddrag med dato — ikke kurser.",
+            "description": "Slå op i det du ved om brugeren på tværs af tid: hukommelser, profilfakta og opsummeringer af tidligere samtaler. Brug det når brugeren henviser til noget fra tidligere ('som vi talte om sidst', 'husker du …'), eller når du mangler en bestemt detalje der ikke står i konteksten. Returnerer korte uddrag med dato — ikke kurser.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -3053,13 +3053,52 @@ PROFILE_TOOLS = [
     }
 ]
 
+# Weekly check-ins (profile_checkins.py): the heartbeat queues follow-ups; these two
+# tools close them once they have been talked through.
+PROFILE_TOOLS.extend([
+    {
+        "type": "function",
+        "function": {
+            "name": "resolve_checkin",
+            "description": "Luk en opfølgning fra de seneste uger ([#c12] i konteksten), når den er talt igennem eller brugeren afviser den. outcome: answered (talt igennem), dismissed (ikke relevant), snooze (ikke nu) eller stop_all (brugeren vil ikke spørges om den slags igen). Brug det stille og roligt; du behøver ikke sige til brugeren, at du lukker den.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "checkin_id": {"type": "integer", "description": "Id fra [#c…] i konteksten."},
+                    "outcome": {"type": "string", "enum": ["answered", "dismissed", "snooze", "stop_all"],
+                                "description": "Standard: answered."}
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "record_learning_outcome",
+            "description": "Gem hvad et gennemført kursus har ført til, når brugeren fortæller det: hvad de lærte, om de har brugt det i praksis, og om de har delt det med andre. Gemmes som en hukommelse, så det kan bruges i senere råd, og lukker en tilhørende opfølgning. Brug det, når brugeren selv beskriver udbyttet; spørg ikke efter det som et skema.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "course_title": {"type": "string", "description": "Kurset, udbyttet handler om."},
+                    "learned": {"type": "string", "description": "Hvad de tog med, med deres egne ord."},
+                    "applied": {"type": "boolean", "description": "Har de brugt det i praksis?"},
+                    "taught_others": {"type": "boolean", "description": "Har de delt det med kolleger eller andre?"},
+                    "note": {"type": "string", "description": "Andet, brugeren nævner om udbyttet."}
+                },
+                "required": ["course_title"]
+            }
+        }
+    },
+])
+
 # Platform how-to help (app1/help_kb.py): curated product documentation, so it
 # is anonymous-safe and offered next to the catalogue tools.
 OPENAI_TOOLS.append({
     "type": "function",
     "function": {
         "name": "search_platform_help",
-        "description": "Søg i Futurematchs hjælpeartikler om hvordan platformen virker: bestilling og ledergodkendelse, afdelingsbudget, CV-upload, Mind-Map og hvad AI'en husker, AI Profiler, læringsstier, udviklingsmål, obligatoriske kurser, privatliv/GDPR, konto og support. Brug det til 'hvordan/hvor'-spørgsmål om selve platformen — ikke til at finde kurser eller til karriereråd. Returnerer artikeluddrag med et link.",
+        "description": "Søg i Futurematchs hjælpeartikler om hvordan platformen virker: bestilling og ledergodkendelse, afdelingsbudget, CV-upload, Mind-Map og hvad AI'en husker, AI-assistenten, læringsstier, udviklingsmål, obligatoriske kurser, privatliv/GDPR, konto og support. Brug det til 'hvordan/hvor'-spørgsmål om selve platformen — ikke til at finde kurser eller til karriereråd. Returnerer artikeluddrag med et link.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -6136,8 +6175,8 @@ def _execute_open_in_app(args, username=None):
         focus = _handoff_focus(args)
         out["intent"] = intent
         out["focus"] = focus
-        out["target"] = _handoff_url("/ai-profiler", "chat", focus, intent)
-        out["label"] = label or "Fortsæt i AI Profiler"
+        out["target"] = _handoff_url("/chat", "chat", focus, intent)
+        out["label"] = label or "Fortsæt i AI-assistenten"
 
     elif action == "open_advisor":
         intent = (args.get("intent") or args.get("query") or "").strip()
@@ -6145,7 +6184,7 @@ def _execute_open_in_app(args, username=None):
         out["intent"] = intent
         out["focus"] = focus
         out["target"] = _handoff_url("/chat", "profiler", focus, intent)
-        out["label"] = label or "Fortsæt i Kursusrådgiver"
+        out["label"] = label or "Fortsæt i AI-assistenten"
         out["new_tab"] = False
 
     elif action == "open_catalog":
@@ -6731,6 +6770,12 @@ def execute_tool(tool_call, username=None, session_id=None):
             return execute_recall_about_user(args, username)
         elif function_name == "forget_about_user":
             return _execute_forget_about_user(args, username)
+        elif function_name == "resolve_checkin":
+            from profile_checkins import execute_resolve_checkin
+            return json.dumps(execute_resolve_checkin(args, username), ensure_ascii=False)
+        elif function_name == "record_learning_outcome":
+            from profile_checkins import execute_record_learning_outcome
+            return json.dumps(execute_record_learning_outcome(args, username), ensure_ascii=False)
         elif function_name == "search_platform_help":
             from app1.help_kb import execute_search_platform_help
             return execute_search_platform_help(args)

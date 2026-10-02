@@ -1,4 +1,4 @@
-/* Futurematch — shared AI conversation sidebar for /chat, /ai-profiler, /mind-map.
+/* Futurematch — shared AI conversation sidebar for /chat, /mind-map.
    Fills #aiConvPanel. Chat/profiler pages expose window.fmOpenConversation /
    window.fmNewChat; Mind-Map navigates to the matching surface. */
 (function () {
@@ -23,18 +23,19 @@
   let query = "";
 
   try { filter = localStorage.getItem(FILTER_KEY) || "all"; } catch (e) { /* ignore */ }
-  if (filter !== "chat" && filter !== "profiler") filter = "all";
+  filter = "all";
   try {
     const stored = sessionStorage.getItem(STORE_KEY);
     if (stored) activeId = stored;
   } catch (e) { /* ignore */ }
 
-  function modeOf(c) {
-    return (c && c.mode) === "profiler" ? "profiler" : "chat";
+  // One assistant: every conversation, including ones that began in the former
+  // AI Profiler, opens in /chat.
+  function modeOf() {
+    return "chat";
   }
   function hrefFor(c) {
-    const id = encodeURIComponent(c.id);
-    return modeOf(c) === "profiler" ? "/ai-profiler?c=" + id : "/chat?c=" + id;
+    return "/chat?c=" + encodeURIComponent(c.id);
   }
   function persistActive(id) {
     activeId = id ? String(id) : null;
@@ -97,8 +98,8 @@
       return '<div class="ai-conv-date">' + esc(lab) + "</div>" + rows.map((c) => {
         const mode = modeOf(c);
         const on = String(c.id) === String(activeId);
-        const badge = mode === "profiler" ? "Profiler" : "Rådgiver";
-        const icon = mode === "profiler" ? "fa-user-check" : "fa-comment-dots";
+        const badge = "Assistent";
+        const icon = "fa-comment-dots";
         const when = relTime(c.updated_at);
         return (
           '<div class="ai-conv-item' + (on ? " is-on" : "") + '" role="listitem" tabindex="0"' +
@@ -109,7 +110,7 @@
             '<span class="ai-conv-body">' +
               '<span class="ai-conv-title">' + esc(c.title || "Samtale") + "</span>" +
               '<span class="ai-conv-meta">' +
-                '<span class="ai-conv-badge' + (mode === "profiler" ? " profiler" : "") + '">' + badge + "</span>" +
+                '<span class="ai-conv-badge">' + badge + "</span>" +
                 (when ? "<span>" + esc(when) + "</span>" : "") +
               "</span>" +
             "</span>" +
@@ -153,13 +154,11 @@
     persistActive(id);
     render();
     const conv = CONVS.find((c) => String(c.id) === String(id));
-    const convMode = conv ? modeOf(conv) : (mode === "profiler" ? "profiler" : "chat");
-    const surfaceMatches = (page === "profiler" && convMode === "profiler") || (page === "chat" && convMode === "chat");
-    if (surfaceMatches && typeof window.fmOpenConversation === "function") {
+    if (page === "chat" && typeof window.fmOpenConversation === "function") {
       window.fmOpenConversation(id);
       return;
     }
-    window.location.href = conv ? hrefFor(conv) : ((convMode === "profiler" ? "/ai-profiler?c=" : "/chat?c=") + encodeURIComponent(id));
+    window.location.href = conv ? hrefFor(conv) : "/chat?c=" + encodeURIComponent(id);
   }
 
   async function deleteConv(id) {

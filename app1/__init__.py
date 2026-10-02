@@ -737,13 +737,11 @@ def ask():
         if len(user_query) > 2000:
             user_query = user_query[:2000]
 
-        mode = (request.json.get("mode") or "default").strip().lower()
-        if mode not in ("default", "profiler"):
-            mode = "default"
-        # Profiler is per-profile; an anonymous caller (e.g. hitting /ask directly)
-        # silently degrades to normal chat rather than getting an empty profiler.
-        if mode == "profiler" and not session.get("user"):
-            mode = "default"
+        # One assistant for every logged-in user: the advisor's course toolbox plus
+        # profile awareness (the former AI Profiler persona is built in). The client
+        # `mode` is accepted for older pages but no longer picks a persona; an
+        # anonymous caller has no profile to build on and gets the plain advisor.
+        mode = "assistant" if session.get("user") else "default"
         # "seed" = a UI-generated opener (profiler Start/Fortsæt), not user text.
         turn_kind = (request.json.get("kind") or "message").strip().lower()
         if turn_kind not in ("message", "seed"):

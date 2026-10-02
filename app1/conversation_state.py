@@ -27,15 +27,16 @@ import uuid
 import MySQLdb.cursors
 from flask import current_app
 
-from app1.user_profile_db import _extract_title, normalize_conversation_mode
+from app1.user_profile_db import _extract_title
 
 SURFACES = ("chat", "profiler")
 _MAX_DIGEST_CHARS = 2500
 
 
 def surface_for_mode(mode):
-    """/ask mode (default|profiler) or sidebar mode (chat|profiler) -> surface."""
-    return normalize_conversation_mode(mode)
+    """Every mode maps to the one surface: the AI Profiler was merged into the
+    assistant, so old ``profiler`` rows and pointers resume in the chat."""
+    return "chat"
 
 
 def _conn():

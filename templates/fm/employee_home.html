@@ -64,7 +64,7 @@
               <form method="post" action="{{ url_for('futurematch.dismiss_welcome') }}"><button class="btn btn-ghost btn-sm" type="submit">Skjul</button></form>
             </div>
             <div class="emp-cta" style="margin-top:14px">
-              <a class="btn btn-primary" href="{{ url_for('futurematch.ai_profiler') }}"><i class="fa-solid fa-user-check"></i> Fortæl AI'en om dig</a>
+              <a class="btn btn-primary" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-user-check"></i> Fortæl AI'en om dig</a>
               <a class="btn btn-ghost" href="{{ url_for('futurematch.cv_upload') }}"><i class="fa-solid fa-file-arrow-up"></i> Upload dit CV</a>
               <a class="btn btn-ghost" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-graduation-cap"></i> Udforsk kataloget</a>
             </div>
@@ -112,7 +112,7 @@
               <i class="fa-solid fa-wand-magic-sparkles" style="font-size:24px;color:var(--fm-primary);opacity:.8"></i>
               <p style="margin:12px 0 4px;font-weight:700">Vi har ingen anbefalinger til dig endnu</p>
               <p class="muted" style="margin:0 0 14px;font-size:13.5px">Fortæl AI'en lidt om dig selv, eller se hele kataloget, så finder vi kurser, der passer.</p>
-              <a class="btn btn-primary btn-sm" href="{{ url_for('futurematch.ai_profiler') }}">Fortæl AI'en om dig</a>
+              <a class="btn btn-primary btn-sm" href="{{ url_for('futurematch.chat') }}">Fortæl AI'en om dig</a>
               <a class="btn btn-ghost btn-sm" href="{{ url_for('catalog.catalog_index') }}">Se kataloget</a>
             </div></div>
             {% endif %}

@@ -1,19 +1,31 @@
 {# Canonical platform-admin sub-navigation (N-2.3): ONE list instead of 7 drifting variants.
-   Set `active_admin_page` before including:
+   Same destinations, labels and icons as the sidebar's "Admin" block in fm_base.html.
+   Set `active_admin_page` before including, or leave it empty and the tab is derived
+   from the request endpoint (futurematch_ui.nav_state):
        {% set active_admin_page = 'users' %}{% include 'fm/_admin_subnav.html' %} #}
-{% set _ap = active_admin_page | default('') %}
+{% set _ap = (active_admin_page | default('')) or (nav_state().admin if nav_state is defined else '') %}
 <nav class="pg-subnav" aria-label="Admin-navigation">
-  <a class="pg-tab {{ 'active' if _ap == 'home' }}" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Oversigt</a>
-  <a class="pg-tab {{ 'active' if _ap == 'users' }}" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a>
+  <a class="pg-tab {{ 'active' if _ap == 'home' }}" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Adminoversigt</a>
   <a class="pg-tab {{ 'active' if _ap == 'companies' }}" href="{{ url_for('companies.admin_companies_list') }}"><i class="fa-solid fa-building"></i> Virksomheder</a>
+  <a class="pg-tab {{ 'active' if _ap == 'users' }}" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a>
   <a class="pg-tab {{ 'active' if _ap == 'credits' }}" href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i> Kreditter</a>
   <a class="pg-tab {{ 'active' if _ap == 'billing' }}" href="{{ url_for('admin_dashboard.admin_billing') }}"><i class="fa-solid fa-file-invoice-dollar"></i> Fakturering</a>
+  <span class="pg-sep" role="separator" aria-hidden="true"></span>
   <a class="pg-tab {{ 'active' if _ap == 'catalog' }}" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalog</a>
+  <a class="pg-tab {{ 'active' if _ap == 'freshness' }}" href="{{ url_for('admin_reports.catalog_freshness_dashboard') }}"><i class="fa-solid fa-calendar-xmark"></i> Katalogfriskhed</a>
   <a class="pg-tab {{ 'active' if _ap == 'vendors' }}" href="{{ url_for('admin_dashboard.admin_vendors') }}"><i class="fa-solid fa-store"></i> Leverandører</a>
   <a class="pg-tab {{ 'active' if _ap == 'agreements' }}" href="{{ url_for('admin_dashboard.admin_agreements') }}"><i class="fa-solid fa-handshake"></i> Aftaler</a>
+  <span class="pg-sep" role="separator" aria-hidden="true"></span>
   <a class="pg-tab {{ 'active' if _ap == 'chatbot' }}" href="{{ url_for('admin_reports.chatbot_dashboard') }}"><i class="fa-solid fa-robot"></i> Chatbot BI</a>
+  <a class="pg-tab {{ 'active' if _ap == 'funnel' }}" href="{{ url_for('admin_reports.conversion_funnel') }}"><i class="fa-solid fa-filter"></i> Konverteringstragt</a>
+  <a class="pg-tab {{ 'active' if _ap == 'retention' }}" href="{{ url_for('admin_reports.cohort_retention_dashboard') }}"><i class="fa-solid fa-people-group"></i> Fastholdelse</a>
+  <a class="pg-tab {{ 'active' if _ap == 'aicost' }}" href="{{ url_for('admin_reports.ai_cost_dashboard') }}"><i class="fa-solid fa-gauge-high"></i> AI-omkostninger</a>
+  <a class="pg-tab {{ 'active' if _ap == 'aiquality' }}" href="{{ url_for('admin_dashboard.admin_ai_quality') }}"><i class="fa-solid fa-wand-magic-sparkles"></i> AI-kvalitet</a>
   <a class="pg-tab {{ 'active' if _ap == 'ai' }}" href="{{ url_for('admin_dashboard.ai_settings') }}"><i class="fa-solid fa-microchip"></i> AI-udbyder</a>
-  <a class="pg-tab {{ 'active' if _ap == 'notifications' }}" href="{{ url_for('admin_notifications.notifications_dashboard') }}"><i class="fa-solid fa-bullhorn"></i> Notifikationer</a>
+  <span class="pg-sep" role="separator" aria-hidden="true"></span>
+  <a class="pg-tab {{ 'active' if _ap == 'notifications' }}" href="{{ url_for('admin_notifications.notifications_dashboard') }}"><i class="fa-solid fa-bullhorn"></i> Send notifikationer</a>
   <a class="pg-tab {{ 'active' if _ap == 'log' }}" href="{{ url_for('admin_dashboard.admin_audit_log') }}"><i class="fa-solid fa-clock-rotate-left"></i> Aktivitetslog</a>
   <a class="pg-tab {{ 'active' if _ap == 'health' }}" href="{{ url_for('admin_dashboard.admin_system_health') }}"><i class="fa-solid fa-heart-pulse"></i> Systemstatus</a>
+  <a class="pg-tab {{ 'active' if _ap == 'gdpr' }}" href="{{ url_for('gdpr.admin_console') }}"><i class="fa-solid fa-user-shield"></i> GDPR / datasletning</a>
+  <a class="pg-tab {{ 'active' if _ap == 'ui' }}" href="{{ url_for('futurematch.showcase_index') }}"><i class="fa-solid fa-swatchbook"></i> Designgalleri</a>
 </nav>

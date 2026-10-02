@@ -64,14 +64,14 @@ class SidebarTests(unittest.TestCase):
         self.assertIn("Mine bestillinger", html)
         self.assertIn("Udviklingsmål", html)
         self.assertNotIn(">Virksomhed<", html)
-        self.assertNotIn("HR-workspace", html)
+        self.assertNotIn('href="/hr/"', html)
         self.assertNotIn("Virksomhedsindstillinger", html)
         self.assertNotIn(">Admin<", html)
 
     def test_hr_manager_sees_company_block_and_still_gets_min_laering(self):
         html = _html(company_role="hr_manager")
         self.assertIn("Min læring", html)            # every learner, managers included
-        self.assertIn("HR-workspace", html)
+        self.assertIn(">Virksomhed<", html)
         self.assertIn("Godkendelser", html)
         self.assertIn("HR-assistent", html)
         self.assertIn("/virksomhed/indstillinger", html)
@@ -79,17 +79,17 @@ class SidebarTests(unittest.TestCase):
 
     def test_department_head_has_no_settings_link(self):
         html = _html(company_role="department_head")
-        self.assertIn("HR-workspace", html)
+        self.assertIn(">Virksomhed<", html)
         self.assertNotIn("/virksomhed/indstillinger", html)
 
     def test_solo_user_has_learning_nav_without_company_block(self):
         html = _html(role="user", company=False)
         self.assertIn("Min læring", html)
-        self.assertNotIn("HR-workspace", html)
+        self.assertNotIn('href="/hr/"', html)
 
     def test_admin_block_lists_the_previously_orphaned_pages(self):
         html = _html(admin=True, company_role="company_admin")
-        for label in ("Aftaler", "Send notifikation", "AI-udbyder", "Brugere &amp; kreditter", "Systemstatus"):
+        for label in ("Aftaler", "Send notifikationer", "AI-udbyder", "Kreditter", "Systemstatus", "Designgalleri"):
             self.assertIn(label, html)
 
     def test_cv_portal_is_not_listed_twice(self):

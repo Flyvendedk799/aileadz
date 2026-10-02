@@ -193,9 +193,10 @@
       return Number(v).toLocaleString('da-DK', { minimumFractionDigits: minD, maximumFractionDigits: maxD });
     } catch (e) { return String(v); }
   }
+  // Only millions are shortened: Intl's Danish thousands form ("15 t") reads as
+  // hours ("timer") on this platform, and "150.000" is short enough for a tick.
   function compactNf(v) {
-    try { return new Intl.NumberFormat('da-DK', { notation: 'compact', maximumFractionDigits: 1 }).format(v); }
-    catch (e) { return nf(v, 0, 0); }
+    return nf(v / 1e6, 0, 1) + ' mio.';
   }
   function fmtKind(opts) {
     opts = opts || {};
@@ -204,7 +205,7 @@
     if (opts.percent) return 'percent';
     return 'number';
   }
-  // format(v, opts[, compact]) → Danish string. compact shortens big tick values ("12,5 t.").
+  // format(v, opts[, compact]) → Danish string. compact shortens million-size tick values ("2,5 mio.").
   function format(v, opts, compact) {
     opts = opts || {};
     if (v == null || v === '') return '–';
@@ -214,7 +215,7 @@
     if (typeof kind === 'function') return kind(n);
     var d = opts.decimals;
     var s;
-    if (compact && Math.abs(n) >= 10000) s = compactNf(n);
+    if (compact && Math.abs(n) >= 1e6) s = compactNf(n);
     else if (kind === 'currency') s = nf(n, d == null ? 0 : d, d == null ? 0 : d);
     else s = nf(n, d == null ? 0 : d, d == null ? 1 : d);
     if (kind === 'currency') s += ' kr';

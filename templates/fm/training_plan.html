@@ -93,7 +93,7 @@
       </div>
       <div class="fm-card-body" style="padding-top:6px">
         {% if gaps %}
-        <p style="font-size:12px;color:var(--fm-ink-2);margin:0 0 8px">Hvor mange niveauer (skala 0–5) der mangler op til målet, største gab øverst. <span style="display:inline-flex;align-items:center;gap:5px;margin-left:6px"><span style="width:10px;height:10px;border-radius:3px;background:var(--fm-clay)"></span>kritisk</span> <span style="display:inline-flex;align-items:center;gap:5px;margin-left:6px"><span style="width:10px;height:10px;border-radius:3px;background:var(--fm-primary)"></span>øvrige</span></p>
+        <p style="font-size:12px;color:var(--fm-ink-2);margin:0 0 8px">Hvor mange niveauer (skala 0–5) der mangler op til målet, største gab øverst.{% if gaps|selectattr('critical')|list %} <span style="display:inline-flex;align-items:center;gap:5px;margin-left:6px"><span style="width:10px;height:10px;border-radius:3px;background:var(--fm-clay)"></span>kritisk</span> <span style="display:inline-flex;align-items:center;gap:5px;margin-left:6px"><span style="width:10px;height:10px;border-radius:3px;background:var(--fm-chart-muted)"></span>øvrige</span>{% endif %}</p>
         <div style="position:relative;height:{{ [gaps|length * 34 + 48, 140]|max }}px;margin-bottom:14px"><canvas id="tpGapChart" aria-label="Vandret søjlediagram: størrelsen af prioriterede kompetencegab pr. kompetence" role="img"></canvas></div>
         <div class="fm-table-wrap" style="border:0;box-shadow:none">
           <table class="fm-table" style="min-width:0">
@@ -198,19 +198,22 @@
   if (typeof FMChart === 'undefined') return;
   var gaps = {{ ((plan or {}).get('priority_gaps') or [])|list|tojson|safe }};
   if (!gaps.length || !document.getElementById('tpGapChart')) return;
-  gaps = gaps.slice().sort(function (a, b) { return (Number(b.gap) || 0) - (Number(a.gap) || 0); });
-  // Critical gaps in clay, the rest in primary — magnitude of the skill gap.
-  var primary = FMChart.cssVar('--fm-primary', '#0f766e');
-  var clay = FMChart.cssVar('--fm-clay', '#c9603a');
-  FMChart.bar('tpGapChart', {
+  // Ranked largest gap first on a fixed 0-5 scale. Critical gaps are the
+  // highlighted bars; the rest step back to the muted gray. Gaps are not
+  // additive, so every skill keeps its own bar (no "Andre" fold).
+  var critical = gaps.filter(function (g) { return g.critical; }).map(function (g) { return g.skill || '—'; });
+  FMChart.hbarRanked('tpGapChart', {
+    title: 'Prioriterede kompetencegab, største gab øverst',
+    label: 'Gab (mål − nuværende)',
     labels: gaps.map(function (g) { return g.skill || '—'; }),
-    series: [{
-      label: 'Gab (mål − nuværende)',
-      data: gaps.map(function (g) { return Math.max(Number(g.gap) || 0, 0); }),
-      color: gaps.map(function (g) { return g.critical ? clay : primary; })
-    }],
-    horizontal: true,
-    max: 5,
+    values: gaps.map(function (g) { return Math.max(Number(g.gap) || 0, 0); }),
+    limit: gaps.length, max: 5,
+    color: critical.length ? '--fm-clay' : '--fm-primary',
+    highlight: critical.length ? critical : null,
+    footer: function (i, items) {
+      var name = items && items[0] ? items[0].label : '';
+      return critical.indexOf(name) >= 0 ? 'Kritisk kompetence' : '';
+    },
     empty: 'Ingen kompetencegab for det valgte filter'
   });
 })();

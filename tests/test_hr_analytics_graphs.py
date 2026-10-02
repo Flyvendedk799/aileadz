@@ -5,9 +5,12 @@ Covers the behaviour behind the charts, not the pixels:
   * time series are gap-free (a quiet day is a zero, not a missing point)
   * charts that had no honest data source were replaced, half-built sections
     render real data, and units/labels are Danish
+  * charts use the engine's options (token colours, titles, formats) rather than
+    workarounds that break dark mode or the accessible summary
 """
 import datetime
 import os
+import re
 import unittest
 from unittest import mock
 
@@ -229,11 +232,15 @@ class LearningAnalyticsGraphTests(unittest.TestCase):
         self.assertNotIn('"department_label": "Solo"', html)
         self.assertIn('"skill_category": "Ledelse"', html)
         self.assertNotIn("Leadership", html)
+        # Labels stay ISO; the chart engine formats them (xFormat), not the view.
+        self.assertIn('"dates": ["%s"' % (datetime.date.today() - datetime.timedelta(days=6)).isoformat(), html)
+        self.assertIn("xFormat: cd.granularity === 'month' ? 'month' : 'day'", html)
 
     def test_year_is_bucketed_by_month(self):
         resp, _ = _get("/hr/learning-analytics?period=1y", self._extra)
         html = resp.get_data(as_text=True)
         self.assertIn('"granularity": "month"', html)
+        self.assertIn('"dates": ["%s"' % (datetime.date.today() - datetime.timedelta(days=364)).strftime("%Y-%m"), html)
         self.assertIn("Pr. måned", html)
 
 
@@ -283,7 +290,9 @@ class SkillEngagementBenchmarkTests(unittest.TestCase):
         ])
         html = resp.get_data(as_text=True)
         self.assertEqual(resp.status_code, 200, html[:300])
-        self.assertIn("Under branchens median", html)
+        # Ranked by the engine; the median split is a dashed reference line at 50.
+        self.assertIn("FMChart.hbarRanked('bmPercentileChart'", html)
+        self.assertIn("reference: { value: 50, label: 'Branchens median' }", html)
         self.assertIn("50 er branchens median", html)
         # The chart gets the real percentiles (it used to read a block-scoped var).
         self.assertIn("var pct = [72, 30];", html)
@@ -318,7 +327,10 @@ class OperationsPagesTests(unittest.TestCase):
         html = _render("fm/budgets.html", fiscal_year=2026, total_budget=100000, total_spent=120000,
                        budgets=[{"department": "Salg", "annual_budget": 50000, "spent": 70000,
                                  "employee_count": 6}], unbudgeted_depts=[])
-        self.assertIn("Over budget (kr)", html)
+        self.assertIn("label: 'Over budget'", html)
+        # Units come from the engine's currency format, not from series names.
+        self.assertIn("format: 'currency'", html)
+        self.assertNotIn("(kr)'", html)
         self.assertIn("Overskredet", html)
         self.assertIn("20.000", html)
 
@@ -377,6 +389,41 @@ class PeopleAndUsagePagesTests(unittest.TestCase):
         self.assertIn("45.000", html)
         self.assertIn("3 gennemførte · 1 afventer", html)
         self.assertIn("FMChart.line('dailyChart'", html)
+
+
+class ChartApiAdoptionTests(unittest.TestCase):
+    """The HR chart pages use the chart engine's own options, not workarounds."""
+
+    PAGES = ("hr", "roi", "hr_funnel", "hr_retention", "cohort_retention", "learning_analytics",
+             "benchmarking", "skill_gaps", "engagement", "training_plan", "hr_reports", "compliance",
+             "budgets", "approvals", "team_cockpit", "employee_progress", "reports",
+             "company_reports", "employee_details")
+    CALL = re.compile(
+        r"FMChart\.(line|bar|stackedBar|doughnut|radar|sparkline|hbarRanked)\(\s*'(\w+)'\s*,\s*\{")
+
+    def _src(self, page):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "templates", "fm", page + ".html"), encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_colours_are_tokens_so_dark_mode_rethemes(self):
+        # cssVar(...) resolves a colour once; a token name is re-read on theme change.
+        for page in self.PAGES:
+            self.assertNotIn("FMChart.cssVar(", self._src(page), page)
+
+    def test_every_chart_has_a_danish_title(self):
+        for page in self.PAGES:
+            src = self._src(page)
+            calls = list(self.CALL.finditer(src))
+            self.assertTrue(calls, page)
+            for m in calls:
+                body = src[m.end():m.end() + 400]
+                self.assertRegex(body, r"\btitle: '[^']+'", "%s #%s" % (page, m.group(2)))
+
+    def test_units_come_from_format_not_series_names(self):
+        for page in self.PAGES:
+            src = self._src(page)
+            self.assertNotRegex(src, r"label: '[^']*\((kr|%)\)'", page)
 
 
 if __name__ == "__main__":

@@ -228,12 +228,13 @@
   var tot = {{ (totals or {})|tojson }};
   if (document.getElementById('complianceStatus')) {
     FMChart.stackedBar('complianceStatus', {
+      title: 'Status for medarbejder-krav',
       horizontal: true,
       labels: ['Medarbejder-krav'],
       series: [
-        { label: 'Opfyldt', data: [Number(tot.compliant) || 0], color: FMChart.cssVar('--fm-success', '#16a34a') },
-        { label: 'Udløber snart', data: [Number(tot.expiring) || 0], color: FMChart.cssVar('--fm-warning', '#d97706') },
-        { label: 'Mangler / udløbet', data: [Number(tot.overdue) || 0], color: FMChart.cssVar('--fm-danger', '#dc2626') }
+        { label: 'Opfyldt', data: [Number(tot.compliant) || 0], color: '--fm-success' },
+        { label: 'Udløber snart', data: [Number(tot.expiring) || 0], color: '--fm-warning' },
+        { label: 'Mangler / udløbet', data: [Number(tot.overdue) || 0], color: '--fm-danger' }
       ],
       empty: 'Ingen compliance-data endnu'
     });
@@ -245,12 +246,13 @@
   var atRisk = {{ (at_risk_chart or [])|list|tojson|safe }};
   if (atRisk.length) {
     FMChart.bar('complianceAtRisk', {
+      title: 'Krav med flest medarbejdere uden gyldig dækning',
       horizontal: true,
       stacked: true,
       labels: atRisk.map(function (r) { return r.title; }),
       series: [
-        { label: 'Mangler / udløbet', data: atRisk.map(function (r) { return Number(r.overdue) || 0; }), color: FMChart.cssVar('--fm-danger', '#dc2626') },
-        { label: 'Udløber snart', data: atRisk.map(function (r) { return Number(r.expiring) || 0; }), color: FMChart.cssVar('--fm-warning', '#d97706') }
+        { label: 'Mangler / udløbet', data: atRisk.map(function (r) { return Number(r.overdue) || 0; }), color: '--fm-danger' },
+        { label: 'Udløber snart', data: atRisk.map(function (r) { return Number(r.expiring) || 0; }), color: '--fm-warning' }
       ],
       empty: 'Ingen udsatte krav'
     });

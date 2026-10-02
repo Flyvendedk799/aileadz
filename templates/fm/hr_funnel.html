@@ -127,9 +127,11 @@
     var data = {{ (daily_data or [])|tojson }};
     if (document.getElementById('hrFunnelDailyChart')) {
       FMChart.line('hrFunnelDailyChart', {
-        // ISO dates -> Danish dd.mm on the axis.
-        labels: labels.map(function (d) { return String(d).slice(8, 10) + '.' + String(d).slice(5, 7); }),
-        series: [{ label: 'Beskeder', data: data }],
+        // Gap-free ISO days from the server; the engine renders "5. jan".
+        title: 'Beskeder til AI-assistenten pr. dag',
+        xFormat: 'day',
+        labels: labels,
+        series: [{ label: 'Beskeder', data: data, color: '--fm-primary' }],
         empty: 'Ingen aktivitet i perioden'
       });
     }

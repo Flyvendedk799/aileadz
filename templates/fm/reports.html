@@ -92,16 +92,20 @@
   (function () {
     if (typeof FMChart === 'undefined') return;
 
-    function dk(d) { d = String(d); return d.slice(8, 10) + '.' + d.slice(5, 7); }
+    // Gap-free ISO days from the server; the engine renders "5. jan".
     FMChart.line('usageChart', {
-      labels: {{ (chart_labels or [])|tojson }}.map(dk),
-      series: [{ label: 'Kreditter', data: {{ (chart_data or [])|tojson }} }],
+      title: 'Dagligt kreditforbrug',
+      xFormat: 'day',
+      labels: {{ (chart_labels or [])|tojson }},
+      series: [{ label: 'Kreditter', data: {{ (chart_data or [])|tojson }}, color: '--fm-primary' }],
       empty: 'Intet kreditforbrug i perioden endnu'
     });
 
     FMChart.bar('last7Chart', {
-      labels: {{ (last7_labels or [])|tojson }}.map(dk),
-      series: [{ label: 'Kreditter', data: {{ (last7_usage or [])|tojson }} }],
+      title: 'Kreditforbrug de seneste 7 dage',
+      xFormat: 'day',
+      labels: {{ (last7_labels or [])|tojson }},
+      series: [{ label: 'Kreditter', data: {{ (last7_usage or [])|tojson }}, color: '--fm-primary' }],
       empty: 'Intet forbrug de seneste 7 dage'
     });
   })();

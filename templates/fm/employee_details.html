@@ -199,6 +199,7 @@
         color: '--fm-ink-2', dashed: true });
     }
     FMChart.radar('skillRadar', {
+      title: 'Nuværende kompetenceniveau og mål',
       labels: skillLabels, series: radarSeries, max: 5, step: 1,
       empty: 'Ingen kompetencer registreret endnu'
     });
@@ -209,6 +210,7 @@
   var spark = {{ course_history|map(attribute='time_spent_minutes')|map('default', 0)|list|tojson|safe }};
   spark = spark.map(function (v) { return Number(v) || 0; }).reverse();
   FMChart.sparkline('empCourseSpark', {
+    title: 'Læringstid pr. kursus i kronologisk rækkefølge',
     data: spark, color: '--fm-chart-3', valueSuffix: ' min',
     empty: 'Ingen læringsaktivitet endnu'
   });

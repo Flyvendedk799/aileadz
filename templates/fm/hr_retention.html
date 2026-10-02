@@ -115,20 +115,25 @@
   // (future months are excluded rather than counted as 0%).
   var cohorts = {{ (retention.cohorts if retention else [])|tojson }};
   var offsets = {{ (offsets or [])|tojson }};
+  var reached = [];  // cohorts behind each point, shown in the tooltip
   var data = offsets.map(function (off) {
-    var hit = 0, base = 0;
+    var hit = 0, base = 0, n = 0;
     cohorts.forEach(function (c) {
       var cell = (c.retention || [])[off];
       if (!cell || cell.future) return;
       hit += Number(cell.count) || 0;
       base += Number(c.size) || 0;
+      n += 1;
     });
+    reached.push(n);
     return base ? Math.round(hit / base * 1000) / 10 : null;  // not reached by any cohort yet
   });
   FMChart.line('rtCurveChart', {
+    title: 'Gennemsnitlig fastholdelseskurve',
     labels: offsets.map(function (o) { return 'M' + o; }),
-    series: [{ label: 'Andel der gennemfører (%)', data: data, color: FMChart.cssVar('--fm-primary', '#0f766e') }],
-    max: 100, fill: false,
+    series: [{ label: 'Andel der gennemfører', data: data, color: '--fm-primary' }],
+    format: 'percent', max: 100, fill: false,
+    footer: function (i) { return reached[i] ? 'Baseret på ' + reached[i] + (reached[i] === 1 ? ' kohorte' : ' kohorter') : ''; },
     empty: 'For lidt historik til en kurve endnu'
   });
 })();

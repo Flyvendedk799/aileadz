@@ -125,7 +125,7 @@
           </div>
           <div class="fm-card hr-chart-card" data-reveal data-d="2">
             <div class="ch-head"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--fm-success) 14%,transparent);color:var(--fm-success)"><i class="fa-solid fa-chart-simple"></i></span><h3>Gennemførelsesrate pr. afdeling</h3></div>
-            <p>Andel gennemførte kursusordrer (%), højeste først. Virksomheden samlet: <strong>{{ (completion_rate or 0)|dknum }}%</strong>.</p>
+            <p>Andel gennemførte kursusordrer, højeste først. Stiplet linje = virksomheden samlet: <strong>{{ (completion_rate or 0)|dknum }}%</strong>.</p>
             <div class="hr-chart-wrap" style="height:{{ _dp_h }}px"><canvas id="hrDeptRate" aria-label="Liggende søjlediagram: gennemførelsesrate i procent pr. afdeling, højeste først" role="img"></canvas></div>
           </div>
         </section>
@@ -237,24 +237,29 @@
   var dp = {{ (department_chart or [])|list|tojson|safe }}.filter(function (d) { return Number(d.total_enrollments) > 0; });
   if (!dp.length) return;
 
-  // Ranking -> horizontal bars, biggest volume first.
+  // Volume per department, biggest first (two series, so a stacked bar rather than hbarRanked).
   var byVolume = dp.slice().sort(function (a, b) { return Number(b.total_enrollments) - Number(a.total_enrollments); });
   FMChart.stackedBar('hrDeptStacked', {
     horizontal: true,
+    title: 'Kursusordrer pr. afdeling',
     labels: byVolume.map(function (d) { return d.department_label; }),
     series: [
-      { label: 'Gennemført', data: byVolume.map(function (d) { return Number(d.completed_courses) || 0; }), color: FMChart.cssVar('--fm-primary', '#0f766e') },
-      { label: 'Ikke afsluttet', data: byVolume.map(function (d) { return Math.max((Number(d.total_enrollments) || 0) - (Number(d.completed_courses) || 0), 0); }), color: FMChart.cssVar('--fm-line-2', '#cbd5e1') }
+      { label: 'Gennemført', data: byVolume.map(function (d) { return Number(d.completed_courses) || 0; }), color: '--fm-primary' },
+      { label: 'Ikke afsluttet', data: byVolume.map(function (d) { return Math.max((Number(d.total_enrollments) || 0) - (Number(d.completed_courses) || 0), 0); }), color: '--fm-chart-muted' }
     ],
     empty: 'Ingen kursusordrer pr. afdeling endnu'
   });
 
-  var byRate = dp.slice().sort(function (a, b) { return (Number(b.completion_rate) || 0) - (Number(a.completion_rate) || 0); });
-  FMChart.bar('hrDeptRate', {
-    horizontal: true,
-    max: 100,
-    labels: byRate.map(function (d) { return d.department_label; }),
-    series: [{ label: 'Gennemførelsesrate (%)', data: byRate.map(function (d) { return Number(d.completion_rate) || 0; }), color: FMChart.cssVar('--fm-primary', '#0f766e') }],
+  // Rates are not additive, so every department keeps its own bar (no "Andre" fold).
+  var companyRate = Number({{ (completion_rate or 0)|tojson }}) || 0;
+  FMChart.hbarRanked('hrDeptRate', {
+    title: 'Gennemførelsesrate pr. afdeling',
+    format: 'percent', max: 100, limit: dp.length,
+    label: 'Gennemførelsesrate',
+    labels: dp.map(function (d) { return d.department_label; }),
+    values: dp.map(function (d) { return Number(d.completion_rate) || 0; }),
+    color: '--fm-primary',
+    reference: companyRate > 0 ? { value: companyRate, label: 'Virksomheden' } : null,
     empty: 'Ingen gennemførelsesdata endnu'
   });
 })();

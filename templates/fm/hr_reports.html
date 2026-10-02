@@ -23,7 +23,7 @@
   </div>
 
   {% set _dr = (department_rows or [])|selectattr('orders')|list %}
-  <div class="fm-card" style="margin-top:16px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-column"></i></span><h3>Gennemførelsesrate pr. afdeling</h3><span style="margin-left:auto;font-size:11px;color:var(--fm-ink-3)">% af kursusordrer · samlet {{ rs.completion_rate|default(0)|dknum }}%</span></div>
+  <div class="fm-card" style="margin-top:16px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-column"></i></span><h3>Gennemførelsesrate pr. afdeling</h3><span style="margin-left:auto;font-size:11px;color:var(--fm-ink-3)">Andel af kursusordrer · stiplet = samlet {{ rs.completion_rate|default(0)|dknum }}%</span></div>
     <div class="fm-card-body">
       {% if _dr %}
       <div class="rep-chart-wrap" style="height:{{ [_dr|length * 36 + 56, 180]|max }}px"><canvas id="deptCompletionChart" role="img" aria-label="Liggende søjlediagram: gennemførelsesrate i procent pr. afdeling, højeste først"></canvas></div>
@@ -108,18 +108,19 @@
 
   // k-floored server-side; departments without orders have no rate to show.
   var rows = {{ (department_rows or [])|list|tojson|safe }}
-    .filter(function (d) { return Number(d.orders) > 0; })
-    .map(function (d) {
-      return { label: d.department_label || d.department || 'Uden afdeling',
-               rate: Math.round((Number(d.completed) || 0) / Number(d.orders) * 1000) / 10 };
-    })
-    .sort(function (a, b) { return b.rate - a.rate; });
+    .filter(function (d) { return Number(d.orders) > 0; });
   if (!rows.length || !document.getElementById('deptCompletionChart')) return;
-  FMChart.bar('deptCompletionChart', {
-    horizontal: true,
-    max: 100,
-    labels: rows.map(function (r) { return r.label; }),
-    series: [{ label: 'Gennemførelsesrate (%)', data: rows.map(function (r) { return r.rate; }), color: FMChart.cssVar('--fm-primary', '#0f766e') }],
+  // The content block's "rs" alias is not visible in this block, so read the summary directly.
+  var overall = Number({{ ((report_summary or {}).get('completion_rate') or 0)|float|tojson }}) || 0;
+  // Rates are not additive: every department keeps its own bar (no "Andre" fold).
+  FMChart.hbarRanked('deptCompletionChart', {
+    title: 'Gennemførelsesrate pr. afdeling',
+    label: 'Gennemførelsesrate',
+    labels: rows.map(function (d) { return d.department_label || d.department || 'Uden afdeling'; }),
+    values: rows.map(function (d) { return Math.round((Number(d.completed) || 0) / Number(d.orders) * 1000) / 10; }),
+    format: 'percent', max: 100, limit: rows.length,
+    color: '--fm-primary',
+    reference: overall > 0 ? { value: overall, label: 'Samlet' } : null,
     empty: 'Ingen afdelingsdata endnu'
   });
 })();

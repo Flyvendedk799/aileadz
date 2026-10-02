@@ -202,5 +202,40 @@ class FunnelRetentionTests(unittest.TestCase):
         self.assertIn("rtCurveChart", html)
 
 
+class LearningAnalyticsGraphTests(unittest.TestCase):
+    def _extra(self, s, params):
+        today = datetime.date.today()
+        if s.startswith("select date(co.created_at) as date"):
+            return [{"date": today - datetime.timedelta(days=2), "enrollments": 4, "completions": 1,
+                     "unique_learners": 3}]
+        if s.startswith("select cu.department, count(distinct cu.user_id) as total_employees"):
+            return [{"department": "Salg", "total_employees": 9, "employees_with_training": 6,
+                     "total_enrollments": 8, "completions": 4, "participation_rate": 66.7,
+                     "completion_rate": 50.0},
+                    {"department": "Solo", "total_employees": 1, "employees_with_training": 1,
+                     "total_enrollments": 2, "completions": 2, "participation_rate": 100.0,
+                     "completion_rate": 100.0}]
+        if s.startswith("select case when co.product_title like"):
+            return [{"skill_category": "Leadership", "demand": 7, "supply": 3,
+                     "interested_employees": 6, "fulfillment_rate": 42.9}]
+        return None
+
+    def test_trend_gap_free_departments_floored_categories_danish(self):
+        resp, _ = _get("/hr/learning-analytics?period=7d", self._extra)
+        html = resp.get_data(as_text=True)
+        self.assertEqual(resp.status_code, 200, html[:300])
+        self.assertIn('"enrollments": [0, 0, 0, 0, 4, 0, 0]', html)
+        self.assertIn('"department_label": "Salg"', html)
+        self.assertNotIn('"department_label": "Solo"', html)
+        self.assertIn('"skill_category": "Ledelse"', html)
+        self.assertNotIn("Leadership", html)
+
+    def test_year_is_bucketed_by_month(self):
+        resp, _ = _get("/hr/learning-analytics?period=1y", self._extra)
+        html = resp.get_data(as_text=True)
+        self.assertIn('"granularity": "month"', html)
+        self.assertIn("Pr. måned", html)
+
+
 if __name__ == "__main__":
     unittest.main()

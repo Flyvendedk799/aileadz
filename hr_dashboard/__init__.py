@@ -2059,12 +2059,42 @@ def create_hr_dashboard_blueprint():
             
             cur.close()
 
-            # Prepare chart data
+            # Prepare chart data. The trend is gap-free: a day without orders is
+            # a zero, not a missing point. A year is bucketed by month so the
+            # line stays readable (365 daily points are noise).
+            enr_by_day = {t['date']: int(t.get('enrollments') or 0) for t in learning_trends if t.get('date')}
+            comp_by_day = {t['date']: int(t.get('completions') or 0) for t in learning_trends if t.get('date')}
+            trend_days, trend_enr = _dense_daily_series(enr_by_day, period_days)
+            _, trend_comp = _dense_daily_series(comp_by_day, period_days)
+            if period_days > 90:
+                _mn = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec']
+                buckets = {}
+                for d, e, c in zip(trend_days, trend_enr, trend_comp):
+                    b = buckets.setdefault(d[:7], [0, 0])
+                    b[0] += e
+                    b[1] += c
+                keys = sorted(buckets)
+                trend_labels = ['%s %s' % (_mn[int(k[5:7]) - 1], k[2:4]) for k in keys]
+                trend_enr = [buckets[k][0] for k in keys]
+                trend_comp = [buckets[k][1] for k in keys]
+            else:
+                trend_labels = ['%s.%s' % (d[8:10], d[5:7]) for d in trend_days]
+
+            # Course-title keyword buckets come out of SQL as English keys.
+            _category_da = {'Leadership': 'Ledelse', 'Project Management': 'Projektledelse',
+                            'Communication': 'Kommunikation', 'Technology': 'IT og teknologi',
+                            'Sales': 'Salg', 'Other': 'Andet'}
+
+            # Department comparison: k-floored on head-count before charting.
+            department_chart, department_anon = _kanon_department_rows(
+                department_comparison, 'total_employees')
+
             chart_data = {
                 'learning_trends': {
-                    'dates': [trend['date'].strftime('%Y-%m-%d') for trend in learning_trends],
-                    'enrollments': [trend['enrollments'] for trend in learning_trends],
-                    'completions': [trend['completions'] for trend in learning_trends]
+                    'dates': trend_labels,
+                    'enrollments': trend_enr,
+                    'completions': trend_comp,
+                    'granularity': 'month' if period_days > 90 else 'day',
                 },
                 'hourly_engagement': {
                     'hours': [f"{hour:02d}:00" for hour in range(24)],
@@ -2154,7 +2184,7 @@ def create_hr_dashboard_blueprint():
                         continue
                     completed = int(row.get('supply') or 0)
                     candidates.append({
-                        'skill_category': row.get('skill_category') or 'Andet',
+                        'skill_category': _category_da.get(row.get('skill_category'), row.get('skill_category') or 'Andet'),
                         'ordered': ordered,
                         'completed': completed,
                         'interested_employees': int(row.get('interested_employees') or 0),
@@ -2195,7 +2225,9 @@ def create_hr_dashboard_blueprint():
                     WHERE company_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
                     GROUP BY DATE(created_at) ORDER BY day
                 """, (company['id'], period_days))
-                ai_daily = [{'day': str(r['day']), 'interactions': int(r['interactions'] or 0)} for r in cur.fetchall()]
+                _ai_days, _ai_vals = _dense_daily_series(
+                    {r['day']: int(r['interactions'] or 0) for r in cur.fetchall() if r.get('day')}, period_days)
+                ai_daily = [{'day': d, 'interactions': v} for d, v in zip(_ai_days, _ai_vals)]
                 cur.execute("""
                     SELECT COUNT(*) AS total,
                            COUNT(CASE WHEN status = 'active' THEN 1 END) AS active,
@@ -2214,6 +2246,8 @@ def create_hr_dashboard_blueprint():
                                  learning_trends=learning_trends,
                                  popular_courses=popular_courses,
                                  department_comparison=department_comparison,
+                                 department_chart=department_chart,
+                                 department_anon=department_anon,
                                  learning_path_effectiveness=learning_path_effectiveness,
                                  hourly_engagement=hourly_engagement,
                                  skills_gap_analysis=skills_gap_analysis,

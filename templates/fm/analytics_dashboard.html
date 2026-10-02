@@ -1,5 +1,5 @@
 {% extends "fm_base.html" %}
-{% block page_id %}company{% endblock %}
+{% block page_id %}hr{% endblock %}
 {% block title %}Avanceret analyse{% endblock %}
 {% block topbar_title %}Avanceret analyse{% endblock %}
 {% block topbar_sub %}Engagement, kompetencegab og ML-drevne indsigter for din virksomhed.{% endblock %}
@@ -19,14 +19,18 @@
   .an-eng.Medium { background: color-mix(in srgb, var(--fm-warning) 16%, var(--fm-surface)); color: var(--fm-warning); }
   .an-eng.Low { background: color-mix(in srgb, var(--fm-danger) 14%, var(--fm-surface)); color: var(--fm-danger); }
   .an-empty { padding: 40px; text-align: center; color: var(--fm-ink-3); }
+  .an-anon { font-size: 11px; color: var(--fm-ink-3); margin: 10px 0 0; display: flex; align-items: center; gap: 6px; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="fm-wrap">
+  <div class="fm-flex fm-gap8" style="margin-bottom:14px;flex-wrap:wrap">
+    <a href="{{ url_for('hr_dashboard.learning_analytics') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-arrow-left"></i> Læringsanalyse</a>
+  </div>
 
   {% set emp_count = (data.employees|length) if data and data.employees else 0 %}
-  {% set high_eng = (engagement_scores|selectattr('engagement_label','equalto','High')|list|length) if engagement_scores else 0 %}
+  {% set high_eng = (engagement_counts or {}).get('High', 0) %}
   {% set anomaly_count = (learning_anomalies|length) if learning_anomalies else 0 %}
   {% set model_acc = performance_predictions.model_accuracy if performance_predictions and performance_predictions.model_accuracy is defined else None %}
 
@@ -42,6 +46,7 @@
       <div class="fm-eyebrow"><i class="fa-solid fa-chart-column"></i> Engagement</div>
       <h2 class="fm-section-title" style="margin:4px 0 12px">Fordeling</h2>
       <div class="fm-chart-box lg"><canvas id="chart-engagement" aria-label="Søjlediagram: antal medarbejdere med højt, middel og lavt engagement" role="img"></canvas></div>
+      {% if engagement_anon %}<p class="an-anon"><i class="fa-solid fa-user-shield"></i> {{ engagement_anon }}</p>{% endif %}
     </div>
     <div class="fm-card" style="padding:18px 20px">
       <div class="fm-eyebrow clay"><i class="fa-solid fa-arrow-trend-up"></i> Tilfredshed</div>
@@ -54,26 +59,28 @@
     <div class="fm-eyebrow"><i class="fa-solid fa-building"></i> Læring</div>
     <h2 class="fm-section-title" style="margin:4px 0 12px">Læringstimer pr. afdeling</h2>
     <div class="fm-chart-box lg"><canvas id="chart-dept"></canvas></div>
+    {% if dept_anon %}<p class="an-anon"><i class="fa-solid fa-user-shield"></i> {{ dept_anon }}</p>{% endif %}
   </div>
 
-  {# Engagement table #}
+  {# Engagement: aggregate counts only, never named per-employee labels (DECISIONS #11). #}
   <div class="fm-card" style="padding:18px 20px; margin-bottom:22px">
-    <h2 class="fm-section-title" style="margin:0 0 12px">Medarbejder-engagement</h2>
-    {% if engagement_scores %}
+    <h2 class="fm-section-title" style="margin:0 0 12px">Engagement pr. niveau</h2>
+    {% if engagement_counts %}
+    {% set _eng_total = engagement_counts.values()|sum %}
     <table class="fm-table">
-      <thead><tr><th>Medarbejder</th><th>Engagement</th><th>Gennemførte</th><th>Fremgang</th><th>Inaktive dage</th></tr></thead>
+      <thead><tr><th>Niveau</th><th>Medarbejdere</th><th>Andel</th></tr></thead>
       <tbody>
-        {% for e in engagement_scores %}
+        {% for level in ['High', 'Medium', 'Low'] if engagement_counts.get(level) %}
         <tr>
-          <td>{{ e.employee_name }}</td>
-          <td><span class="an-eng {{ e.engagement_label }}">{{ e.engagement_label }}</span></td>
-          <td class="tnum">{{ e.features.completed_courses|round(0)|int }}</td>
-          <td class="tnum">{{ (e.features.avg_progress)|round(0)|int }}%</td>
-          <td class="tnum">{{ e.features.days_inactive|round(0)|int }}</td>
+          <td><span class="an-eng {{ level }}">{{ engagement_labels_da[level] }}</span></td>
+          <td class="tnum">{{ engagement_counts[level] }}</td>
+          <td class="tnum">{{ (engagement_counts[level] / _eng_total * 100)|round(0)|int }}%</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
+    {% elif engagement_anon %}
+    <div class="an-empty"><i class="fa-solid fa-user-shield"></i><br>{{ engagement_anon }}</div>
     {% else %}
     <div class="an-empty"><i class="fa-solid fa-users-slash"></i><br>Ingen engagement-data endnu. Kræver aktive medarbejdere med læringsaktivitet.</div>
     {% endif %}
@@ -110,12 +117,12 @@
   <div class="fm-card" style="padding:18px 20px; margin-bottom:22px">
     <h2 class="fm-section-title" style="margin:0 0 12px">Lærings-anomalier</h2>
     <table class="fm-table">
-      <thead><tr><th>Type</th><th>Detalje</th></tr></thead>
+      <thead><tr><th>Type</th><th>Indhold</th></tr></thead>
       <tbody>
         {% for a in learning_anomalies %}
         <tr>
           <td><span class="fm-badge amber">{{ a.anomaly_type if a.anomaly_type is defined else 'Anomali' }}</span></td>
-          <td>{{ a.description if a.description is defined else (a.course_title if a.course_title is defined else '—') }}</td>
+          <td>{{ a.content_name or '—' }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -129,9 +136,9 @@
 {% block extra_scripts %}
 {# Built from the same context the tables render (no Plotly): token-bound, dark-aware,
    Danish labels, and it still works when the optional plotly package is absent. #}
-{% set _eng = engagement_scores or [] %}
+{% set _eng = engagement_counts or {} %}
 {% set _an = ((data.analytics if data and data.analytics else []) | reverse | list) %}
-{% set _emps = (data.employees if data and data.employees else []) %}
+{% set _dept = dept_hours or [] %}
 {% include 'fm/_charts.html' %}
 <script>
   (function () {
@@ -141,9 +148,9 @@
     FMChart.bar('chart-engagement', {
       labels: ['Højt', 'Middel', 'Lavt'],
       series: [{ label: 'Medarbejdere', color: 'ramp', data: [
-        {{ _eng | selectattr('engagement_label', 'equalto', 'High') | list | length }},
-        {{ _eng | selectattr('engagement_label', 'equalto', 'Medium') | list | length }},
-        {{ _eng | selectattr('engagement_label', 'equalto', 'Low') | list | length }}
+        {{ _eng.get('High', 0) }},
+        {{ _eng.get('Medium', 0) }},
+        {{ _eng.get('Low', 0) }}
       ] }],
       valueLabels: true, title: 'Engagement',
       empty: 'Ingen engagement-data endnu'
@@ -157,14 +164,9 @@
       empty: 'Ingen tilfredshedsdata endnu'
     });
 
-    // Learning hours summed per department, ranked.
-    var depts = {{ _emps | map(attribute='department') | list | tojson }};
-    var hours = {{ _emps | map(attribute='total_learning_hours') | list | tojson }};
+    // Learning hours per department (k-floored server side), ranked.
     var byDept = {};
-    depts.forEach(function (d, i) {
-      var k = d || 'Ingen afdeling';
-      byDept[k] = (byDept[k] || 0) + (Number(hours[i]) || 0);
-    });
+    {{ _dept | tojson }}.forEach(function (r) { byDept[r.department] = Number(r.hours) || 0; });
     FMChart.hbarRanked('chart-dept', {
       data: byDept, label: 'Læringstimer', valueSuffix: ' t', limit: 12,
       title: 'Læringstimer pr. afdeling', empty: 'Ingen læringstimer registreret endnu'

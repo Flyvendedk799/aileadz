@@ -785,8 +785,17 @@ h1, h2, h3, h4 { font-family: var(--ff-display); font-weight: 700; letter-spacin
 /* animatable conic rings — register --p so fills can draw in */
 @property --p { syntax: "<number>"; inherits: false; initial-value: 0; }
 @media (prefers-reduced-motion: no-preference) {
-  .ring-big, .learn-ring { transition: --p .95s var(--ease); }
+  .fm-ring, .learn-ring { transition: --p .95s var(--ease); }
 }
+
+/* completeness ring (R-4): one component, markup in templates/fm/_ring.html.
+   --p (0-100) is set inline and by page JS; sizes via --ring-size / --ring-hole. */
+.fm-ring { --ring-size: 56px; --ring-hole: 44px; width: var(--ring-size); height: var(--ring-size); flex: 0 0 var(--ring-size); border-radius: 999px; display: grid; place-items: center; background: conic-gradient(var(--fm-primary) calc(var(--p, 0) * 1%), var(--fm-surface-3) 0); }
+.fm-ring-hole { width: var(--ring-hole); height: var(--ring-hole); border-radius: 999px; background: var(--fm-surface); display: grid; place-items: center; text-align: center; }
+.fm-ring-pct { font-family: var(--ff-display); font-weight: 700; line-height: 1; font-size: 14px; color: var(--fm-primary); }
+.fm-ring-lab { font-size: 10px; color: var(--fm-ink-3); margin-top: 3px; text-transform: uppercase; letter-spacing: .05em; font-family: var(--ff-mono); }
+.fm-ring--lg { --ring-size: 130px; --ring-hole: 102px; }
+.fm-ring--lg .fm-ring-pct { font-size: 30px; letter-spacing: -.03em; color: var(--fm-ink); }
 
 /* count-up numbers get a subtle settle */
 @media (prefers-reduced-motion: no-preference) {

@@ -47,7 +47,7 @@ For the AI internals see [ai-framework.md](ai-framework.md). For standing constr
 | `hr_dashboard/` (largest file), `hr_ext.py`, `hr_course_assign.py`, `compliance_*.py`, `deadline_service.py`, `cert_expiry_service.py`, `digest_service.py`, `department_service.py`, `team_order_policy.py`, `bulk_invite.py` | HR workspace, assignments, compliance, reminders, weekly digest |
 | `companies/`, `settings_hub.py`, `enterprise_company_settings.py`, `branding_service.py`, `seat_governance.py` | company admin, settings hub (`/virksomhed/indstillinger`), white-label, seats |
 | `enterprise_api/`, `enterprise_sso/`, `scim_api.py`, `scim_groups.py`, `api_keys_ui.py` | public API v1 + OpenAPI, OIDC SSO, SCIM 2.0, API keys |
-| `enterprise_analytics/`, `multitenant_reports.py`, `report_query.py`, `report_exports.py`, `scheduled_reports.py`, `reports.py`, `admin_reports.py`, `benchmarking.py`, `insights_engine.py`, `kanon.py` | analytics and reporting; `kanon.py` enforces k-anonymity floors |
+| `enterprise_analytics/`, `multitenant_reports.py`, `report_query.py`, `report_exports.py`, `scheduled_reports.py`, `reports.py`, `admin_reports.py`, `benchmarking.py`, `insights_engine.py`, `kanon.py` | analytics and reporting; `kanon.py` enforces k-anonymity floors; `enterprise_analytics` is the ML "Avanceret" view linked from Læringsanalyse (`company.analytics_advanced`, env `ADVANCED_ANALYTICS_ENABLED`, aggregates only) |
 | `order_service.py`, `order_lifecycle.py`, `billing_service.py`, `credit_service.py`, `credit_routes.py` | orders, billing view, AI-usage credits |
 | `gdpr_service.py`, `gdpr_routes.py`, `dsr_service.py`, `retention_service.py` | GDPR export/erasure, data-subject requests, retention |
 

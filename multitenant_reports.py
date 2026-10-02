@@ -595,7 +595,7 @@ def create_multitenant_reports_blueprint():
         
         # Check permissions
         if company['user_role'] not in ['company_admin', 'hr_manager', 'department_head']:
-            return jsonify({'error': 'Insufficient permissions'}), 403
+            return jsonify({'error': 'Du har ikke adgang til at eksportere analysedata.'}), 403
         
         analytics_data = {
             'export_date': datetime.datetime.now().isoformat(),

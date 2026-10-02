@@ -15,19 +15,6 @@ Sizes: **XS** under 1 h, **S** up to 1/2 day, **M** 1 to 3 days, **L** 1 to 2 we
 | ID | Item | Where | Size |
 |---|---|---|---|
 | R-3 | **Two Three.js versions** ship: 0.160 ES module (unpkg) on the CV portal, r128 UMD (cdnjs) on the mind map. Consolidate to one, lazy-loaded. | `templates/fm/cv_upload.html:12`, `templates/fm/mind_map.html:11-12` | M |
-| R-4 | **Completeness ring is styled in three places** (`.ring-big`, `.prof-ring`, `.ring-widget`; the mind map has its own). Every ring now shows the same number (`weighted_pct`), and `profile-strength.js` shares the message text, but the ring markup and CSS are still separate (`.ring-widget` in `chat.css` has no markup left). Extract one ring component using `--fm-*` tokens. | `templates/fm/my_profile.html`, `templates/fm/ai_profiler.html`, `static/futurematch/assets/chat.css` | S |
-
-## Analytics and dead code
-
-| ID | Item | Where | Size |
-|---|---|---|---|
-| R-5 | **`enterprise_analytics` ML dashboard has no navigation link** (`/analytics/dashboard/<company_id>`, blueprint registered in `run.py`). Either add an "Avanceret" tab under Læringsanalyse behind a flag (first confirm its source tables have writers) or retire it. | `enterprise_analytics/__init__.py`, `run.py` | S |
-
-## Language
-
-| ID | Item | Where | Size |
-|---|---|---|---|
-| R-7 | **English user-visible error strings remain** in JSON responses: learner order API (shown in toasts), company settings, multitenant reports. `enterprise_api/__init__.py` (machine API: `Missing required field`, `Export failed`, ...) is English too; decide whether the public API stays English, then either translate or document it. | `app1/order_routes.py` (about lines 34, 61, 77, 261), `enterprise_company_settings.py` (~706), `multitenant_reports.py` (~598), `enterprise_api/__init__.py` | S |
 
 ## Not on the roadmap, on purpose
 

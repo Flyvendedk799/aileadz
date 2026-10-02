@@ -361,6 +361,7 @@ CAPABILITY_ALIASES = {
     "company.employees": "hr.employees.manage",
     "company.budgets": "hr.budget.edit",
     "company.analytics": "hr.analytics",
+    "company.analytics_advanced": "hr.analytics",  # enterprise_analytics, also behind ADVANCED_ANALYTICS_ENABLED
     "company.reports": "hr.reports.export",
     "company.compliance": "hr.manage",
     "company.learning_paths": "hr.manage",

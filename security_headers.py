@@ -33,7 +33,7 @@ import os
 from flask import request
 
 # External origins the UI legitimately loads from (templates + static JS audit).
-_SCRIPT_HOSTS = "https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com https://cdn.plot.ly"
+_SCRIPT_HOSTS = "https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com"
 _STYLE_HOSTS = "https://fonts.googleapis.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com"
 _FONT_HOSTS = "https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net"
 

@@ -48,8 +48,6 @@ Flask-WTF>=1.2,<2
 PyJWT>=2.8,<3
 # scikit-learn: ML analytics + vector/semantic catalog search (enterprise_analytics).
 scikit-learn>=1.3,<2
-# plotly: analytics chart generation (enterprise_analytics).
-plotly>=5.18,<7
 # redis: optional distributed rate-limit backend (enterprise_api); falls back
 # to in-process limiting when absent, but pinned so deploys are reproducible.
 redis>=5,<7

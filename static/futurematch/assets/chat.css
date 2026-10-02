@@ -57,7 +57,7 @@ svg { display: block; }
 .rail.collapsed .r-head { justify-content: center; padding: 16px 0; }
 .rail.collapsed .new-chat { width: 40px; padding: 0; justify-content: center; }
 .rail.collapsed .nav-item, .rail.collapsed .mode-toggle { justify-content: center; padding: 10px 0; }
-.rail.collapsed .r-label, .rail.collapsed .conv-group, .rail.collapsed .ring-widget, .rail.collapsed .user { display: none; }
+.rail.collapsed .r-label, .rail.collapsed .conv-group, .rail.collapsed .user { display: none; }
 
 .r-head { display: flex; align-items: center; gap: 11px; padding: 15px 15px 13px; }
 .r-logo { display: flex; align-items: center; gap: 11px; min-width: 0; }
@@ -90,17 +90,6 @@ svg { display: block; }
 .conv:hover .conv-del { display: grid; }
 .conv-del:hover { background: var(--red-glow); color: var(--red); }
 .conv-del svg { width: 12px; height: 12px; }
-
-/* completeness ring */
-.ring-widget { display: flex; align-items: center; gap: 11px; margin: 14px 4px 4px; padding: 11px 12px; border-radius: 12px; background: var(--teal-glow); border: 1px solid var(--teal-glow-2); transition: .16s; }
-.ring-widget:hover { border-color: var(--teal); background: rgba(43,182,166,.16); }
-.ring-svg { width: 40px; height: 40px; flex: 0 0 40px; transform: rotate(-90deg); }
-.ring-svg circle { fill: none; stroke-width: 3.5; }
-.ring-bg { stroke: var(--line-2); }
-.ring-fg { stroke: var(--teal); stroke-linecap: round; transition: stroke-dasharray .9s var(--ease); }
-.ring-info { min-width: 0; }
-.ring-pct { font-family: var(--ff-display); font-size: 15px; font-weight: 700; }
-.ring-lab { font-size: 11px; color: var(--ink-2); }
 
 .nav-item { display: flex; align-items: center; gap: 11px; padding: 9px 11px; border-radius: 9px; color: var(--ink-2); font-size: 13px; font-weight: 600; transition: .15s; }
 .nav-item:hover { background: var(--card); color: var(--ink); }

@@ -21,6 +21,8 @@
   {% for t in (learning_trends or []) %}{% set tot.enroll = tot.enroll + (t.enrollments or 0) %}{% set tot.complete = tot.complete + (t.completions or 0) %}{% endfor %}
   {% set total_enroll = tot.enroll %}{% set total_complete = tot.complete %}
   <div class="fm-flex fm-gap8" style="margin-bottom:14px;justify-content:flex-end;flex-wrap:wrap">
+    {% set _adv_url = advanced_analytics_url() if advanced_analytics_url is defined else none %}
+    {% if _adv_url %}<a href="{{ _adv_url }}" class="btn btn-ghost btn-sm" style="margin-right:auto" data-testid="advanced-analytics-link"><i class="fa-solid fa-flask"></i> Avanceret</a>{% endif %}
     {{ ui.export_buttons(url_for('hr_dashboard.export_report', report_type='course_completions')) }}
     {% for p,lbl in [('7d','7 dage'),('30d','30 dage'),('90d','90 dage'),('1y','1 år')] %}
     <a href="{{ url_for('hr_dashboard.learning_analytics', period=p) }}" class="btn {{ 'btn-primary' if period == p else 'btn-ghost' }} btn-sm">{{ lbl }}</a>

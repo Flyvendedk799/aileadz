@@ -1,9 +1,9 @@
 {% extends "fm_base.html" %}
-{% block page_id %}{% endblock %}
-{% block title %}Futurematch{% endblock %}
+{% block page_id %}acompanies{% endblock %}
+{% block title %}Virksomheder{% endblock %}
 {% block topbar_title %}Virksomheder{% endblock %}
 {% from 'fm/_admin_list.html' import search_bar, pager %}
-{% block topbar_sub %}{{ pg.total }} tenants på platformen.{% endblock %}
+{% block topbar_sub %}{{ pg.total }} virksomheder på platformen.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
 {% set active_admin_page = 'companies' %}{% include 'fm/_admin_subnav.html' %}

@@ -24,7 +24,7 @@
 
 {% block content %}
 <div class="fm-wrap">
-  <div class="crumb"><a href="{{ url_for('futurematch.timeline') }}">Min tidslinje</a><i class="fa-solid fa-chevron-right"></i><span>{{ order.order_id[:8] }}</span></div>
+  <div class="crumb"><a href="{{ url_for('futurematch.employee_home') }}">Min læring</a><i class="fa-solid fa-chevron-right"></i><a href="{{ url_for('futurematch.timeline') }}">Mine bestillinger</a><i class="fa-solid fa-chevron-right"></i><span>{{ order.order_id[:8] }}</span></div>
 
   {% if just_completed and moment %}
   <div class="fm-card" style="margin:14px 0;border-color:var(--fm-success)">

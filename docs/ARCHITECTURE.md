@@ -80,6 +80,7 @@ Find a symbol with Grep, then read only that range. Module docstrings at the top
 ## Static assets and templates
 
 - `templates/fm/` — all current pages (extend `templates/fm_base.html`); `app1/templates/` — legacy chat shell, widget, admin log; `templates/*.html` — a few top-level pages.
+- Navigation: the sidebar in `fm_base.html` plus one sub-nav per section — `fm/_hr_subnav.html`, `fm/_admin_subnav.html`, `fm/_vendor_nav.html` (vendor portal), `fm/_settings_tabs.html` (company settings hub). Each sidebar entry under "Virksomhed"/"Admin" carries the same label and icon as its sub-nav tab and stays lit on every tab of its section. The current location comes from `futurematch_ui.nav_state()` (request endpoint → sidebar section and sub-nav tab; an explicit `active_hr_page`/`active_admin_page` wins, `page_id` is the fallback). Links are gated with `can(...)` on the capability the route's guard checks. `tests/test_site_cohesion.py` pins all of this, plus "no full page without a template link". Shared page helpers (`crumbs`, `related`, `empty` with a next-step action) live in `fm/_macros.html`.
 - `static/futurematch/assets/` — `fm.css`, `fm-pages.css`, `chat.css`, `shell.js`, `chat.js`, `ai-stream.js`, `ai-sidebar.js`, `fm-charts.js`, ... Reference with `?v={{ asset_version('futurematch/assets/x.js') }}`.
 
 ## Tooling

@@ -30,6 +30,30 @@
 </style>
 {% endblock %}
 {% block content %}
+{# kind -> (icon, call to action, fallback endpoint when the row has no action_url).
+   Fallbacks are learner pages only, so they never point a user at a page they
+   cannot open; HR/admin kinds always carry their own action_url. #}
+{% set _nt_kind = {
+  'order': ('fa-receipt', 'Se bestillingen', 'futurematch.timeline'),
+  'status': ('fa-receipt', 'Se bestillingen', 'futurematch.timeline'),
+  'deadline': ('fa-flag-checkered', 'Se fristen', 'futurematch.timeline'),
+  'certification': ('fa-certificate', 'Se certificeringen', 'futurematch.timeline'),
+  'assignment': ('fa-route', 'Se opgaven', 'futurematch.employee_home'),
+  'goal': ('fa-bullseye', 'Se målet', 'futurematch.learning_goals'),
+  'skill_uplift': ('fa-arrow-trend-up', 'Se din profil', 'pages.profile'),
+  'nudge': ('fa-lightbulb', 'Find kurser', 'catalog.catalog_index'),
+  'credits': ('fa-coins', 'Se dit forbrug', 'pages.analytics'),
+  'billing': ('fa-file-invoice-dollar', 'Se faktureringen', ''),
+  'team_order': ('fa-people-group', 'Se holdbestillingen', ''),
+  'compliance': ('fa-clipboard-check', 'Se compliance', ''),
+  'agreement': ('fa-handshake', 'Se aftalen', ''),
+  'vendor': ('fa-store', 'Se leverandøren', ''),
+  'category': ('fa-shapes', 'Se kategorien', ''),
+  'account_request': ('fa-user-gear', 'Se anmodningen', ''),
+  'insight': ('fa-lightbulb', 'Se indsigten', ''),
+  'broadcast': ('fa-bullhorn', 'Åbn', ''),
+  'message': ('fa-envelope', 'Åbn', '')
+} %}
 <div class="nt-wrap">
   <div class="nt-filters">
     <button class="nt-f active" data-filter="all">Alle <span class="nt-counter">{{ notifications_total }}</span></button>
@@ -45,12 +69,14 @@
       <div class="nt-day">{{ group.label }} <span class="nt-counter">{{ group['items']|length }}</span></div>
       <div class="nt-list" data-reveal>
         {% for n in group['items'] %}
+        {% set _k = _nt_kind.get(n.kind) %}
+        {% set _href = n.action_url or (url_for(_k[2]) if _k and _k[2] else '') %}
         <div class="nt {{ 'unread' if not n.is_read }}{{ ' urgent' if n.is_urgent }}" id="notif-{{ n.id }}" data-unread="{{ '1' if not n.is_read else '0' }}">
-          <span class="nt-ic">{% if n.is_urgent %}<i class="fa-solid fa-triangle-exclamation"></i>{% else %}<i class="fa-solid fa-bell"></i>{% endif %}</span>
+          <span class="nt-ic">{% if n.is_urgent %}<i class="fa-solid fa-triangle-exclamation"></i>{% else %}<i class="fa-solid {{ _k[0] if _k else 'fa-bell' }}"></i>{% endif %}</span>
           <div class="nt-body">
-            <div class="nt-title">{{ n.title or 'Notifikation' }}{% if n.is_urgent %} <span class="fm-badge red">Vigtig</span>{% endif %}</div>
+            <div class="nt-title">{% if _href %}<a href="{{ _href }}" data-open="{{ n.id }}" style="color:inherit;text-decoration:none">{{ n.title or 'Notifikation' }}</a>{% else %}{{ n.title or 'Notifikation' }}{% endif %}{% if n.is_urgent %} <span class="fm-badge red">Vigtig</span>{% endif %}</div>
             <div class="nt-desc">{{ n.message|safe_html if n.message else '' }}</div>
-            {% if n.action_url %}<div style="margin-top:6px"><a class="fm-link" href="{{ n.action_url }}">Åbn <i class="fa-solid fa-arrow-right"></i></a></div>{% endif %}
+            {% if _href %}<div style="margin-top:6px"><a class="fm-link" href="{{ _href }}" data-open="{{ n.id }}">{{ _k[1] if _k else 'Åbn' }} <i class="fa-solid fa-arrow-right"></i></a></div>{% endif %}
             {% if n.sender_name %}<div style="font-size:11.5px;color:var(--fm-ink-3);margin-top:4px"><i class="fa-solid fa-user"></i> {{ n.sender_name }}</div>{% endif %}
             {% if not n.is_read %}
             <div class="nt-act"><button class="btn btn-primary btn-sm" data-mark="{{ n.id }}"><i class="fa-solid fa-check"></i> Markér som læst</button></div>
@@ -67,7 +93,8 @@
   {% else %}
     <section>
       <div class="nt-list" data-reveal>
-        <div class="nt-empty"><i class="fa-regular fa-bell-slash"></i> Ingen notifikationer endnu. Du er helt opdateret.</div>
+        <div class="nt-empty" style="flex-direction:column"><span><i class="fa-regular fa-bell-slash"></i> Ingen notifikationer endnu. Du er helt opdateret.</span>
+          <span style="font-size:12.5px">Her får du besked om godkendelser, frister og nye anbefalinger. <a href="{{ url_for('futurematch.timeline') }}">Se dine bestillinger</a> · <a href="{{ url_for('pages.settings') }}">Notifikationsindstillinger</a></span></div>
       </div>
     </section>
   {% endif %}
@@ -130,6 +157,20 @@
         })
         .catch(() => { if (card) card.style.opacity = '1'; window.alert('Kunne ikke markere som læst. Prøv igen.'); });
     }
+
+    // Opening a notification's target also marks it read (keepalive survives the navigation).
+    document.querySelectorAll('[data-open]').forEach(a => {
+      a.addEventListener('click', () => {
+        const card = document.getElementById('notif-' + a.getAttribute('data-open'));
+        if (!card || card.getAttribute('data-unread') !== '1') return;
+        try {
+          fetch('/api/notifications/' + a.getAttribute('data-open') + '/read', {
+            method: 'POST', credentials: 'same-origin', keepalive: true,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        } catch (e) {}
+      });
+    });
 
     document.querySelectorAll('[data-mark]').forEach(btn => {
       btn.addEventListener('click', () => markRead(btn.getAttribute('data-mark'), document.getElementById('notif-' + btn.getAttribute('data-mark'))));

@@ -1,13 +1,8 @@
 {% extends "fm_base.html" %}
 {% block page_id %}timeline{% endblock %}
-{% block title %}Min tidslinje{% endblock %}
-{% block topbar_title %}Min tidslinje{% endblock %}
-{% block topbar_sub %}Følg dine kurser fra bestilling til gennemførelse — status, godkendelse og deadlines ét sted.{% endblock %}
-
-{% block topbar_actions %}
-<a class="btn btn-ghost" href="{{ url_for('futurematch.my_calendar') }}"><i class="fa-regular fa-calendar-plus"></i> Hent min kalender</a>
-<a class="btn" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-graduation-cap"></i> Find kurser</a>
-{% endblock %}
+{% block title %}Mine bestillinger{% endblock %}
+{% block topbar_title %}Mine bestillinger{% endblock %}
+{% block topbar_sub %}Din tidslinje: følg dine kurser fra bestilling til gennemførelse — status, godkendelse og frister ét sted.{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -86,6 +81,11 @@
 
   <div class="fm-section-head">
     <div><span class="fm-eyebrow"><i class="fa-solid fa-timeline"></i> Forløb</span><h2 class="fm-section-title">Dine kurser</h2></div>
+    <div class="fm-flex fm-gap8" style="flex-wrap:wrap">
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('futurematch.my_calendar') }}"><i class="fa-regular fa-calendar-plus"></i> Hent min kalender</a>
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('futurematch.learning_goals') }}"><i class="fa-solid fa-bullseye"></i> Mine mål</a>
+      <a class="btn btn-soft btn-sm" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-graduation-cap"></i> Find kurser</a>
+    </div>
   </div>
 
   <div class="timeline">

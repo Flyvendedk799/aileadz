@@ -30,13 +30,35 @@
 {# Wrap any value in a drill-down link. #}
 {% macro drilldown(value, href) %}<a class="fm-drill" href="{{ href }}">{{ value }} <i class="fa-solid fa-arrow-up-right-from-square"></i></a>{% endmacro %}
 
-{# Empty / no-data state. #}
-{% macro empty(title='Ingen data endnu', sub='', icon='fa-inbox') %}
+{# Empty / no-data state. Pass action_href + action_label to point at the next
+   useful step (an empty page should never be a dead end). #}
+{% macro empty(title='Ingen data endnu', sub='', icon='fa-inbox', action_href='', action_label='', action_icon='fa-arrow-right') %}
 <div class="fm-empty">
   <i class="fa-solid {{ icon }}"></i>
   <div class="fm-empty-t">{{ title }}</div>
   {% if sub %}<div class="fm-empty-s">{{ sub }}</div>{% endif %}
+  {% if action_href and action_label %}<a class="btn btn-soft btn-sm" href="{{ action_href }}" style="margin-top:12px"><i class="fa-solid {{ action_icon }}"></i> {{ action_label }}</a>{% endif %}
 </div>
+{% endmacro %}
+
+{# Breadcrumb for detail pages. `items` = [(label, href), ...]; the last item is the
+   current page (its href is ignored). Renders the shared .crumb pattern. #}
+{% macro crumbs(items) %}
+<nav class="crumb" aria-label="Brødkrummesti">
+  {% for label, href in items %}{% if not loop.first %}<i class="fa-solid fa-chevron-right" aria-hidden="true"></i>{% endif %}{% if href and not loop.last %}<a href="{{ href }}">{{ label }}</a>{% else %}<span aria-current="page">{{ label }}</span>{% endif %}{% endfor %}
+</nav>
+{% endmacro %}
+
+{# "Se også" strip of related pages. `links` = [(label, href, icon), ...]; falsy
+   hrefs are skipped so callers can gate entries inline with can(). #}
+{% macro related(links, title='Se også') %}
+{% set _links = links | selectattr(1) | list %}
+{% if _links %}
+<nav class="fm-related" aria-label="{{ title }}" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 18px">
+  <span class="fm-eyebrow" style="margin-right:2px">{{ title }}</span>
+  {% for label, href, icon in _links %}<a class="btn btn-ghost btn-sm" href="{{ href }}"><i class="fa-solid {{ icon }}"></i> {{ label }}</a>{% endfor %}
+</nav>
+{% endif %}
 {% endmacro %}
 
 {# Severity -> status-pill colour class. #}

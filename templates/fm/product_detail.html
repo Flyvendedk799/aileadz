@@ -549,7 +549,7 @@
         {% if blocked %}
         <div class="pd-warn">
           <i class="fa-solid fa-triangle-exclamation"></i>
-          <span>Leverandøren er deaktiveret for din virksomhed. HR kan aktivere den under leverandørstyring.</span>
+          <span>Leverandøren er deaktiveret for din virksomhed. HR kan aktivere den under {% if can('company.workspace') %}<a href="{{ url_for('hr_dashboard.supplier_management') }}">Leverandører</a>{% else %}leverandørstyring{% endif %}.</span>
         </div>
         {% endif %}
 
@@ -560,6 +560,10 @@
       {% else %}<a class="pd-cta" href="#pd-request" data-pd-open {% if blocked %}aria-disabled="true"{% endif %}><i class="fa-solid fa-circle-check"></i>{{ 'Tilmeld' if request_flow == 'direct' else 'Anmod om tilmelding' }}</a>{% endif %}
         {% endif %}
         <a class="pd-cta ghost" href="{{ url_for('app1.index', product_handle=product.handle, product_title=product.title) }}"><i class="fa-solid fa-comments"></i>Spørg AI om kurset</a>
+        {# HR can hand the course to colleagues straight from the catalog (same guard as the route). #}
+        {% if not anon and session.get('company_id') and can('company.employees') and has_endpoint('course_assign.assign_course') %}
+        <a class="pd-cta ghost" href="{{ url_for('course_assign.assign_course', course=product.handle) }}"><i class="fa-solid fa-user-plus"></i>Tildel til medarbejdere</a>
+        {% endif %}
 
         <div class="pd-assure">
           <div><i class="fa-solid fa-check"></i><span>{% if anon %}Log ind med din arbejdskonto for at anmode{% elif request_flow == 'approval' %}Ingen betaling i appen. HR godkender først{% elif request_flow == 'direct' %}Som leder godkendes din tilmelding med det samme{% else %}Ingen betaling i appen. Du modtager en faktura{% endif %}</span></div>

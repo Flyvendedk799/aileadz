@@ -6,7 +6,7 @@ keywords: hukommelse, hukommelser, husker, huske, glem, glemme, slet, slette, fj
 audience: employee
 ---
 ## Kort fortalt
-AI-assistenten og AI Profiler kan gemme oplysninger om dig som "hukommelser", så rådgivningen bliver mere personlig. Du kan altid se dem i Mind-Map og slette dem, der er forkerte, eller som du ikke vil have gemt.
+AI-assistenten kan gemme oplysninger om dig som "hukommelser", så rådgivningen bliver mere personlig. Du kan altid se dem i Mind-Map og slette dem, der er forkerte, eller som du ikke vil have gemt.
 
 ## Ret eller slet en hukommelse i Mind-Map
 1. Åbn Mind-Map (/mind-map).
@@ -14,7 +14,7 @@ AI-assistenten og AI Profiler kan gemme oplysninger om dig som "hukommelser", s�
 3. Klik "Redigér hukommelse" for at rette teksten, detaljen eller kategorien, og klik "Gem rettelse". Eller klik "Slet hukommelse" og bekræft.
 
 ## Bed AI'en om at glemme noget
-Skriv fx "glem at jeg bor i Aarhus" i AI-assistenten eller AI Profiler. AI'en finder hukommelsen og viser et kort, hvor du bekræfter. Intet slettes, før du har bekræftet.
+Skriv fx "glem at jeg bor i Aarhus" i AI-assistenten. AI'en finder hukommelsen og viser et kort, hvor du bekræfter. Intet slettes, før du har bekræftet.
 
 ## Slet direkte i chatten
 - Når AI'en gemmer noget nyt, vises en besked med knappen "Forkert". Klik på den for at slette hukommelsen med det samme.
@@ -27,4 +27,4 @@ Oplysninger fra din profil (fx kompetencer eller erfaring) har i Mind-Map knappe
 Vælg profilen i midten af Mind-Map og klik "Tilføj hukommelse". Skriv, hvad AI'en skal huske, eventuelt med en detalje og en kategori.
 
 ## Godt at vide
-AI'en kan tage fejl. Tjek jævnligt dine hukommelser – især efter en samtale med AI Profiler, hvor der gemmes meget på én gang. Vil du have alle dine data slettet, så se artiklen om privatliv og GDPR.
+AI'en kan tage fejl. Tjek jævnligt dine hukommelser – især efter en lang samtale om dig selv, hvor der gemmes meget på én gang. Vil du have alle dine data slettet, så se artiklen om privatliv og GDPR.

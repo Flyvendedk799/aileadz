@@ -1,0 +1,73 @@
+{# CV import, inline on the profile page (the old /profil-upload portal was merged here).
+   Behaviour: static/futurematch/assets/profile-cv.js; looks: profile-cv.css. #}
+<section id="cvImport" class="cvi" hidden aria-label="Importér dit CV">
+  <div class="cvi-head">
+    <h4><i class="fa-solid fa-file-arrow-up"></i> Importér dit CV</h4>
+    <button type="button" class="cvi-x" data-cv-close aria-label="Luk CV-import"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+  <p class="cvi-status" data-cv-status role="status" aria-live="polite"></p>
+
+  <div data-pane="intake">
+    <div class="cvi-drop" data-cv-drop tabindex="0" role="button" aria-label="Vælg en CV-fil eller træk den hertil">
+      <i class="fa-solid fa-cloud-arrow-up"></i>
+      <strong>Træk dit CV hertil, eller vælg en fil</strong>
+      <span>PDF, billede (JPG/PNG) eller tekst, maks. 8 MB</span>
+      <em data-cv-filename></em>
+    </div>
+    <input type="file" data-cv-file hidden accept=".pdf,.txt,.md,.rtf,.csv,.jpg,.jpeg,.png,.gif,.webp,.bmp,.tiff,.heic" />
+    <label class="cvi-paste">
+      <span>eller indsæt teksten fra dit CV</span>
+      <textarea data-cv-text rows="5" placeholder="Indsæt dit CV her…"></textarea>
+    </label>
+    <div class="cvi-actions">
+      <button type="button" class="btn btn-primary btn-sm" data-cv-analyse disabled><i class="fa-solid fa-wand-magic-sparkles"></i> Analysér CV</button>
+      <span class="cvi-note">Intet gemmes, før du har gennemgået forslagene.</span>
+    </div>
+  </div>
+
+  <div data-pane="progress" hidden>
+    <div class="cvi-progress" data-cv-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <span data-cv-bar></span>
+    </div>
+    <p class="cvi-stage" data-cv-stage>Udtrækker tekst</p>
+  </div>
+
+  <div data-pane="review" hidden>
+    <div class="cvi-bar">
+      <span data-cv-count>0 valgt</span>
+      <span class="cvi-bar-btns">
+        <button type="button" class="cvi-link" data-cv-all>Vælg alle</button>
+        <button type="button" class="cvi-link" data-cv-none>Fravælg alle</button>
+      </span>
+    </div>
+    <div data-cv-items></div>
+    <div class="cvi-foot">
+      <label>
+        <span>Ved oplysninger der allerede findes</span>
+        <select data-cv-conflict>
+          <option value="merge">Flet og behold det højeste niveau</option>
+          <option value="replace">Erstat med CV-oplysningerne</option>
+          <option value="keep">Behold de eksisterende</option>
+        </select>
+      </label>
+      <span class="cvi-bar-btns">
+        <button type="button" class="btn btn-ghost btn-sm" data-cv-back>Tilbage</button>
+        <button type="button" class="btn btn-primary btn-sm" data-cv-save>Gem til min profil</button>
+      </span>
+    </div>
+  </div>
+
+  <div data-pane="done" hidden>
+    <h4 class="cvi-done-title"><i class="fa-solid fa-circle-check"></i> Din profil er opdateret</h4>
+    <p data-cv-done-text>Oplysningerne fra dit CV er gemt.</p>
+    <p class="cvi-career" data-cv-career hidden></p>
+    <div class="cvi-actions">
+      {# Both AI entry points carry from=cv_upload: the assistant already knows what the CV saved
+         (cv_just_applied) and builds on it instead of asking again. #}
+      <a class="btn btn-primary btn-sm" href="{{ url_for('futurematch.chat') }}?from=cv_upload&amp;intent={{ 'Jeg har lige opdateret min profil fra mit CV. Hvad bygger vi videre på?'|urlencode }}"><i class="fa-solid fa-wand-magic-sparkles"></i> Gennemgå med AI-assistenten</a>
+      <a class="btn btn-soft btn-sm" href="{{ url_for('futurematch.chat') }}?from=cv_upload&amp;focus=section:skills&amp;intent={{ 'Vis mine største kompetencegab og anbefal kurser der lukker dem'|urlencode }}">Find kurser til mine gab</a>
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('futurematch.my_cv') }}">Se dit Futurematch-CV</a>
+      <button type="button" class="btn btn-ghost btn-sm" data-cv-again>Importér et andet CV</button>
+    </div>
+  </div>
+</section>

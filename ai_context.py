@@ -189,7 +189,7 @@ _DIGEST_MERGE_PROMPT = (
     "korte punkter. Opfind intet."
 )
 
-_SURFACE_LABELS = {"profiler": "AI Profiler (karrieresparring)", "chat": "kursusrådgiver"}
+_SURFACE_LABELS = {"profiler": "AI-assistent (karrieresparring)", "chat": "AI-assistent (karriere og kurser)"}
 
 
 def _rule_session_summary(messages: List[Dict[str, Any]]) -> Optional[str]:

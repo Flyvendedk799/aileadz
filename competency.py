@@ -1,6 +1,6 @@
 """competency.py — the missing "B" in the A→C learner journey.
 
-The platform has strong *capture* (CV portal, profiler, profile page) and strong
+The platform has strong *capture* (CV import, assistant, profile page) and strong
 *act* (recommender, learning paths) bolted onto a **missing middle**: there was
 no competency model and no per-learner skill-gap computation. Recommendations
 therefore reasoned over "skills you rated low" instead of "the gap between where

@@ -618,7 +618,7 @@ SEARCH_PLATFORM_HELP_TOOL = {
         "name": "search_platform_help",
         "description": (
             "Søg i Futurematchs hjælpeartikler om hvordan platformen virker: CV-upload, Mind-Map og "
-            "hvad AI'en husker (og hvordan man sletter det), AI Profiler, bestilling og godkendelse, "
+            "hvad AI'en husker (og hvordan man sletter det), AI-assistenten, bestilling og godkendelse, "
             "afdelingsbudget, læringsstier, udviklingsmål, obligatoriske kurser, Min læring/tidslinje, "
             "privatliv/GDPR, konto og support. Brug det til 'hvordan/hvor'-spørgsmål om platformen — "
             "IKKE til kursusanbefalinger. Svar ud fra artiklerne og henvis til deres url."
@@ -678,7 +678,7 @@ TRIGGER_HOW_TOKENS: Tuple[str, ...] = (
 
 TRIGGER_PLATFORM_NOUNS: Tuple[str, ...] = (
     # CV / profile
-    "upload", "cv-portal", "cv portal", "profilsiden", "min profil", "profil & cv", "profiler",
+    "upload", "cv-portal", "cv portal", "cv-import", "profilsiden", "min profil", "profil & cv", "profiler",
     # orders / approval / budget
     "godkend", "godkendelse", "bestilling", "bestille", "bestiller", "bestilt", "tilmelding",
     "tilmelde", "anmodning", "ordre", "budget",

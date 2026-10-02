@@ -92,9 +92,10 @@ class SidebarTests(unittest.TestCase):
         for label in ("Aftaler", "Send notifikationer", "AI-udbyder", "Kreditter", "Systemstatus", "Designgalleri"):
             self.assertIn(label, html)
 
-    def test_cv_portal_is_not_listed_twice(self):
+    def test_cv_portal_is_gone_from_the_sidebar(self):
+        """CV import lives on the profile page, so the sidebar has no CV entry of its own."""
         html = _html(company_role="employee")
-        self.assertEqual(html.count("CV-portal"), 1)
+        self.assertNotIn("CV-portal", html)
         self.assertNotIn("Upload CV", html)
 
     def test_server_brand_marker_is_set(self):

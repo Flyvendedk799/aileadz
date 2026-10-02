@@ -75,7 +75,7 @@
 
     <div class="fm-side-scroll">
       {% set page = self.page_id()|trim %}
-      {% set _ai_pages = ['chat', 'mindmap', 'cvupload'] %}
+      {% set _ai_pages = ['chat', 'mindmap'] %}
       {% set _in_ai = page in _ai_pages %}
       {# Where am I? One answer for the sidebar and both sub-navs (futurematch_ui.nav_state):
          the request endpoint decides, the page id is the fallback. #}
@@ -93,7 +93,6 @@
         <ul class="fm-nav-list">
           <li><a class="fm-nav-link {{ 'active' if _nav == 'chat' }}" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comment-dots"></i><span>AI-assistent</span></a></li>
           <li><a class="fm-nav-link {{ 'active' if _nav == 'mindmap' }}" href="{{ url_for('futurematch.mind_map') }}"><i class="fa-solid fa-brain"></i><span>Mind-Map</span></a></li>
-          <li><a class="fm-nav-link {{ 'active' if _nav == 'cvupload' }}" href="{{ url_for('futurematch.cv_upload') }}"><i class="fa-solid fa-file-arrow-up"></i><span>CV-portal</span></a></li>
         </ul>
         {% if _in_ai %}{% include 'fm/_ai_sidebar.html' %}{% endif %}
       </div>
@@ -249,7 +248,7 @@
 </div>
 
 <script src="{{ url_for('static', filename='futurematch/assets/shell.js') }}?v={{ asset_version('futurematch/assets/shell.js') }}"></script>
-{% if self.page_id()|trim in ['chat', 'mindmap', 'cvupload'] %}
+{% if self.page_id()|trim in ['chat', 'mindmap'] %}
 <script src="{{ url_for('static', filename='futurematch/assets/ai-sidebar.js') }}?v={{ asset_version('futurematch/assets/ai-sidebar.js') }}"></script>
 {% endif %}
 {% block extra_scripts %}{% endblock %}

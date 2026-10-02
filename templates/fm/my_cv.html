@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mit Futurematch-CV</title>
+<style>
+  :root { --ink: #16202a; --ink-2: #4a5866; --ink-3: #7a8794; --line: #e3e8ee; --accent: #0f766e; --bg: #f4f6f8; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .bar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between;
+    padding: 12px 20px; background: #fff; border-bottom: 1px solid var(--line); }
+  .bar a, .bar button { font: inherit; font-size: 13.5px; font-weight: 650; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line);
+    background: #fff; color: var(--ink); text-decoration: none; cursor: pointer; }
+  .bar .primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .bar .hint { font-size: 12.5px; color: var(--ink-3); }
+  .page { max-width: 820px; margin: 24px auto; padding: 44px 52px; background: #fff; border: 1px solid var(--line); border-radius: 6px; }
+  h1 { margin: 0; font-size: 30px; letter-spacing: -.02em; }
+  .role { margin: 4px 0 0; font-size: 16px; color: var(--accent); font-weight: 650; }
+  .contact { margin: 6px 0 0; color: var(--ink-3); font-size: 13.5px; }
+  h2 { margin: 28px 0 10px; padding-bottom: 5px; border-bottom: 1.5px solid var(--line); font-size: 12.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-2); }
+  .summary { margin: 18px 0 0; color: var(--ink-2); }
+  .item { margin-bottom: 14px; break-inside: avoid; }
+  .item .top { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+  .item .what { font-weight: 700; }
+  .item .when { color: var(--ink-3); font-size: 13px; white-space: nowrap; }
+  .item .where { color: var(--ink-2); }
+  .item p { margin: 4px 0 0; color: var(--ink-2); font-size: 14px; white-space: pre-line; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); font-size: 13px; }
+  .lv { margin: 8px 0 3px; font-size: 12.5px; font-weight: 700; color: var(--ink-3); }
+  .empty { margin-top: 40px; text-align: center; color: var(--ink-2); }
+  .foot { margin-top: 32px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); }
+  @media (max-width: 700px) { .page { margin: 0; padding: 26px 20px; border: none; border-radius: 0; } }
+  @media print {
+    body { background: #fff; font-size: 11.5pt; }
+    .bar { display: none; }
+    .page { margin: 0; max-width: none; padding: 0; border: none; }
+  }
+</style>
+</head>
+<body>
+{% set LEVEL = {'ekspert': 'Ekspert', 'avanceret': 'Avanceret', 'mellem': 'Mellem', 'begynder': 'Begynder'} %}
+{% set LANG = {'modersmaal': 'Modersmål', 'flydende': 'Flydende', 'mellem': 'Mellem', 'begynder': 'Begynder'} %}
+<div class="bar">
+  <a href="{{ url_for('pages.profile') }}#cv">&larr; Tilbage til profilen</a>
+  <span class="hint">Bygget ud fra din profil. Ret den på profilsiden, så følger CV'et med.</span>
+  <span>
+    <a href="{{ url_for('futurematch.chat') }}?from=profile&amp;intent={{ 'Hjælp mig med at gøre mit CV skarpere'|urlencode }}">Finpuds med AI</a>
+    <button type="button" class="primary" onclick="window.print()">Print / gem som PDF</button>
+  </span>
+</div>
+
+<main class="page">
+  <h1>{{ name }}</h1>
+  {% if p.headline %}<div class="role">{{ p.headline }}</div>{% endif %}
+  {% if p.target_role %}<div class="contact">Ønsket retning: {{ p.target_role }}</div>{% endif %}
+
+  {% if not has_content %}
+    <div class="empty">
+      <p>Din profil er tom, så der er endnu ikke noget CV at vise.</p>
+      <p><a href="{{ url_for('pages.profile') }}#cv">Importér dit CV</a> eller <a href="{{ url_for('futurematch.chat') }}?from=profile">fortæl AI-assistenten om dig selv</a>.</p>
+    </div>
+  {% else %}
+    {% if p.bio %}<p class="summary">{{ p.bio }}</p>{% endif %}
+
+    {% if p.experience %}
+      <h2>Erfaring</h2>
+      {% for e in p.experience %}
+        <div class="item">
+          <div class="top">
+            <span class="what">{{ e.title }}{% if e.company %}, {{ e.company }}{% endif %}</span>
+            <span class="when">{{ e.start_year or '' }}{% if e.start_year or e.end_year or e.is_current %} &ndash; {% endif %}{% if e.is_current %}nu{% else %}{{ e.end_year or '' }}{% endif %}</span>
+          </div>
+          {% if e.description %}<p>{{ e.description }}</p>{% endif %}
+        </div>
+      {% endfor %}
+    {% endif %}
+
+    {% if p.education %}
+      <h2>Uddannelse</h2>
+      {% for e in p.education %}
+        <div class="item">
+          <div class="top">
+            <span class="what">{{ e.degree }}</span>
+            <span class="when">{{ e.year_completed or '' }}</span>
+          </div>
+          {% if e.institution %}<div class="where">{{ e.institution }}</div>{% endif %}
+          {% if e.description %}<p>{{ e.description }}</p>{% endif %}
+        </div>
+      {% endfor %}
+    {% endif %}
+
+    {% if p.skills %}
+      <h2>Kompetencer</h2>
+      {% for lv in ['ekspert', 'avanceret', 'mellem', 'begynder'] %}
+        {% set group = p.skills|selectattr('level', 'equalto', lv)|list %}
+        {% if group %}
+          <div class="lv">{{ LEVEL[lv] }}</div>
+          <div class="tags">{% for s in group %}<span class="tag">{{ s.name }}</span>{% endfor %}</div>
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+
+    {% if p.certifications %}
+      <h2>Certificeringer</h2>
+      {% for c in p.certifications %}
+        <div class="item">
+          <div class="top">
+            <span class="what">{{ c.name }}</span>
+            <span class="when">{{ c.issue_date or '' }}{% if c.expiry_date %} &ndash; {{ c.expiry_date }}{% endif %}</span>
+          </div>
+          {% if c.issuer %}<div class="where">{{ c.issuer }}</div>{% endif %}
+        </div>
+      {% endfor %}
+    {% endif %}
+
+    {% if p.completed_courses %}
+      <h2>Kurser</h2>
+      {% for c in p.completed_courses %}
+        <div class="item">
+          <div class="top">
+            <span class="what">{{ c.title }}</span>
+            <span class="when">{{ c.completed_date or '' }}</span>
+          </div>
+          {% if c.vendor %}<div class="where">{{ c.vendor }}</div>{% endif %}
+        </div>
+      {% endfor %}
+    {% endif %}
+
+    {% if p.languages %}
+      <h2>Sprog</h2>
+      <div class="tags">{% for l in p.languages %}<span class="tag">{{ l.language }}, {{ LANG.get(l.proficiency, l.proficiency) }}</span>{% endfor %}</div>
+    {% endif %}
+
+    {% if p.portfolio_links %}
+      <h2>Links</h2>
+      {% for l in p.portfolio_links %}
+        <div class="item"><span class="what">{{ l.label or l.url }}</span> <span class="where">{{ l.url }}</span></div>
+      {% endfor %}
+    {% endif %}
+  {% endif %}
+
+  <div class="foot">Genereret af Futurematch ud fra din profil.</div>
+</main>
+</body>
+</html>

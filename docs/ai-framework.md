@@ -43,11 +43,12 @@ offered, the model decides; nothing here may add a mandatory step.
 | CV text/image extraction + LLM parse; CV parse-job store | `cv_ingest.py`; `cv_parse_store.py` |
 | Profile REST API, CV parse/stream/apply/improve, mind-map graph (`mindmap_payload`), workspace summary | `api.py` |
 | Cross-surface handoff context (`{from, focus}` -> `surface_context` layer + read tools) | `app1/surface_context.py` |
-| Page shells (`/chat`, `/mind-map`, `/profil-upload`, `/min-laering`, ...; `/ai-profiler` is a 301 to `/chat`) | `futurematch_ui.py` |
+| Page shells (`/chat`, `/mind-map`, `/profil/cv`, `/min-laering`, ...; `/ai-profiler` is a 301 to `/chat`, `/profil-upload` a 301 to `/profil#cv`) | `futurematch_ui.py` |
 | Orders / policy / credits | `order_lifecycle.py`, `order_service.py`, `team_order_policy.py`, `credit_service.py` |
 | Guest -> user memory migration | `anon_migration.py` |
 | Chat frontend (SSE dispatch, renderers) | `static/futurematch/assets/chat.js`, `chat.css` |
-| Templates | `templates/fm/{chat,my_profile,cv_upload,mind_map,_ai_panel}.html`, `templates/fm_base.html` |
+| Templates | `templates/fm/{chat,my_profile,_cv_import,my_cv,mind_map,_ai_panel}.html`, `templates/fm_base.html` |
+| CV import on the profile page (upload/paste, review, apply) | `static/futurematch/assets/profile-cv.{js,css}` + `templates/fm/_cv_import.html` |
 | GDPR export/erase coverage | `gdpr_service.py` (drift test `tests/test_gdpr_table_coverage.py`) |
 
 ## 1. One engine, one assistant
@@ -83,7 +84,7 @@ Start/Fortsæt, `window.fmSendSeed`): the regex intent classifier is skipped
 
 ### 1b. One learner workspace: handoffs between surfaces
 
-The assistant, the Mind-Map, the profile page (`/profile`) and the CV portal
+The assistant, the Mind-Map and the profile page (`/profile`, which hosts the CV import)
 share one profile and one memory, and hand the user to each other with context:
 
 - **URL contract:** `?from=<surface>&focus=<ref>&intent=<text>` on `/chat`. `chat.js bootChat()` strips the params, then sends `context: {from,
@@ -103,8 +104,8 @@ share one profile and one memory, and hand the user to each other with context:
   `context_tools` (read tools only, plus the proposal-only `forget_about_user` for a
   memory focus; side-effect tools are filtered out like `_HR_PAGE_TOOLS`).
 - **Entry points:** Mind-Map inspector "Spørg AI om dette" / "Uddyb med AI" and the gap
-  CTA; "Uddyb med AI" on each profile section; the CV portal's "Gennemgå med AI
-  Profiler" / "Find kurser til mine gab"; `open_in_app(open_profiler|open_advisor,
+  CTA; "Uddyb med AI" on each profile section; the CV import's "Gennemgå med
+  AI-assistenten" / "Find kurser til mine gab"; `open_in_app(open_profiler|open_advisor,
   section|node, intent)` (`_handoff_url`).
 - **One number, one fetch:** `GET /api/profile/workspace` (completeness + Mind-Map
   counts, built by `api.mindmap_payload(with_gaps=False)` so "datapunkter" cannot drift).
@@ -317,10 +318,12 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
   `save_learning_path` (`user_learning_paths`).
 - **`open_in_app`** (always on, no mutation) -> `ui_action`. Validated against
   `sse_events.UI_ACTIONS` (a test pins the tool enum to it both ways); includes
-  `open_cv_upload` (`/profil-upload`), `open_mind_map`, `open_my_learning`
+  `open_cv_upload` (`/profil#cv`, the import on the profile page), `open_my_cv` (`/profil/cv`, the
+  printable generated CV), `open_mind_map`, `open_my_learning`
   (`/min-laering`), `open_goals` (`/mine-maal`), `open_timeline` (`/min-tidslinje`).
   `open_profiler` / `open_advisor` take `section` or `node` + `intent` and build a
-  handoff URL (1b); `open_catalog` URL-encodes its query.
+  handoff URL (1b); `open_catalog` URL-encodes its query; `open_profile` anchors only to ids that exist
+  on the profile page (`_PROFILE_PAGE_SECTIONS`, test-pinned to the template).
 - **`show_cv_summary` / `show_mindmap_preview` / `show_skill_gaps`** (profile-gated):
   read-only cards; reach the menu by keywords + semantic fallback.
   `show_skill_gaps` = `compute_skill_gaps` (1-5 scale) -> `skill_gaps_card`; its JSON is
@@ -396,6 +399,11 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
   Showing an item counts as asking: 3 days rest, 3 asks max, 28 days TTL, re-armed only after
   90 days. `stop_all` mutes the person for good (`kind='optout'` row); `AI_PROFILE_CHECKINS=0`
   is the platform kill switch. Rows are the person's own (GDPR export + erase), HR never sees them.
+- **Excerpt, not a silent cut:** the `profile` layer caps each section (`_PROFILE_LAYER_CAPS`) and says
+  "(+N flere, hent alle med get_user_profile)" when it left rows out; `get_user_profile(full=true)`
+  returns every row with full text (`format_profile_for_ai(full=True)`). Whatever the profile page can edit
+  (skills, experience, education, certifications, languages, links, summary, target role) has an
+  `update_user_profile` action, pinned by `tests/test_assistant_profile_access.py`.
 - **Need-driven context:** the `profile` layer (with `[#id]`s) is what the model knows;
   `_build_profiler_state` adds depth, target role and <=3 unknowns *with the reason each
   matters* (strength >=0.5 never listed). No imperatives - guard tests
@@ -409,22 +417,27 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
 - **Memories** are ranked per turn by the semantic index (`_select_memories_for_turn`,
   keyword fallback); only matched ones are `_relevant`, so `used_count` means "informed an answer".
 
-**CV portal** (`/profil-upload` -> `cv_upload.html`, Three.js; own SSE pipeline in `api.py`,
-event names `stage`/`result`/`error` - NOT the chat vocabulary):
+**CV import on the profile page** (`#cv` card on `/profile`: `_cv_import.html` + `profile-cv.js`;
+the separate 3D portal and its no-JS fallback are gone, `/profil-upload` 301s to `/profil#cv`;
+own SSE pipeline in `api.py`, event names `stage`/`result`/`error` - NOT the chat vocabulary). The
+script emits `fm:cv-applied` so the profile page reloads what the CV touched; the review list is
+plain, editable and accessible (a checkbox per item, nothing written before "Gem til min profil"):
 - `POST /api/cv/parse` (multipart, <=8 MB, whitelisted exts) -> `cv_ingest.extract_text`
   (PDF/text/image OCR via GPT-4o vision, timeouts, `delimit_untrusted` fence) -> LLM parse
   in a background thread that pushes its own `app_context`; result stored in
   `cv_parse_store` (MySQL `ai_cv_parse_jobs`, 5 min TTL, in-process fallback - the old
   process-local dict broke under multiple gunicorn workers).
 - `GET /api/cv/parse-stream` polls the real `cv_parse_store.read_state`, emits one terminal
-  `result` (`{proposal, hint}`) or `error`. Empty proposal -> portal resets with the `hint`.
+  `result` (`{proposal, hint}`) or `error`. Empty proposal -> the import resets with the `hint`.
 - `POST /api/cv/apply` writes approved items (`add_skill/experience/education/certification/language`);
   `conflict_mode` `merge|replace|keep`; returns per-item outcomes. **Level vocab must go
-  through `_SKILL_LEVEL_MAP` / `_LANG_PROF_MAP`** (case-insensitive; accept portal labels
+  through `_SKILL_LEVEL_MAP` / `_LANG_PROF_MAP`** (case-insensitive; accept the import's labels
   Begynder/Øvet/... and parser lowercase) - a capitalised-only map once inflated every
   skill to `avanceret`. `POST /api/cv/improve` is a non-destructive, section-scoped coach
   that must not invent evidence. `GET /api/cv/summary` feeds `show_cv_summary`.
-- No-JS fallback: `POST /profil-upload` + `/profil-upload/apply` (`futurematch_ui.py`).
+- **Futurematch-generated CV:** `GET /profil/cv` (`futurematch_ui.my_cv`, `my_cv.html`) lays the
+  logged-in user's own profile out as a printable CV (browser print -> PDF); stored links are shown as
+  text, never as hrefs.
 
 **Mind-map** (`/mind-map` -> `mind_map.html` + `mind-map-support.js`, graph from
 `GET /api/profile/mindmap` = `get_mindmap_api`): full detail in
@@ -437,8 +450,8 @@ from the same inline composer; the page's category chips must mirror
 `_MEMORY_CATEGORIES` - tested). A non-2xx graph response shows a retry card with a
 Danish message, never a fake-empty profile.
 
-**Discoverability:** `/profil-upload` and `/mind-map` are in the employee sidebar
-(`fm_base.html`) and the profile hero; CV upload is also on `employee_home.html`. The
+**Discoverability:** `/mind-map` is in the employee sidebar (`fm_base.html`); CV upload and "Se dit CV" are
+on the profile hero and its CV card, and CV upload is also on `employee_home.html`. The
 AI entry points between surfaces are listed in 1b.
 
 ## 6. Trust spine

@@ -282,7 +282,7 @@ class TestExecutor(_IsolatedIndex):
         self.assertGreaterEqual(out["count"], 1)
         for r in out["results"]:
             self.assertEqual(set(r), {"title", "section", "url", "excerpt"})
-        self.assertEqual(out["results"][0]["url"], "/profil-upload")
+        self.assertEqual(out["results"][0]["url"], "/profil")
 
     def test_empty_query_and_bad_args(self):
         for args in ({"query": ""}, {}, None, "upload", {"query": None}):

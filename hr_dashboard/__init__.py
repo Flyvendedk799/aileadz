@@ -3190,26 +3190,6 @@ def create_hr_dashboard_blueprint():
             current_app.logger.error(f"Error loading proactive notifications: {e}")
             return jsonify({"alerts": []})
 
-    @hr_dashboard_bp.route('/notifications/dismiss', methods=['POST'])
-    def dismiss_notification():
-        """Dismiss/mark notification as read"""
-        auth_check = require_hr_access()
-        if auth_check:
-            return jsonify({"error": "Ikke logget ind"}), 401
-
-        data = request.json or {}
-        notif_id = data.get('notification_id')
-        if notif_id:
-            try:
-                from notification_service import mark_read as _mark_read
-                cur = current_app.mysql.connection.cursor()
-                _mark_read(cur, session.get('user'), notif_id)
-                current_app.mysql.connection.commit()
-                cur.close()
-            except Exception:
-                pass
-        return jsonify({"success": True})
-
     # ── Department Management ──
 
     @hr_dashboard_bp.route('/departments')

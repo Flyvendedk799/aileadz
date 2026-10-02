@@ -16,7 +16,7 @@
       {% endif %}
       <button class="btn btn-ghost btn-sm" onclick="window.print()"><i class="fa-solid fa-print"></i> Print</button>
       {% if admin_view %}
-      {% if order.company_id %}<a href="{{ url_for('admin_dashboard.impersonate_company', company_id=order.company_id) }}" class="btn btn-soft btn-sm"><i class="fa-solid fa-user-secret"></i> Åbn som virksomhed (HR)</a>{% endif %}
+      {% if order.company_id %}<form method="post" action="{{ url_for('admin_dashboard.impersonate_company', company_id=order.company_id) }}" style="display:inline;margin:0"><button type="submit" class="btn btn-soft btn-sm" title="Åbn HR-dashboard som denne virksomhed (logges)"><i class="fa-solid fa-user-secret"></i> Åbn som virksomhed (HR)</button></form>{% endif %}
       <a href="{{ url_for('admin_reports.chatbot_dashboard') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-arrow-left"></i> Chatbot BI</a>
       {% else %}
       <a href="{{ url_for('hr_dashboard.pending_approvals') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-arrow-left"></i> Godkendelser</a>

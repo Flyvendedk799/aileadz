@@ -111,8 +111,8 @@
   <!-- Daily volume chart (token-bound FMChart) -->
   <div class="fm-card" style="margin-top:16px;padding:18px">
     <h3 style="font-size:15px;font-weight:700;margin:0"><i class="fa-solid fa-chart-line"></i> Daglig samtalevolumen</h3>
-    <p style="font-size:12.5px;color:var(--fm-ink-2);margin:3px 0 12px">Antal interaktioner pr. dag de seneste {{ days }} dage.</p>
-    <div class="fn-chart-wrap"><canvas id="hrFunnelDailyChart"></canvas></div>
+    <p style="font-size:12.5px;color:var(--fm-ink-2);margin:3px 0 12px">Antal beskeder til AI-assistenten pr. dag de seneste {{ days }} dage. Dage uden aktivitet tæller som 0.</p>
+    <div class="fn-chart-wrap"><canvas id="hrFunnelDailyChart" role="img" aria-label="Linjediagram: antal beskeder til AI-assistenten pr. dag i den valgte periode"></canvas></div>
   </div>
 
   {% endif %}
@@ -127,8 +127,9 @@
     var data = {{ (daily_data or [])|tojson }};
     if (document.getElementById('hrFunnelDailyChart')) {
       FMChart.line('hrFunnelDailyChart', {
-        labels: labels,
-        series: [{ label: 'Interaktioner', data: data }],
+        // ISO dates -> Danish dd.mm on the axis.
+        labels: labels.map(function (d) { return String(d).slice(8, 10) + '.' + String(d).slice(5, 7); }),
+        series: [{ label: 'Beskeder', data: data }],
         empty: 'Ingen aktivitet i perioden'
       });
     }

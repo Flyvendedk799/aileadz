@@ -1749,11 +1749,14 @@ def create_hr_dashboard_blueprint():
             current_app.logger.warning(f"HR funnel report failed: {e}")
 
         has_data = bool(funnel.get('sessions'))
+        # Gap-free daily axis: a day without conversations is a zero.
+        daily_labels, daily_data = _dense_daily_series(
+            dict(zip(daily.get('labels', []), daily.get('data', []))), days)
         return render_template('fm/hr_funnel.html',
                                company=company,
                                funnel=funnel,
-                               daily_labels=daily.get('labels', []),
-                               daily_data=daily.get('data', []),
+                               daily_labels=daily_labels,
+                               daily_data=daily_data,
                                days=days,
                                has_data=has_data,
                                active_hr_page='funnel')

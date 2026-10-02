@@ -152,5 +152,55 @@ class RoiTests(unittest.TestCase):
         self.assertIn("Grupper under k=", html)
 
 
+class FunnelRetentionTests(unittest.TestCase):
+    def test_funnel_daily_series_is_gap_free(self):
+        today = datetime.date.today()
+        daily = {"labels": [(today - datetime.timedelta(days=2)).isoformat()], "data": [5]}
+        funnel = {"sessions": 9, "searches": 5, "shown": 3, "ordered": 1, "rate_search": 55.6,
+                  "rate_shown": 60.0, "rate_ordered": 33.3, "overall_rate": 11.1, "days": 7,
+                  "suppressed": False, "anon_note": None}
+        resp, _ = _get("/hr/funnel?days=7", None, patches=[
+            (("report_query.conversion_funnel",), {"return_value": funnel}),
+            (("report_query.daily_volume",), {"return_value": daily}),
+        ])
+        html = resp.get_data(as_text=True)
+        self.assertEqual(resp.status_code, 200, html[:300])
+        self.assertIn("var data = [0, 0, 0, 0, 5, 0, 0];", html)
+
+    def test_cohort_retention_marks_future_months(self):
+        import report_query
+        this_month = datetime.date.today().strftime("%Y-%m")
+
+        def extra(s, params):
+            if "month_offset" in s:
+                return [{"cohort_month": this_month, "month_offset": 0, "learners": 3}]
+            if s.startswith("select cohort_month, count(*) as size"):
+                return [{"cohort_month": this_month, "size": 6}]
+            return None
+
+        app = get_app()
+        with patch_mysql(app, _responder(extra))[1], app.app_context():
+            out = report_query.cohort_retention(7, 2)
+        cells = out["cohorts"][0]["retention"]
+        self.assertEqual([c["future"] for c in cells], [False, True, True])
+        self.assertEqual(cells[0]["pct"], 50.0)
+
+    def test_retention_page_renders_future_cells_and_curve(self):
+        ret = {"cohorts": [{"cohort": "2026-09", "size": 6, "_cohort": 6, "retention": [
+            {"offset": 0, "count": 3, "pct": 50.0, "future": False},
+            {"offset": 1, "count": 0, "pct": 0.0, "future": False},
+            {"offset": 2, "count": 0, "pct": 0.0, "future": True}]}],
+            "max_offset": 2, "months": 2, "company_id": 7, "anon_note": None}
+        resp, _ = _get("/hr/retention?months=2", None, patches=[
+            (("report_query.cohort_retention",), {"return_value": ret}),
+        ])
+        html = resp.get_data(as_text=True)
+        self.assertEqual(resp.status_code, 200, html[:300])
+        self.assertIn("september 2026", html)
+        self.assertIn('class="rt-cell future"', html)
+        self.assertIn('class="rt-cell empty">0%', html)
+        self.assertIn("rtCurveChart", html)
+
+
 if __name__ == "__main__":
     unittest.main()

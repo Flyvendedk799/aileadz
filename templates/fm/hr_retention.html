@@ -18,6 +18,10 @@
   table.rt-matrix tbody th small { display: block; font-weight: 500; font-size: 11px; color: var(--fm-ink-3); margin-top: 2px; }
   .rt-cell { border-radius: 8px; padding: 9px 8px; min-width: 58px; color: var(--fm-ink); font-weight: 700; }
   .rt-cell small { display: block; font-weight: 500; font-size: 10.5px; opacity: .85; margin-top: 1px; }
+  .rt-cell.future { background: transparent; border: 1px dashed var(--fm-line); min-height: 38px; }
+  .rt-legend { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11px; color: var(--fm-ink-3); margin: 12px 0 0; }
+  .rt-legend-bar { width: 120px; height: 8px; border-radius: 999px; background: linear-gradient(90deg, var(--fm-surface-2), var(--fm-primary)); }
+  .rt-legend-future { width: 16px; height: 10px; border-radius: 3px; border: 1px dashed var(--fm-line); margin-left: 8px; }
   .rt-cell.empty { background: var(--fm-surface-3); color: var(--fm-ink-3); font-weight: 500; }
 
   @media (max-width: 900px) {
@@ -54,7 +58,7 @@
     <h3 style="font-size:15px;font-weight:700;margin:0"><i class="fa-solid fa-table-cells"></i> Fastholdelsestrekant</h3>
     <p style="font-size:12.5px;color:var(--fm-ink-2);margin:3px 0 14px">
       Hver række er en kohorte (måned for første ordre). Kolonnerne M0–M{{ retention.max_offset }} viser antal måneder efter første ordre (M0 = første ordremåned) —
-      andelen af kohorten der gennemførte mindst ét kursus i den måned.
+      andelen af kohorten der gennemførte mindst ét kursus i den måned. Stiplede felter er måneder, kohorten endnu ikke har nået.
     </p>
     <div class="rt-matrix-wrap">
       <table class="rt-matrix">
@@ -71,12 +75,14 @@
             {% for r in c.retention %}
             {% set pct = r.pct %}
             <td>
-              {% if r.count > 0 %}
+              {% if r.future %}
+              <div class="rt-cell future" title="Måneden er ikke nået endnu"></div>
+              {% elif r.count > 0 %}
               <div class="rt-cell" style="background:color-mix(in srgb, var(--fm-primary) {{ [pct, 100]|min }}%, var(--fm-surface-2)); color:{{ '#fff' if pct >= 55 else 'var(--fm-ink)' }}">
                 {{ pct|dknum }}%<small>{{ r.count }}</small>
               </div>
               {% else %}
-              <div class="rt-cell empty">–</div>
+              <div class="rt-cell empty">0%</div>
               {% endif %}
             </td>
             {% endfor %}
@@ -85,11 +91,46 @@
         </tbody>
       </table>
     </div>
+    <div class="rt-legend" aria-hidden="true"><span>0%</span><span class="rt-legend-bar"></span><span>100%</span><span class="rt-legend-future"></span><span>Ikke nået endnu</span></div>
     {% if retention.anon_note %}
     <p style="font-size:11.5px;color:var(--fm-ink-3);margin:14px 0 0"><i class="fa-solid fa-user-shield"></i> {{ retention.anon_note }}</p>
     {% endif %}
   </div>
 
+
+  <div class="fm-card" style="margin-top:16px;padding:18px">
+    <h3 style="font-size:15px;font-weight:700;margin:0"><i class="fa-solid fa-chart-line"></i> Gennemsnitlig fastholdelseskurve</h3>
+    <p style="font-size:12.5px;color:var(--fm-ink-2);margin:3px 0 12px">Andel af alle viste kohorter der gennemførte et kursus i måned M0, M1, … efter første ordre — vægtet efter kohortestørrelse og kun med måneder, kohorterne faktisk har nået.</p>
+    <div class="fm-chart-wrap sm"><canvas id="rtCurveChart" role="img" aria-label="Linjediagram: gennemsnitlig andel af kohorterne der gennemfører et kursus pr. måned efter første ordre, i procent"></canvas></div>
+  </div>
+
   {% endif %}
 </div>
+{% endblock %}
+{% block extra_scripts %}{% include 'fm/_charts.html' %}
+<script>
+(function () {
+  if (typeof FMChart === 'undefined' || !document.getElementById('rtCurveChart')) return;
+  // Size-weighted share per month offset, using only cells a cohort has reached
+  // (future months are excluded rather than counted as 0%).
+  var cohorts = {{ (retention.cohorts if retention else [])|tojson }};
+  var offsets = {{ (offsets or [])|tojson }};
+  var data = offsets.map(function (off) {
+    var hit = 0, base = 0;
+    cohorts.forEach(function (c) {
+      var cell = (c.retention || [])[off];
+      if (!cell || cell.future) return;
+      hit += Number(cell.count) || 0;
+      base += Number(c.size) || 0;
+    });
+    return base ? Math.round(hit / base * 1000) / 10 : null;  // not reached by any cohort yet
+  });
+  FMChart.line('rtCurveChart', {
+    labels: offsets.map(function (o) { return 'M' + o; }),
+    series: [{ label: 'Andel der gennemfører (%)', data: data, color: FMChart.cssVar('--fm-primary', '#0f766e') }],
+    max: 100, fill: false,
+    empty: 'For lidt historik til en kurve endnu'
+  });
+})();
+</script>
 {% endblock %}

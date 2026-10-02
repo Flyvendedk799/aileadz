@@ -3,7 +3,7 @@
 {% block title %}Kreditter{% endblock %}
 {% block topbar_title %}Tildel kreditter{% endblock %}
 {% block topbar_sub %}En kontrolleret formular til manuelle kreditjusteringer.{% endblock %}
-{% from 'fm/_macros.html' import empty %}
+{% from 'fm/_macros.html' import empty, related %}
 {% block extra_head %}
 <style>
   .cr-split { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; align-items: start; }
@@ -14,6 +14,7 @@
 {% block content %}
 <div class="fm-wrap">
 {% set active_admin_page = 'credits' %}{% include 'fm/_admin_subnav.html' %}
+{{ related([('Kreditter pr. virksomhed', url_for('credits.admin_company_credits') if has_endpoint('credits.admin_company_credits') else '', 'fa-building')]) }}
 
   <div class="cr-split">
     <div class="fm-card">

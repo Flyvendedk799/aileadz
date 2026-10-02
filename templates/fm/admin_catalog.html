@@ -1,4 +1,5 @@
 {% extends "fm_base.html" %}
+{% import 'fm/_macros.html' as ui %}
 {% block page_id %}acatalog{% endblock %}
 {% block title %}Katalogadmin{% endblock %}
 {% block topbar_title %}Katalogadmin{% endblock %}
@@ -18,6 +19,7 @@
 {% block content %}
 <div class="fm-wrap">
 {% set active_admin_page = 'catalog' %}{% include 'fm/_admin_subnav.html' %}
+{{ ui.related([('Kursusoversigt', url_for('catalog_admin.products') if has_endpoint('catalog_admin.products') else '', 'fa-list')]) }}
 
   <div class="fm-card" style="margin-bottom:16px">
     <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-database"></i></span><h3>Søgeindeks</h3>

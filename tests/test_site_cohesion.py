@@ -290,6 +290,22 @@ class ActiveStateTests(unittest.TestCase):
         self._check("/admin/users", "/admin/users", "/admin/users", page_id="admin", subnav="admin", role="admin")
         self._check("/companies/admin/3", "/companies/admin", "/companies/admin", page_id="", subnav="admin",
                     role="admin")
+        # Secondary admin pages light their parent entry (they carry no tab bar of their own).
+        self._check("/admin/ai-quality", "/admin/ai-quality", "/admin/ai-quality", page_id="aiquality",
+                    subnav="admin", role="admin")
+        self._check("/admin/catalog/products", "/admin/catalog", "/admin/catalog", page_id="acatalog",
+                    subnav="admin", role="admin")
+        self._check("/admin/credits/companies", "/admin/credits", "/admin/credits", page_id="ausers",
+                    subnav="admin", role="admin")
+
+    def test_admin_pages_use_the_shared_admin_subnav(self):
+        import glob
+        for path in sorted(glob.glob(os.path.join(TEMPLATES, "fm", "admin_*.html"))):
+            src = open(path, encoding="utf-8").read()
+            self.assertNotIn('class="pg-subnav"', src,
+                             f"{os.path.basename(path)} has its own tab bar; include fm/_admin_subnav.html")
+        for name in ("admin_ai_quality.html", "admin_catalog_products.html", "admin_credits_companies.html"):
+            self.assertIn("{% include 'fm/_admin_subnav.html' %}", _src("fm/" + name), name)
 
     def test_page_id_fallback_outside_a_known_route(self):
         # The /ui design gallery renders pages outside their route; the page id decides.

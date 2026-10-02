@@ -1,9 +1,10 @@
 {% extends "fm_base.html" %}
 {% block page_id %}hr{% endblock %}
-{% block title %}Futurematch{% endblock %}
+{% block title %}Leverandørstyring · Futurematch{% endblock %}
 {% block topbar_title %}Leverandørstyring{% endblock %}
 {% block topbar_sub %}{{ vendors|length }} leverandør{{ 'er' if vendors|length != 1 else '' }} · aktivér kurser for medarbejdere.{% endblock %}
 {% block content %}
+{% set can_manage = can('hr.manage') %}
 <div class="fm-wrap">
 {% set active_hr_page = 'suppliers' %}{% include 'fm/_hr_subnav.html' %}
 
@@ -13,11 +14,12 @@
 
   <div class="kpi-row k4">
     <div class="kpi-tile"><div class="kl">Leverandører i alt</div><div class="kv tnum">{{ vendors|length }}</div></div>
-    <div class="kpi-tile"><div class="kl">Aktive</div><div class="kv tnum" style="color:var(--fm-success)">{{ active_vendors }}</div></div>
-    <div class="kpi-tile"><div class="kl">Deaktiverede</div><div class="kv tnum" style="color:var(--fm-danger)">{{ deactivated_vendors }}</div></div>
+    <div class="kpi-tile"><div class="kl">Aktive</div><div class="kv tnum" id="kpiActive" style="color:var(--fm-success)">{{ active_vendors }}</div></div>
+    <div class="kpi-tile"><div class="kl">Deaktiverede</div><div class="kv tnum" id="kpiInactive" style="color:var(--fm-danger)">{{ deactivated_vendors }}</div></div>
     <div class="kpi-tile"><div class="kl">Rabataftaler</div><div class="kv tnum">{{ agreements_count or 0 }}</div></div>
   </div>
 
+  {% if vendors %}
   <div class="fm-card" style="padding:14px 16px;margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
     <input type="text" class="fm-input" id="vendorSearch" placeholder="Søg leverandør..." style="flex:2;min-width:180px">
     <select class="fm-input" id="vendorFilter" style="flex:1;min-width:140px">
@@ -25,28 +27,30 @@
       <option value="active">Kun aktive</option>
       <option value="inactive">Kun deaktiverede</option>
     </select>
-    <div class="fm-flex fm-gap8" style="margin-left:auto">
+    {% if can_manage %}<div class="fm-flex fm-gap8" style="margin-left:auto">
       <button class="btn btn-ghost btn-sm" onclick="bulkToggle(1)"><i class="fa-solid fa-check-double"></i> Aktivér alle</button>
       <button class="btn btn-ghost btn-sm" style="color:var(--fm-danger)" onclick="bulkToggle(0)"><i class="fa-solid fa-ban"></i> Deaktivér alle</button>
-    </div>
+    </div>{% endif %}
   </div>
+  <p id="vendorNone" class="muted" style="display:none;text-align:center;padding:18px 0">Ingen leverandører matcher din søgning.</p>
+  {% endif %}
 
   {% if vendors %}
   <div class="fm-grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))" id="vendorList">
     {% for vendor in vendors %}
     <div class="vendor-item" data-name="{{ vendor.name|lower }}" data-active="{{ vendor.is_active }}">
-      <div class="fm-card vendor-card" style="padding:18px;display:flex;flex-direction:column;gap:11px;{{ 'opacity:.6' if not vendor.is_active }}">
+      <div class="fm-card vendor-card" style="padding:18px;display:flex;flex-direction:column;gap:11px">
         <div class="fm-spread">
-          <div>
+          <div class="vendor-info" style="{{ 'opacity:.6' if not vendor.is_active }}">
             <h3 style="font-size:15px;font-weight:700">{{ vendor.name }}</h3>
-            <div style="font-size:12px;color:var(--fm-ink-3)">{{ vendor.course_count }} kurser tilgængelige</div>
+            <div style="font-size:12px;color:var(--fm-ink-3)">{{ vendor.course_count }} {{ 'kursus' if vendor.course_count == 1 else 'kurser' }} tilgængelig{{ 't' if vendor.course_count == 1 else 'e' }}</div>
           </div>
           <label class="fm-switch" style="cursor:pointer">
-            <input type="checkbox" class="vendor-toggle" data-vendor="{{ vendor.name }}" {% if vendor.is_active %}checked{% endif %} onchange="toggleVendor(this)">
+            <input type="checkbox" class="vendor-toggle" data-vendor="{{ vendor.name }}" aria-label="{{ vendor.name }} er aktiv for medarbejdere" {% if vendor.is_active %}checked{% endif %}{% if not can_manage %} disabled{% endif %} onchange="toggleVendor(this)">
             <span class="fm-switch-track"></span>
           </label>
         </div>
-        {% if vendor.notes %}<div style="font-size:12px;color:var(--fm-ink-2)"><i class="fa-solid fa-note-sticky"></i> {{ vendor.notes }}</div>{% endif %}
+        {% if vendor.notes %}<div class="vendor-info" style="font-size:12px;color:var(--fm-ink-2);{{ 'opacity:.6' if not vendor.is_active }}"><i class="fa-solid fa-note-sticky"></i> {{ vendor.notes }}</div>{% endif %}
         <a class="btn btn-soft btn-sm" style="margin-top:auto" href="{{ url_for('catalog.vendor_detail', slug=vendor.slug) }}" target="_blank"><i class="fa-solid fa-up-right-from-square"></i> Se leverandørside</a>
       </div>
     </div>
@@ -68,6 +72,8 @@
 .fm-switch-track{display:block;width:42px;height:24px;border-radius:999px;background:var(--fm-line-2);position:relative;transition:var(--t,.2s)}
 .fm-switch-track::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:999px;background:#fff;transition:var(--t,.2s)}
 .fm-switch input:checked + .fm-switch-track{background:var(--fm-primary)}
+.fm-switch input:focus-visible + .fm-switch-track{outline:2px solid var(--fm-primary);outline-offset:2px}
+.fm-switch input:disabled + .fm-switch-track{opacity:.5}
 .fm-switch input:checked + .fm-switch-track::after{transform:translateX(18px)}
 </style>
 {% endblock %}
@@ -83,13 +89,14 @@ function toggleVendor(checkbox) {
     body: JSON.stringify({ vendor_name: vendorName, is_active: isActive })
   }).then(r => r.json()).then(data => {
     if (data.success) {
-      card.style.opacity = isActive ? '' : '.6';
+      card.querySelectorAll('.vendor-info').forEach(el => { el.style.opacity = isActive ? '' : '.6'; });
       checkbox.closest('.vendor-item').dataset.active = isActive;
+      updateKpis();
     } else {
       checkbox.checked = !checkbox.checked;
       alert('Fejl: ' + (data.message || 'Ukendt fejl'));
     }
-  }).catch(() => { checkbox.checked = !checkbox.checked; });
+  }).catch(() => { checkbox.checked = !checkbox.checked; alert('Netværksfejl. Prøv igen.'); });
 }
 function bulkToggle(isActive) {
   const allNames = Array.from(document.querySelectorAll('.vendor-toggle')).map(cb => cb.dataset.vendor);
@@ -100,8 +107,14 @@ function bulkToggle(isActive) {
     body: JSON.stringify({ vendor_names: allNames, is_active: isActive })
   }).then(r => r.json()).then(data => {
     if (data.success) location.reload();
-    else alert('Fejl: ' + (data.message || ''));
-  });
+    else alert('Fejl: ' + (data.message || 'Kunne ikke opdatere leverandørerne'));
+  }).catch(() => alert('Netværksfejl. Prøv igen.'));
+}
+function updateKpis() {
+  const all = document.querySelectorAll('.vendor-toggle');
+  const on = Array.from(all).filter(cb => cb.checked).length;
+  document.getElementById('kpiActive').textContent = on;
+  document.getElementById('kpiInactive').textContent = all.length - on;
 }
 const _vs = document.getElementById('vendorSearch');
 const _vf = document.getElementById('vendorFilter');
@@ -110,13 +123,16 @@ if (_vf) _vf.addEventListener('change', filterVendors);
 function filterVendors() {
   const q = _vs.value.toLowerCase();
   const filter = _vf.value;
+  let shown = 0;
   document.querySelectorAll('.vendor-item').forEach(el => {
     const nameMatch = el.dataset.name.includes(q);
     const statusMatch = filter === 'all' ||
       (filter === 'active' && el.dataset.active === '1') ||
       (filter === 'inactive' && el.dataset.active === '0');
     el.style.display = nameMatch && statusMatch ? '' : 'none';
+    if (nameMatch && statusMatch) shown++;
   });
+  document.getElementById('vendorNone').style.display = shown ? 'none' : '';
 }
 </script>
 {% endblock %}

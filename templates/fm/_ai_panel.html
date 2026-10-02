@@ -8,16 +8,16 @@
    Only renders for HR-capable users. The JS self-guards against a duplicate #fmAip. #}
 {% if session is defined and (session.get('company_role') in ['company_admin','hr_manager','department_head'] or session.get('role') == 'admin') %}
 <div class="fm-aip" id="fmAip" aria-live="polite" data-aip-page="{{ active_hr_page | default('') }}">
-  <button type="button" class="fm-aip-fab" id="fmAipFab" aria-label="HR AI-assistent">
+  <button type="button" class="fm-aip-fab" id="fmAipFab" aria-label="HR AI-assistent" aria-expanded="false" aria-controls="fmAipPanel">
     <i class="fa-solid fa-robot"></i><span>HR AI</span>
   </button>
-  <section class="fm-aip-panel" id="fmAipPanel" hidden>
+  <section class="fm-aip-panel" id="fmAipPanel" role="dialog" aria-label="HR AI-assistent" hidden style="display:none">
     <header class="fm-aip-head">
       <span><i class="fa-solid fa-robot"></i> HR AI-assistent</span>
       <span class="fm-aip-hist">
         <button type="button" id="fmAipNew" title="Ny samtale" aria-label="Ny samtale"><i class="fa-solid fa-rotate-right"></i></button>
-        <a href="{{ url_for('hr_dashboard.hr_chatbot') }}" title="Åbn i fuld skærm" aria-label="Åbn i fuld skærm" style="color:#fff"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></a>
-        <button type="button" class="fm-aip-x" id="fmAipClose" aria-label="Luk"><i class="fa-solid fa-xmark"></i></button>
+        <a href="{{ url_for('hr_dashboard.hr_chatbot') }}" title="Åbn i fuld skærm" aria-label="Åbn i fuld skærm"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></a>
+        <button type="button" class="fm-aip-x" id="fmAipClose" title="Luk" aria-label="Luk"><i class="fa-solid fa-xmark"></i></button>
       </span>
     </header>
     <div class="fm-aip-body" id="fmAipBody">
@@ -65,6 +65,7 @@
     compliance: ['Hvem mangler compliance?', 'Hvilke krav udløber snart?'],
     skill_gaps: ['Største kompetencegap lige nu?', 'Hvilke afdelinger har størst gap?'],
     suppliers:  ['Hvilke leverandører bruger vi mest?', 'Hvilke aftaler udløber snart?'],
+    internal_courses: ['Hvilke interne kurser bruges mest?', 'Hvilke obligatoriske kurser mangler folk?'],
     learning_paths: ['Hvilke forløb halter?', 'Hvem er bagud på deadlines?'],
     learning_analytics: ['Hvornår lærer folk mest?', 'Hvilke kurser er mest populære?'],
     approvals:  ['Hvilke ordrer afventer godkendelse?', 'Hvad bør jeg prioritere?'],
@@ -101,9 +102,19 @@
       j.messages.forEach(function (m) { addMsg(m.role === 'user' ? 'user' : 'bot', m.content); });
     }).catch(function () {});
   }
-  function toggle(open) { panel.hidden = !open; if (open) { restore(); setTimeout(function () { input.focus(); }, 50); } }
+  // Visibility is driven from here as well as by [hidden]: an inline display wins over any cached
+  // stylesheet that sets display:flex on the panel, so the close button always closes it.
+  function toggle(open) {
+    panel.hidden = !open;
+    panel.style.display = open ? '' : 'none';
+    fab.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) { restore(); setTimeout(function () { input.focus(); }, 50); }
+  }
   fab.addEventListener('click', function () { toggle(panel.hidden); });
-  closeb.addEventListener('click', function () { toggle(false); });
+  closeb.addEventListener('click', function () { toggle(false); fab.focus(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !panel.hidden) { toggle(false); fab.focus(); }
+  });
   newb.addEventListener('click', function () {
     if (busy) return;
     fetch(RESET, { method: 'POST', credentials: 'same-origin' }).then(function () {

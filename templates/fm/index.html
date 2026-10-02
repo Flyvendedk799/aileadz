@@ -50,6 +50,8 @@
     border: 1px solid var(--fm-line); background: var(--fm-surface); box-shadow: var(--sh-sm);
     transition: transform var(--t), box-shadow var(--t), border-color var(--t);
   }
+  a.kpi { display: block; color: inherit; text-decoration: none; }
+  a.kpi:focus-visible { outline: 2px solid var(--fm-primary); outline-offset: 2px; }
   .kpi:hover { transform: translateY(-2px); box-shadow: var(--sh-md); border-color: var(--fm-line-2); }
   .kpi-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
   .kpi-ic { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; font-size: 15px; }
@@ -100,12 +102,14 @@
 </style>
 {% endblock %}
 {% block content %}
+{# Same balance the top-bar chip shows (company balance for company users). #}
+{% set _credits = credit_chip().balance if credit_chip is defined else 0 %}
 <div class="fm-wrap">
 
         <!-- Hero -->
         <section class="dash-hero">
           <div class="hero-panel" data-reveal data-d="1">
-            <span class="fm-eyebrow"><i class="fa-solid fa-grip"></i> Futurematch workspace</span>
+            <span class="fm-eyebrow"><i class="fa-solid fa-grip"></i> Futurematch arbejdsrum</span>
             <h1 class="hero-title">Styr læring, mennesker og <em>indsigt</em> i én flade.</h1>
             <p class="hero-copy">Gå direkte til kursuskatalog, HR-workspace, rapporter og godkendelser — uden unødig navigation. Bygget til hurtige beslutninger.</p>
             <div class="hero-actions">
@@ -123,11 +127,11 @@
             <div class="status-card" data-reveal data-d="3">
               <span class="lab">Workspace</span>
               <span class="val">{{ session.get('company_name', 'Futurematch') }}</span>
-              <span class="note">{{ (kpis.role_label if kpis else 'Bruger') }}{% if session.get('company_role') %} · {{ session.get('company_role') }}{% endif %}</span>
+              <span class="note">{{ (kpis.role_label if kpis else 'Bruger') }}</span>
             </div>
             <div class="status-card" data-reveal data-d="4">
               <span class="lab">Kreditter</span>
-              <span class="val tnum">{{ session.get('credits', 0) }}</span>
+              <span class="val tnum">{{ _credits|dknum }}</span>
               <span class="note">Opdateres automatisk</span>
             </div>
           </div>
@@ -141,34 +145,34 @@
           </div>
         </div>
         <section class="kpi-grid">
-          <article class="kpi" data-reveal data-d="1">
+          <a class="kpi" data-reveal data-d="1" href="{{ url_for('pages.notifications') }}" title="Åbn notifikationer">
             <div class="kpi-top"><span class="kpi-ic clay"><i class="fa-solid fa-bell"></i></span><span class="fm-badge">Indbakke</span></div>
             <div class="kpi-val tnum">{{ kpis.unread_notifications if kpis else 0 }}</div>
             <div class="kpi-lab">Ulæste notifikationer</div>
             <div class="kpi-foot">
               <svg class="spark" width="74" height="26" viewBox="0 0 74 26" fill="none" role="img" aria-label="Udvikling seneste 7 dage"><polyline points="{{ spark_poly((extras.sparks.get('notifications') if extras and extras.sparks else None)) }}" stroke="var(--fm-clay)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          </article>
-          <article class="kpi" data-reveal data-d="2">
+          </a>
+          <a class="kpi" data-reveal data-d="2" href="{{ url_for('hr_dashboard.pending_approvals') }}" title="Gå til godkendelser">
             <div class="kpi-top"><span class="kpi-ic teal"><i class="fa-solid fa-clipboard-check"></i></span><span class="fm-badge amber dot">Afventer</span></div>
             <div class="kpi-val tnum">{{ (kpis.pending_approvals if kpis and kpis.pending_approvals is not none else 0) }}</div>
             <div class="kpi-lab">Ordrer afventer godkendelse</div>
             <div class="kpi-foot">
               <svg class="spark" width="74" height="26" viewBox="0 0 74 26" fill="none" role="img" aria-label="Udvikling seneste 7 dage"><polyline points="{{ spark_poly((extras.sparks.get('approvals') if extras and extras.sparks else None)) }}" stroke="var(--fm-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          </article>
-          <article class="kpi" data-reveal data-d="3">
+          </a>
+          <a class="kpi" data-reveal data-d="3" href="{{ url_for('hr_dashboard.dashboard') }}" title="Se ordrer i HR-workspace">
             <div class="kpi-top"><span class="kpi-ic indigo"><i class="fa-solid fa-graduation-cap"></i></span><span class="fm-badge indigo">Læring</span></div>
             <div class="kpi-val tnum">{{ (kpis.catalog_tools if kpis and kpis.catalog_tools is not none else 0) }}</div>
             <div class="kpi-lab">Kursusordrer i alt</div>
             <div class="kpi-foot">
               <svg class="spark" width="74" height="26" viewBox="0 0 74 26" fill="none" role="img" aria-label="Udvikling seneste 7 dage"><polyline points="{{ spark_poly((extras.sparks.get('orders') if extras and extras.sparks else None)) }}" stroke="var(--fm-indigo)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          </article>
-          <article class="kpi" data-reveal data-d="4">
+          </a>
+          <a class="kpi" data-reveal data-d="4" href="{{ url_for('pages.analytics') }}" title="Se kreditforbrug">
             <div class="kpi-top"><span class="kpi-ic gold"><i class="fa-solid fa-coins"></i></span><span class="fm-badge">Forbrug</span></div>
-            <div class="kpi-val tnum">{{ session.get('credits', 0) }}</div>
+            <div class="kpi-val tnum">{{ _credits|dknum }}</div>
             <div class="kpi-lab">Tilgængelige kreditter</div>
             <div class="kpi-foot">
               <svg class="spark" width="74" height="26" viewBox="0 0 74 26" fill="none" role="img" aria-label="Udvikling seneste 7 dage"><polyline points="{{ spark_poly((extras.sparks.get('credits') if extras and extras.sparks else None)) }}" stroke="var(--fm-gold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          </article>
+          </a>
         </section>
 
         <!-- Tools -->
@@ -179,7 +183,7 @@
           </div>
           <label class="fm-search" style="width:280px">
             <i class="fa-solid fa-magnifying-glass"></i>
-            <input type="search" id="toolSearch" placeholder="Søg i værktøjer og rapporter" aria-label="Søg i værktøjer" />
+            <input type="search" id="toolSearch" placeholder="Søg i genveje" aria-label="Søg i genveje" />
           </label>
         </div>
         <section class="tool-grid">
@@ -204,6 +208,7 @@
             <div class="tool-foot"><span class="tag">BI</span><span class="tool-arrow"><i class="fa-solid fa-arrow-right"></i></span></div>
           </a>
         </section>
+        <p id="toolEmpty" hidden style="color:var(--fm-ink-3);font-size:13.5px;margin:4px 0 0">Ingen værktøjer matcher din søgning. Prøv et andet ord, eller ryd feltet.</p>
 
         <!-- Lower: activity + quick stats -->
         <div class="fm-section-head"><div><span class="fm-eyebrow"><i class="fa-solid fa-wave-square"></i> Lige nu</span><h2 class="fm-section-title">Seneste aktivitet</h2></div></div>
@@ -251,7 +256,14 @@
   var tools = Array.from(document.querySelectorAll('.tool-grid .tool'));
   box.addEventListener('input', function () {
     var q = box.value.trim().toLowerCase();
-    tools.forEach(function (t) { t.style.display = (!q || t.textContent.toLowerCase().indexOf(q) !== -1) ? '' : 'none'; });
+    var shown = 0;
+    tools.forEach(function (t) {
+      var ok = (!q || t.textContent.toLowerCase().indexOf(q) !== -1);
+      t.style.display = ok ? '' : 'none';
+      if (ok) shown += 1;
+    });
+    var empty = document.getElementById('toolEmpty');
+    if (empty) empty.hidden = shown > 0;
   });
 })();
 </script>

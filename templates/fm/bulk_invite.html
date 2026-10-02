@@ -10,7 +10,7 @@
   {% if step == 'upload' %}
   <div class="fm-card" style="max-width:720px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-file-csv"></i></span><h3>Vælg en fil</h3></div>
   <div class="fm-card-body">
-    <p style="font-size:13.5px;color:var(--fm-ink-2);margin-top:0">Filen skal have en overskriftsrække med <strong>navn</strong> og <strong>email</strong>. Afdeling, stilling og rolle er valgfrie. Alle nye personer får en e-mail, hvor de selv vælger en adgangskode.</p>
+    <p style="font-size:13.5px;color:var(--fm-ink-2);margin-top:0">Filen skal have en overskriftsrække med <strong>navn</strong> og <strong>email</strong>. Afdeling, stilling og rolle er valgfrie. Rolle skrives som <strong>employee</strong> (medarbejder), <strong>department_head</strong> (afdelingsleder) eller <strong>hr_manager</strong>; tom betyder medarbejder. Alle nye personer får en e-mail, hvor de selv vælger en adgangskode.</p>
     <form method="post" enctype="multipart/form-data">
       <input type="hidden" name="action" value="preview">
       <input class="fm-input" type="file" name="file" accept=".csv,text/csv" required>
@@ -30,7 +30,7 @@
     <div class="fm-table-wrap" style="border:0;box-shadow:none"><table class="fm-table">
       <thead><tr><th>Linje</th><th>Navn</th><th>E-mail</th><th>Afdeling</th><th>Rolle</th><th>Status</th></tr></thead>
       <tbody>{% for r in rows %}<tr>
-        <td>{{ r.line }}</td><td>{{ r.name }}</td><td>{{ r.email }}</td><td>{{ r.department or '-' }}</td><td>{{ r.role }}</td>
+        <td>{{ r.line }}</td><td>{{ r.name }}</td><td>{{ r.email }}</td><td>{{ r.department or '-' }}</td><td>{{ {'employee':'Medarbejder','department_head':'Afdelingsleder','hr_manager':'HR Manager'}.get(r.role, r.role) }}</td>
         <td>{% if r.problem %}<span class="fm-badge red">{{ r.problem }}</span>{% else %}<span class="fm-badge green">Klar</span>{% endif %}</td>
       </tr>{% endfor %}</tbody></table></div>
     <form method="post" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">

@@ -1,7 +1,7 @@
 {% extends "fm_base.html" %}
 {% block page_id %}hr{% endblock %}
-{% block title %}Godkendelsespolitik · Futurematch{% endblock %}
-{% block topbar_title %}Godkendelsespolitik{% endblock %}
+{% block title %}Auto-godkendelse · Futurematch{% endblock %}
+{% block topbar_title %}Auto-godkendelse{% endblock %}
 {% block topbar_sub %}Automatisk godkendelse af kursusbestillinger under en grænse.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
@@ -39,9 +39,9 @@
   {% if policies %}
   <div class="fm-grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr))">
     {% for p in policies %}
-    <div class="fm-card" style="padding:18px;display:flex;flex-direction:column;gap:10px;{{ 'opacity:.6' if not p.is_active }}">
+    <div class="fm-card" style="padding:18px;display:flex;flex-direction:column;gap:10px">
       <div class="fm-spread">
-        <div>
+        <div style="{{ 'opacity:.6' if not p.is_active }}">
           <h3 style="font-size:15px;font-weight:700">
             {% if p.department %}{{ p.department }}{% else %}Hele virksomheden{% endif %}
           </h3>
@@ -62,7 +62,7 @@
           </form>
         </div>
       </div>
-      <div class="fm-flex fm-gap8" style="flex-wrap:wrap">
+      <div class="fm-flex fm-gap8" style="flex-wrap:wrap;{{ 'opacity:.6' if not p.is_active }}">
         <span class="fm-badge green dot"><i class="fa-solid fa-circle-check"></i> Auto-godkend ≤ {{ p.auto_approve_under|int }} kr</span>
         {% if p.require_approval_over is not none %}
         <span class="fm-badge amber dot"><i class="fa-solid fa-hand"></i> Kræv godkendelse ≥ {{ p.require_approval_over|int }} kr</span>

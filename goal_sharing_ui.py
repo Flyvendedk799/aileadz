@@ -42,7 +42,7 @@ def _row(cur):
 def employee_in_company(cur, company_id, user_id):
     cur.execute(
         "SELECT user_id, username, full_name FROM company_users "
-        "WHERE company_id = %s AND user_id = %s AND status = 'active' LIMIT 1",
+        "WHERE company_id = %s AND user_id = %s LIMIT 1",
         (company_id, user_id),
     )
     return _row(cur)

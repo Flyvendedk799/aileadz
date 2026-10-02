@@ -57,6 +57,14 @@ class GoalSharingTests(unittest.TestCase):
         self.assertIsNotNone(gs.employee_in_company(self.cur, 7, 1))
         self.assertIsNone(gs.employee_in_company(self.cur, 7, 3))
 
+    def test_employee_lookup_includes_deactivated_people(self):
+        # The goals page is linked from every employee profile; an inactive person
+        # used to resolve to None and the template crashed with a 500.
+        self.db.execute("INSERT INTO users (id, username) VALUES (4, 'gone')")
+        self.db.execute("INSERT INTO company_users (company_id, user_id, username, role, status) "
+                        "VALUES (7, 4, 'gone', 'employee', 'inactive')")
+        self.assertIsNotNone(gs.employee_in_company(self.cur, 7, 4))
+
     def test_learner_ai_context_only_reads_shared_goals(self):
         src = open(os.path.join(os.path.dirname(__file__), "..", "learner_context.py"), encoding="utf-8").read()
         self.assertIn("shared_with_employee = 1", src)

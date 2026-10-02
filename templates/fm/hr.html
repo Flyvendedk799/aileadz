@@ -1,7 +1,7 @@
 {% extends "fm_base.html" %}
 {% import 'fm/_macros.html' as ui %}
 {% block page_id %}hr{% endblock %}
-{% block title %}Futurematch{% endblock %}
+{% block title %}HR-workspace · Futurematch{% endblock %}
 {% block topbar_title %}HR-workspace{% endblock %}
 {% block topbar_sub %}{{ company.company_name if company else 'Virksomhed' }} · medarbejdere, kompetencer, læring og AI-aktivitet.{% endblock %}
 {% block extra_head %}
@@ -87,18 +87,18 @@
         <!-- KPIs -->
         <section class="hr-kpis">
           <article class="hr-kpi teal" data-reveal data-d="1"><span class="ic"><i class="fa-solid fa-users"></i></span><div><div class="lab">Medarbejdere</div><div class="val tnum">{{ m.total_employees or 0 }}</div><div class="det">{{ m.active_employees or 0 }} aktive · {{ m.new_hires_30_days or 0 }} nye (30 d)</div></div></article>
-          <a class="hr-kpi green" href="{{ url_for('hr_dashboard.learning_paths') }}" data-reveal data-d="2"><span class="ic"><i class="fa-solid fa-graduation-cap"></i></span><div><div class="lab">Læringsfremdrift <i class="fa-solid fa-arrow-right"></i></div><div class="val tnum">{{ completion_rate or 0 }}%</div><div class="det">{{ lm.completed_courses or 0 }} gennemført · {{ lm.in_progress_courses or 0 }} i gang</div></div></a>
+          <a class="hr-kpi green" href="{{ url_for('hr_dashboard.learning_paths') }}" data-reveal data-d="2"><span class="ic"><i class="fa-solid fa-graduation-cap"></i></span><div><div class="lab">Læringsfremdrift <i class="fa-solid fa-arrow-right"></i></div><div class="val tnum">{{ (completion_rate or 0)|dknum }}%</div><div class="det">{{ lm.completed_courses or 0 }} gennemført · {{ lm.in_progress_courses or 0 }} i gang</div></div></a>
           <a class="hr-kpi indigo" href="{{ url_for('hr_dashboard.pending_approvals') }}" data-reveal data-d="3"><span class="ic"><i class="fa-solid fa-cart-shopping"></i></span><div><div class="lab">Kursusordrer <i class="fa-solid fa-arrow-right"></i></div><div class="val tnum">{{ lm.total_enrollments or 0 }}</div><div class="det">{{ completed_orders_count or 0 }} gennemført · {{ pending_orders_count or 0 }} afventer</div></div></a>
-          <a class="hr-kpi clay" href="{{ url_for('hr_dashboard.roi_dashboard') }}" data-reveal data-d="4"><span class="ic"><i class="fa-solid fa-chart-line"></i></span><div><div class="lab">Uddannelsesforbrug <i class="fa-solid fa-arrow-right"></i></div><div class="val tnum">{{ '{:,.0f}'.format(roi_total_spend or 0) }}</div><div class="det">{{ conversion_rate or 0 }}% konvertering · {{ total_chatbot_queries or 0 }} samtaler</div></div></a>
+          <a class="hr-kpi clay" href="{{ url_for('hr_dashboard.roi_dashboard') }}" data-reveal data-d="4"><span class="ic"><i class="fa-solid fa-chart-line"></i></span><div><div class="lab">Uddannelsesforbrug <i class="fa-solid fa-arrow-right"></i></div><div class="val tnum">{{ (roi_total_spend or 0)|dknum(0) }}</div><div class="det">{{ (conversion_rate or 0)|dknum }}% konvertering · {{ total_chatbot_queries or 0 }} samtaler</div></div></a>
         </section>
 
         {% set dh = dashboard_health or {} %}
         <!-- Signals -->
         <section class="signal-strip">
-          <div class="signal" data-reveal data-d="1"><div class="lab">Aktiv base</div><div class="val tnum">{{ dh.active_employee_rate or 0 }}%</div><div class="det">{{ m.active_employees or 0 }} aktive af {{ m.total_employees or 0 }}</div><div class="fm-prog"><span style="width:{{ dh.active_employee_rate or 0 }}%"></span></div></div>
-          <div class="signal" data-reveal data-d="2"><div class="lab">Kompetencedækning</div><div class="val tnum">{{ dh.skills_coverage_rate or 0 }}%</div><div class="det">{{ (skills_summary.employees_with_skills if skills_summary else 0) }} med registrerede kompetencer</div><div class="fm-prog"><span style="width:{{ dh.skills_coverage_rate or 0 }}%"></span></div></div>
-          <div class="signal" data-reveal data-d="3"><div class="lab">Læringsdeltagelse</div><div class="val tnum">{{ training_participation_rate or 0 }}%</div><div class="det">{{ lm.employees_with_training or 0 }} medarbejdere med kurser</div><div class="fm-prog"><span style="width:{{ training_participation_rate or 0 }}%"></span></div></div>
-          <div class="signal" data-reveal data-d="4"><div class="lab">AI-engagement</div><div class="val tnum">{{ engagement_rate or 0 }}%</div><div class="det">{{ (engagement_metrics.employees_using_chatbot if engagement_metrics else 0) }} bruger assistenten</div><div class="fm-prog"><span style="width:{{ engagement_rate or 0 }}%"></span></div></div>
+          <div class="signal" data-reveal data-d="1"><div class="lab">Aktiv base</div><div class="val tnum">{{ (dh.active_employee_rate or 0)|dknum }}%</div><div class="det">{{ m.active_employees or 0 }} aktive af {{ m.total_employees or 0 }}</div><div class="fm-prog"><span style="width:{{ dh.active_employee_rate or 0 }}%"></span></div></div>
+          <div class="signal" data-reveal data-d="2"><div class="lab">Kompetencedækning</div><div class="val tnum">{{ (dh.skills_coverage_rate or 0)|dknum }}%</div><div class="det">{{ (skills_summary.employees_with_skills if skills_summary else 0) }} med registrerede kompetencer</div><div class="fm-prog"><span style="width:{{ dh.skills_coverage_rate or 0 }}%"></span></div></div>
+          <div class="signal" data-reveal data-d="3"><div class="lab">Læringsdeltagelse</div><div class="val tnum">{{ (training_participation_rate or 0)|dknum }}%</div><div class="det">{{ lm.employees_with_training or 0 }} medarbejdere med kurser</div><div class="fm-prog"><span style="width:{{ training_participation_rate or 0 }}%"></span></div></div>
+          <div class="signal" data-reveal data-d="4"><div class="lab">AI-engagement</div><div class="val tnum">{{ (engagement_rate or 0)|dknum }}%</div><div class="det">{{ (engagement_metrics.employees_using_chatbot if engagement_metrics else 0) }} bruger assistenten</div><div class="fm-prog"><span style="width:{{ engagement_rate or 0 }}%"></span></div></div>
         </section>
 
         <!-- Approvals banner -->
@@ -118,12 +118,12 @@
         {% if _dp|length > 0 %}
         <section class="hr-charts">
           <div class="fm-card hr-chart-card" data-reveal data-d="1">
-            <div class="ch-head"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-layer-group"></i></span><h3>Kursusgennemførsel pr. afdeling</h3></div>
+            <div class="ch-head"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-layer-group"></i></span><h3>Kursusgennemførelse pr. afdeling</h3></div>
             <p>Gennemførte vs. igangværende kursusordrer fordelt på afdeling.</p>
             <div class="hr-chart-wrap"><canvas id="hrDeptStacked" aria-label="Stablet søjlediagram: gennemførte og igangværende kursusordrer pr. afdeling" role="img"></canvas></div>
           </div>
           <div class="fm-card hr-chart-card" data-reveal data-d="2">
-            <div class="ch-head"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--fm-success) 14%,transparent);color:var(--fm-success)"><i class="fa-solid fa-chart-simple"></i></span><h3>Gennemførselsrate</h3></div>
+            <div class="ch-head"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--fm-success) 14%,transparent);color:var(--fm-success)"><i class="fa-solid fa-chart-simple"></i></span><h3>Gennemførelsesrate</h3></div>
             <p>Andel gennemførte kurser pr. afdeling (%).</p>
             <div class="hr-chart-wrap"><canvas id="hrDeptRate" aria-label="Søjlediagram: gennemførselsrate i procent pr. afdeling" role="img"></canvas></div>
           </div>
@@ -161,7 +161,7 @@
                 <a href="{{ url_for('hr_dashboard.billing_overview') }}" class="fm-badge teal">Se alle</a>
               </div>
             </div>
-            <table class="fm-table">
+            <div class="fm-table-wrap" style="border:0;box-shadow:none"><table class="fm-table">
               <thead><tr><th>Medarbejder</th><th>Afdeling</th><th>Kursus</th><th>Pris</th><th>Status</th><th></th></tr></thead>
               <tbody>
                 {% for o in (recent_orders or [])[:8] %}
@@ -170,7 +170,7 @@
                   <td><div class="fm-cell-user"><span class="fm-avatar">{{ (o.user_name or o.username or '?')[:2]|upper }}</span><div><div style="font-weight:650">{{ o.user_name or o.username or 'N/A' }}</div><div class="muted" style="font-size:11.5px">{{ o.user_email or '' }}</div></div></div></td>
                   <td><span class="fm-badge">{{ o.department or '—' }}</span></td>
                   <td>{{ o.product_title }}</td>
-                  <td class="mono">{{ o.price }}</td>
+                  <td class="mono">{{ o.price|dknum(0) }} kr</td>
                   <td>
                     <span class="fm-badge {{ order_status_tone(st) }} dot">{{ order_status_label(st, short=True) }}</span>
                   </td>
@@ -182,7 +182,7 @@
                 <tr><td colspan="6" class="muted" style="text-align:center;padding:20px">Ingen ordrer endnu.</td></tr>
                 {% endfor %}
               </tbody>
-            </table>
+            </table></div>
           </div>
 
           <div class="fm-grid" style="gap:16px">
@@ -213,7 +213,7 @@
         <!-- Skills -->
         {% set ss = skills_summary or {} %}
         <div class="fm-card" data-reveal data-d="1">
-          <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-brain"></i></span><h3>Kompetenceoverblik</h3>{% if dh.avg_top_skill_level %}<span class="fm-badge teal" style="margin-left:auto">{{ dh.avg_top_skill_level }}/5 gns.</span>{% endif %}</div>
+          <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-brain"></i></span><h3>Kompetenceoverblik</h3>{% if dh.avg_top_skill_level %}<span class="fm-badge teal" style="margin-left:auto">{{ dh.avg_top_skill_level|dknum }}/5 gns.</span>{% endif %}</div>
           <div class="fm-card-body">
             <div class="skill-tiles">
               {% for sk in (ss.top_skills or [])[:6] %}
@@ -252,8 +252,8 @@
 
   FMChart.bar('hrDeptRate', {
     labels: labels,
-    series: [{ label: 'Gennemførselsrate (%)', data: rates, color: FMChart.cssVar('--fm-primary', '#0f766e') }],
-    empty: 'Ingen gennemførselsdata endnu'
+    series: [{ label: 'Gennemførelsesrate (%)', data: rates, color: FMChart.cssVar('--fm-primary', '#0f766e') }],
+    empty: 'Ingen gennemførelsesdata endnu'
   });
 })();
 </script>

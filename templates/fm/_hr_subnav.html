@@ -7,15 +7,20 @@
    benchmarking, skill_gaps, training_plan, learning_paths, internal_courses,
    compliance, suppliers, procurement, engagement, ai_quality, reports. #}
 {% set _hp = active_hr_page | default('') %}
+<div class="pg-subnav-wrap" id="hrSubnavWrap">
+<button type="button" class="pg-subnav-btn prev" aria-label="Rul tabs til venstre" title="Rul til venstre" hidden><i class="fa-solid fa-chevron-left"></i></button>
 <nav class="pg-subnav" aria-label="HR-navigation">
   <a class="pg-tab {{ 'active' if _hp == 'dashboard' }}" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Oversigt</a>
   <a class="pg-tab {{ 'active' if _hp == 'team' }}" href="{{ url_for('hr_dashboard.team_cockpit') }}"><i class="fa-solid fa-users-rectangle"></i> Mit team</a>
+  <span class="pg-sep" role="separator" aria-hidden="true"></span>
   <a class="pg-tab {{ 'active' if _hp == 'employees' }}" href="{{ url_for('companies.employees') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a>
   <a class="pg-tab {{ 'active' if _hp == 'employee_progress' }}" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-bars-progress"></i> Fremdrift</a>
   <a class="pg-tab {{ 'active' if _hp == 'departments' }}" href="{{ url_for('hr_dashboard.departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a>
+  <span class="pg-sep" role="separator" aria-hidden="true"></span>
   <a class="pg-tab {{ 'active' if _hp == 'approvals' }}" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-circle-check"></i> Godkendelser</a>
   <a class="pg-tab {{ 'active' if _hp == 'approval_policies' }}" href="{{ url_for('hr_dashboard.approval_policies') }}"><i class="fa-solid fa-robot"></i> Auto-godkendelse</a>
   <a class="pg-tab {{ 'active' if _hp == 'budgets' }}" href="{{ url_for('hr_dashboard.department_budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a>
+  <span class="pg-sep" role="separator" aria-hidden="true"></span>
   <a class="pg-tab {{ 'active' if _hp == 'roi' }}" href="{{ url_for('hr_dashboard.roi_dashboard') }}"><i class="fa-solid fa-chart-pie"></i> ROI</a>
   <a class="pg-tab {{ 'active' if _hp == 'funnel' }}" href="{{ url_for('hr_dashboard.funnel_dashboard') }}"><i class="fa-solid fa-filter-circle-dollar"></i> Funnel</a>
   <a class="pg-tab {{ 'active' if _hp == 'retention' }}" href="{{ url_for('hr_dashboard.retention_dashboard') }}"><i class="fa-solid fa-people-group"></i> Fastholdelse</a>
@@ -23,16 +28,46 @@
   <a class="pg-tab {{ 'active' if _hp == 'benchmarking' }}" href="{{ url_for('hr_dashboard.benchmarking_view') }}"><i class="fa-solid fa-ranking-star"></i> Benchmarking</a>
   <a class="pg-tab {{ 'active' if _hp == 'skill_gaps' }}" href="{{ url_for('hr_dashboard.skill_gaps_view') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a>
   <a class="pg-tab {{ 'active' if _hp == 'training_plan' }}" href="{{ url_for('hr_ext.training_plan') }}"><i class="fa-solid fa-list-check"></i> Træningsplan</a>
+  <span class="pg-sep" role="separator" aria-hidden="true"></span>
   <a class="pg-tab {{ 'active' if _hp == 'learning_paths' }}" href="{{ url_for('hr_dashboard.learning_paths') }}"><i class="fa-solid fa-route"></i> Læringsforløb</a>
   <a class="pg-tab {{ 'active' if _hp == 'internal_courses' }}" href="{{ url_for('hr_dashboard.internal_courses') }}"><i class="fa-solid fa-book-open"></i> Interne kurser</a>
   <a class="pg-tab {{ 'active' if _hp == 'compliance' }}" href="{{ url_for('hr_dashboard.compliance_matrix') }}"><i class="fa-solid fa-clipboard-check"></i> Compliance</a>
+  <span class="pg-sep" role="separator" aria-hidden="true"></span>
   <a class="pg-tab {{ 'active' if _hp == 'suppliers' }}" href="{{ url_for('hr_dashboard.supplier_management') }}"><i class="fa-solid fa-truck"></i> Leverandører</a>
   <a class="pg-tab {{ 'active' if _hp == 'procurement' }}" href="{{ url_for('hr_ext.procurement') }}"><i class="fa-solid fa-store"></i> Indkøb</a>
+  <span class="pg-sep" role="separator" aria-hidden="true"></span>
   <a class="pg-tab {{ 'active' if _hp == 'engagement' }}" href="{{ url_for('hr_ext.engagement') }}"><i class="fa-solid fa-hand-holding-heart"></i> Engagement</a>
   <a class="pg-tab {{ 'active' if _hp == 'ai_quality' }}" href="{{ url_for('hr_ext.ai_quality') }}"><i class="fa-solid fa-wand-magic-sparkles"></i> AI-kvalitet</a>
   <a class="pg-tab {{ 'active' if _hp == 'reports' }}" href="{{ url_for('hr_dashboard.reports') }}"><i class="fa-solid fa-file-arrow-down"></i> Rapporter &amp; eksport</a>
   {% if can('company.billing') %}<a class="pg-tab {{ 'active' if _hp == 'billing' }}" href="{{ url_for('hr_dashboard.billing_overview') }}"><i class="fa-solid fa-file-invoice-dollar"></i> Fakturering</a>{% endif %}
 </nav>
+<button type="button" class="pg-subnav-btn next" aria-label="Rul tabs til højre" title="Rul til højre" hidden><i class="fa-solid fa-chevron-right"></i></button>
+</div>
+<script>
+(function () {
+  var wrap = document.getElementById('hrSubnavWrap');
+  if (!wrap || wrap.dataset.init) return;
+  wrap.dataset.init = '1';
+  var nav = wrap.querySelector('.pg-subnav'),
+      prev = wrap.querySelector('.pg-subnav-btn.prev'),
+      next = wrap.querySelector('.pg-subnav-btn.next');
+  function update() {
+    var max = nav.scrollWidth - nav.clientWidth, x = nav.scrollLeft;
+    var canPrev = x > 4, canNext = x < max - 4;
+    prev.hidden = !canPrev; next.hidden = !canNext;
+    wrap.classList.toggle('can-prev', canPrev); wrap.classList.toggle('can-next', canNext);
+  }
+  function step(dir) { nav.scrollBy({ left: dir * Math.max(160, nav.clientWidth * 0.6), behavior: 'smooth' }); }
+  prev.addEventListener('click', function () { step(-1); });
+  next.addEventListener('click', function () { step(1); });
+  nav.addEventListener('scroll', update, { passive: true });
+  window.addEventListener('resize', update);
+  // The current page's tab must never sit off-screen.
+  var active = nav.querySelector('.pg-tab.active');
+  if (active) nav.scrollLeft = Math.max(0, active.offsetLeft - (nav.clientWidth - active.offsetWidth) / 2);
+  update();
+})();
+</script>
 {# Embedded HR AI assistant — included HERE (HR-only subnav) so it lands on every HR
    page with the correct audience scoping, and NEVER in fm_base.html (94 admin/vendor/
    public/employee templates extend that). It is position:fixed, so DOM placement is

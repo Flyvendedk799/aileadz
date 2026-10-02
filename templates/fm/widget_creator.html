@@ -55,7 +55,7 @@
       <div class="fm-card-body">
         <div class="trow" style="border-bottom:0;padding:0">
           <div><div class="t">Widget aktiv</div><div class="d">Slå chatbotten til på din hjemmeside</div></div>
-          <button type="button" class="sw {% if widget and widget.is_active %}on{% endif %}" id="is_active_sw" onclick="toggleSwitch('is_active')"></button>
+          <button type="button" class="sw {% if widget and widget.is_active %}on{% endif %}" id="is_active_sw" role="switch" aria-label="Widget aktiv" aria-checked="{{ 'true' if widget and widget.is_active else 'false' }}" onclick="toggleSwitch('is_active')"></button>
           <input type="checkbox" name="is_active" id="is_active" style="display:none" {% if widget and widget.is_active %}checked{% endif %}>
         </div>
       </div></div>
@@ -103,7 +103,7 @@
 
         <div class="trow" style="margin-top:6px">
           <div><div class="t">Vis "Powered by Futurematch" branding</div></div>
-          <button type="button" class="sw {% if not widget or widget.show_branding != false %}on{% endif %}" id="show_branding_sw" onclick="toggleSwitch('show_branding')"></button>
+          <button type="button" class="sw {% if not widget or widget.show_branding != false %}on{% endif %}" id="show_branding_sw" role="switch" aria-label="Vis Powered by Futurematch" aria-checked="{{ 'true' if not widget or widget.show_branding != false else 'false' }}" onclick="toggleSwitch('show_branding')"></button>
           <input type="checkbox" name="show_branding" id="show_branding" style="display:none" {% if not widget or widget.show_branding != false %}checked{% endif %}>
         </div>
       </div></div>
@@ -196,6 +196,7 @@ function toggleSwitch(id){
   const sw = document.getElementById(id + '_sw');
   cb.checked = !cb.checked;
   sw.classList.toggle('on', cb.checked);
+  sw.setAttribute('aria-checked', cb.checked ? 'true' : 'false');
   updatePreview();
 }
 
@@ -254,6 +255,12 @@ function copyEmbed(btn){
     btn.classList.add('copied');
     btn.innerHTML = '<i class="fa-solid fa-check"></i> Kopieret!';
     setTimeout(() => { btn.classList.remove('copied'); btn.innerHTML = '<i class="fa-solid fa-copy"></i> Kopier'; }, 2000);
+  }).catch(() => {
+    // Clipboard blocked (permissions / insecure context): select the code so it can be copied by hand.
+    const r = document.createRange(); r.selectNodeContents(code);
+    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    btn.innerHTML = '<i class="fa-solid fa-circle-info"></i> Markeret – tryk Ctrl+C';
+    setTimeout(() => { btn.innerHTML = '<i class="fa-solid fa-copy"></i> Kopier'; }, 3000);
   });
 }
 

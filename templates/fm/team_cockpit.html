@@ -62,7 +62,7 @@
         {% set _comp = (r.courses_completed or 0)|int %}
         {% set _cpct = ((_comp / _enr * 100)|round(0)|int) if _enr > 0 else 0 %}
         <tr>
-          <td style="font-weight:650">{{ r.name }}{% if r.job_title %}<div style="font-size:11px;color:var(--fm-ink-3);font-weight:400">{{ r.job_title }}</div>{% endif %}</td>
+          <td style="font-weight:650"><a href="{{ url_for('hr_dashboard.employee_details', user_id=r.user_id) }}" style="color:inherit;text-decoration:none">{{ r.name }}</a>{% if r.job_title %}<div style="font-size:11px;color:var(--fm-ink-3);font-weight:400">{{ r.job_title }}</div>{% endif %}</td>
           <td><span class="fm-badge">{{ r.department or '—' }}</span></td>
           <td class="tnum">{{ r.courses_completed or 0 }} / {{ r.courses_enrolled or 0 }}</td>
           <td style="min-width:140px"><div class="fm-prog thin" style="margin-bottom:4px"><span style="width:{{ [prog,100]|min }}%;background:var(--fm-primary)"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">{{ prog }}%</span></td>
@@ -92,7 +92,7 @@
           <td style="font-weight:650">{{ a.requester_name }}{% if a.requester_department %}<div style="font-size:11px;color:var(--fm-ink-3);font-weight:400">{{ a.requester_department }}</div>{% endif %}</td>
           <td>{{ a.product_title or '—' }}</td>
           <td class="mono">{{ '{:,.0f}'.format((a.price or 0)|float).replace(',','.') }} kr</td>
-          <td style="font-size:12px;color:var(--fm-ink-2)">{{ a.requested_at }}</td>
+          <td style="font-size:12px;color:var(--fm-ink-2)">{{ a.requested_at.strftime('%d/%m/%Y %H:%M') if a.requested_at and a.requested_at.strftime else a.requested_at }}</td>
           <td style="text-align:right"><a href="{{ url_for('hr_dashboard.pending_approvals') }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-gavel"></i> Behandl</a></td>
         </tr>
         {% else %}

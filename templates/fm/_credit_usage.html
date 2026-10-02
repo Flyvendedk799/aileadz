@@ -12,7 +12,7 @@
   <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-robot"></i></span><h3>Pr. assistent</h3></div>
     <div class="fm-card-body">
       {% if summary.by_assistant %}
-      <table class="fm-table"><thead><tr><th>Assistent</th><th class="tnum">Svar</th><th class="tnum">Kreditter</th></tr></thead><tbody>
+      <table class="fm-table" style="min-width:0"><thead><tr><th>Assistent</th><th class="tnum">Svar</th><th class="tnum">Kreditter</th></tr></thead><tbody>
         {% set names = {'advisor':'Rådgiver','profiler':'Profiler','hr':'HR-assistent','vendor':'Leverandørassistent','widget':'Widget'} %}
         {% for a in summary.by_assistant %}<tr><td>{{ names.get(a.assistant, a.assistant) }}</td><td class="tnum">{{ a.turns }}</td><td class="tnum">{{ a.credits }}</td></tr>{% endfor %}
       </tbody></table>
@@ -21,7 +21,7 @@
   {% if summary.by_user %}
   <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-users"></i></span><h3>Pr. bruger</h3></div>
     <div class="fm-card-body">
-      <table class="fm-table"><thead><tr><th>Bruger</th><th class="tnum">Svar</th><th class="tnum">Kreditter</th></tr></thead><tbody>
+      <table class="fm-table" style="min-width:0"><thead><tr><th>Bruger</th><th class="tnum">Svar</th><th class="tnum">Kreditter</th></tr></thead><tbody>
         {% for u in summary.by_user %}<tr><td>{{ u.username }}</td><td class="tnum">{{ u.turns }}</td><td class="tnum">{{ u.credits }}</td></tr>{% endfor %}
       </tbody></table>
     </div></div>

@@ -16,7 +16,7 @@
   {% if not r %}
     {{ ui.empty(
         'Ingen AI-data endnu',
-        (risks.get('error') if (risks and risks.get('error')) else 'Når jeres medarbejdere bruger AI-assistenten, vises kvalitets- og risikosignaler her.'),
+        ('AI-data kunne ikke hentes lige nu. Prøv igen om lidt.' if (risks and risks.get('error')) else 'Når jeres medarbejdere bruger AI-assistenten, vises kvalitets- og risikosignaler her.'),
         'fa-wand-magic-sparkles') }}
   {% else %}
     {% set risk_count = r.get('risk_count') | default(0) | int %}
@@ -27,13 +27,13 @@
     {# --- KPI tiles summarising the risk signals --- #}
     <div class="kpi-row">
       {{ ui.kpi('Forespørgsler',
-                '{:,.0f}'.format(total_q).replace(',', '.'),
+                total_q | dknum,
                 'sidste ' ~ period ~ ' dage', 'fa-comments', 'indigo') }}
       {{ ui.kpi('Aktive brugere',
                 r.get('active_users') | default(0),
                 'medarbejdere med AI-brug', 'fa-users', '') }}
       {{ ui.kpi('Gns. svartid',
-                '{:,.0f}'.format(avg_lat / 1000 if avg_lat else 0).replace(',', '.') ~ ' s',
+                ((avg_lat / 1000) | dknum(1)) ~ ' s',
                 ('{:,.0f}'.format(avg_lat).replace(',', '.') ~ ' ms') if avg_lat else 'ingen data',
                 'fa-gauge-high',
                 ('clay' if avg_lat > 12000 else ('gold' if avg_lat > 6000 else 'green'))) }}

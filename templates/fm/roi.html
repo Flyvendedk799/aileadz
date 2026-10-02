@@ -1,6 +1,6 @@
 {% extends "fm_base.html" %}
 {% block page_id %}hr{% endblock %}
-{% block title %}Futurematch{% endblock %}
+{% block title %}Uddannelses-ROI · Futurematch{% endblock %}
 {% block topbar_title %}Uddannelses-ROI{% endblock %}
 {% block topbar_sub %}Effekt og afkast af læringsinvesteringer{% if fiscal_year %} · regnskabsår {{ fiscal_year }}{% endif %}.{% endblock %}
 {% import 'fm/_macros.html' as ui %}
@@ -46,8 +46,8 @@
     <div class="fm-card-body" style="padding-top:6px">
       <div class="muted" style="font-size:12.5px;color:var(--fm-ink-3);margin-bottom:10px">Samlet stigning i målt kompetenceniveau registreret i {{ up.fiscal_year or fiscal_year }}, holdt op mod årets uddannelsesudgift. Dette er <strong>målte</strong> tal fra kompetencehistorikken — ikke en fremskrivning.</div>
       <div class="kpi-row" style="margin-top:0">
-        <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-arrow-up-right-dots"></i></span><div><div class="kl">Niveauløft pr. 1.000 kr</div><div class="kv tnum">{{ up.lift_per_1000_kr|default(0) }}</div><div class="kd">kompetencepoint pr. 1.000 kr</div></div></div>
-        <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-layer-group"></i></span><div><div class="kl">Samlet niveauløft</div><div class="kv tnum">+{{ up.total_lift|default(0) }}</div><div class="kd">kompetencepoint i alt</div></div></div>
+        <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-arrow-up-right-dots"></i></span><div><div class="kl">Niveauløft pr. 1.000 kr</div><div class="kv tnum">{{ up.lift_per_1000_kr|default(0)|dknum(2) }}</div><div class="kd">kompetencepoint pr. 1.000 kr</div></div></div>
+        <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-layer-group"></i></span><div><div class="kl">Samlet niveauløft</div><div class="kv tnum">+{{ up.total_lift|default(0)|dknum }}</div><div class="kd">kompetencepoint i alt</div></div></div>
         <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-users"></i></span><div><div class="kl">Medarbejdere løftet</div><div class="kv tnum">{{ up.employees|default(0) }}</div><div class="kd">{{ up.levels_raised|default(0) }} niveauopgraderinger</div></div></div>
       </div>
     </div>
@@ -101,8 +101,8 @@
   <div class="kpi-row">
     <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-sack-dollar"></i></span><div><div class="kl">Samlet uddannelsesudgift</div><div class="kv tnum">{{ '{:,.0f}'.format(r.total_training_spend|default(0)|float).replace(',','.') }}</div><div class="kd">kr · {{ r.courses_total|default(0) }} ordrer</div></div></div>
     <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-users"></i></span><div><div class="kl">Medarbejdere trænet</div><div class="kv tnum">{{ r.employees_trained|default(0) }}</div><div class="kd">{{ r.courses_completed|default(0) }} kurser gennemført</div></div></div>
-    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-percent"></i></span><div><div class="kl">Gennemførelsesrate</div><div class="kv tnum">{{ r.completion_rate|default(0) }}<span style="font-size:14px">%</span></div><div class="kd">{{ r.courses_completed|default(0) }} / {{ r.courses_total|default(0) }}</div></div></div>
-    <div class="kpi-tile ico"><span class="ki clay"><i class="fa-solid fa-receipt"></i></span><div><div class="kl">Pris pr. gennemførelse</div><div class="kv tnum">{{ '{:,.0f}'.format(r.cost_per_completion|default(0)|float).replace(',','.') }}</div><div class="kd">kr · {{ r.spend_per_employee|default(0) }} kr/medarbejder</div></div></div>
+    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-percent"></i></span><div><div class="kl">Gennemførelsesrate</div><div class="kv tnum">{{ r.completion_rate|default(0)|dknum }}<span style="font-size:14px">%</span></div><div class="kd">{{ r.courses_completed|default(0) }} / {{ r.courses_total|default(0) }}</div></div></div>
+    <div class="kpi-tile ico"><span class="ki clay"><i class="fa-solid fa-receipt"></i></span><div><div class="kl">Pris pr. gennemførelse</div><div class="kv tnum">{{ '{:,.0f}'.format(r.cost_per_completion|default(0)|float).replace(',','.') }}</div><div class="kd">kr · {{ r.spend_per_employee|default(0)|dknum }} kr/medarbejder</div></div></div>
   </div>
 
   <!-- ===== BUDGET UTILISATION (real) ===== -->
@@ -113,7 +113,7 @@
     <div class="fm-card-body" style="padding-top:8px">
       <div class="fm-spread" style="margin-bottom:8px">
         <span class="mono" style="font-size:12.5px;color:var(--fm-ink-2)">{{ '{:,.0f}'.format(r.budget_spent|default(0)|float).replace(',','.') }} kr brugt af {{ '{:,.0f}'.format(r.budget_total|default(0)|float).replace(',','.') }} kr</span>
-        <span class="fm-badge" style="background:color-mix(in srgb,{{ util_col }} 16%,transparent);color:{{ util_col }}">{{ util }}%</span>
+        <span class="fm-badge" style="background:color-mix(in srgb,{{ util_col }} 16%,transparent);color:{{ util_col }}">{{ util|dknum }}%</span>
       </div>
       <div class="fm-prog thin"><span style="width:{{ [util,100]|min }}%;background:{{ util_col }}"></span></div>
       <div class="muted" style="font-size:12px;color:var(--fm-ink-3);margin-top:8px">{{ '{:,.0f}'.format(r.budget_remaining|default(0)|float).replace(',','.') }} kr resterende på tværs af afdelinger.</div>
@@ -133,7 +133,7 @@
           <div style="font-weight:650;font-size:13.5px">{{ o.department }}</div>
           <div class="muted mono" style="font-size:11.5px;color:var(--fm-ink-3)">{{ '{:,.0f}'.format(o.spent|float).replace(',','.') }} kr brugt · budget {{ '{:,.0f}'.format(o.annual_budget|float).replace(',','.') }} kr</div>
         </div>
-        <span class="fm-badge red">+{{ '{:,.0f}'.format(o.overrun|float).replace(',','.') }} kr ({{ o.overrun_pct }}%)</span>
+        <span class="fm-badge red">+{{ '{:,.0f}'.format(o.overrun|float).replace(',','.') }} kr ({{ o.overrun_pct|dknum }}%)</span>
       </div>
       {% endfor %}
     </div>
@@ -150,7 +150,7 @@
       <td class="mono">{{ '{:,.0f}'.format(d.spend|float).replace(',','.') }} kr</td>
       <td>{{ d.employees }}</td>
       <td>{{ d.completed }} / {{ d.total_orders }}</td>
-      <td style="min-width:140px"><div class="fm-prog thin" style="margin-bottom:4px"><span style="width:{{ d.completion_rate }}%;background:var(--fm-success)"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">{{ d.completion_rate }}%</span></td>
+      <td style="min-width:140px"><div class="fm-prog thin" style="margin-bottom:4px"><span style="width:{{ d.completion_rate }}%;background:var(--fm-success)"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">{{ d.completion_rate|dknum }}%</span></td>
       <td class="mono">{{ '{:,.0f}'.format(d.cost_per_completion|float).replace(',','.') }} kr</td>
     </tr>
     {% endfor %}
@@ -169,12 +169,12 @@
       <div class="fm-badge" style="background:color-mix(in srgb,var(--fm-warning) 16%,transparent);color:var(--fm-warning);margin-bottom:10px"><i class="fa-solid fa-circle-info" style="margin-right:5px"></i> Hypotetisk fremskrivning</div>
       <p class="muted" style="font-size:12.5px;color:var(--fm-ink-2);margin:0 0 12px;line-height:1.5">
         Nedenstående er en <strong>modelberegnet fremskrivning</strong> og ikke målte resultater. {{ s.assumption_text }}
-        Beregnet ud fra en gennemsnitlig performance-rating på {{ s.avg_performance_rating }}.
+        Beregnet ud fra en gennemsnitlig performance-rating på {{ s.avg_performance_rating|dknum }}.
       </p>
       <div class="kpi-row" style="margin-top:4px">
-        <div class="kpi-tile"><div class="kl">Estimeret afkast (ROI)</div><div class="kv tnum" style="color:var(--fm-ink-2)">{{ s.estimated_roi_percentage }}<span style="font-size:14px">%</span></div><div class="kd">estimat</div></div>
+        <div class="kpi-tile"><div class="kl">Estimeret afkast (ROI)</div><div class="kv tnum" style="color:var(--fm-ink-2)">{{ s.estimated_roi_percentage|dknum }}<span style="font-size:14px">%</span></div><div class="kd">estimat</div></div>
         <div class="kpi-tile"><div class="kl">Estimeret skabt værdi</div><div class="kv tnum" style="color:var(--fm-ink-2)">{{ '{:,.0f}'.format(s.estimated_value_generated|float).replace(',','.') }}</div><div class="kd">kr · estimat</div></div>
-        <div class="kpi-tile"><div class="kl">Antaget produktivitetsgevinst</div><div class="kv tnum" style="color:var(--fm-ink-2)">{{ s.estimated_productivity_gain_pct }}<span style="font-size:14px">%</span></div><div class="kd">antagelse</div></div>
+        <div class="kpi-tile"><div class="kl">Antaget produktivitetsgevinst</div><div class="kv tnum" style="color:var(--fm-ink-2)">{{ s.estimated_productivity_gain_pct|dknum }}<span style="font-size:14px">%</span></div><div class="kd">antagelse</div></div>
       </div>
     </div>
   </div>
@@ -190,11 +190,11 @@
 
   <div class="fm-eyebrow" style="margin-top:24px"><i class="fa-solid fa-wand-magic-sparkles"></i> Forudsigelser &amp; risiko</div>
 
-  <!-- Medarbejdere i risiko (kompetencegap) -->
+  <!-- Medarbejdere i risiko (kompetencegab) -->
   <div class="fm-card" style="margin-top:12px">
     <div class="fm-card-head">
       <span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-warning) 16%,transparent);color:var(--fm-warning)"><i class="fa-solid fa-triangle-exclamation"></i></span>
-      <h3>Medarbejdere i risiko (kompetencegap)</h3>
+      <h3>Medarbejdere i risiko (kompetencegab)</h3>
     </div>
     <div class="fm-card-body" style="padding-top:6px">
       {% if at_risk %}
@@ -208,15 +208,15 @@
               <td>{{ e.department|default('—') }}</td>
               <td class="muted" style="color:var(--fm-ink-2)">{{ e.job_title|default('—') }}</td>
               <td>{{ e.skill_name|default('—') }}</td>
-              <td class="mono" style="font-size:12px">{{ e.current_level|default(0) }} → {{ e.target_level|default(0) }}</td>
-              <td><span class="status-pill red">−{{ e.gap|default(0) }}</span></td>
+              <td class="mono" style="font-size:12px">{{ e.current_level|default(0)|dknum }} → {{ e.target_level|default(0)|dknum }}</td>
+              <td><span class="status-pill red">−{{ e.gap|default(0)|dknum }}</span></td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
       {% else %}
-      {{ ui.empty('Ingen kritiske kompetencegab', 'Ingen medarbejdere har et betydeligt kompetencegap lige nu.', 'fa-circle-check') }}
+      {{ ui.empty('Ingen kritiske kompetencegab', 'Ingen medarbejdere har et betydeligt kompetencegab lige nu.', 'fa-circle-check') }}
       {% endif %}
     </div>
   </div>
@@ -243,11 +243,11 @@
       </div>
     </div>
 
-    <!-- Churn-risiko (inaktive) -->
+    <!-- Frafaldsrisiko (inaktive) -->
     <div class="fm-card">
       <div class="fm-card-head">
         <span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-danger) 14%,transparent);color:var(--fm-danger)"><i class="fa-solid fa-user-clock"></i></span>
-        <h3>Churn-risiko (inaktive)</h3>
+        <h3>Frafaldsrisiko (inaktive)</h3>
       </div>
       <div class="fm-card-body" style="padding-top:6px">
         {% if churn %}
@@ -270,7 +270,7 @@
           </table>
         </div>
         {% else %}
-        {{ ui.empty('Ingen churn-risiko', 'Alle medarbejdere har været aktive for nylig.', 'fa-circle-check') }}
+        {{ ui.empty('Ingen frafaldsrisiko', 'Alle medarbejdere har været aktive for nylig.', 'fa-circle-check') }}
         {% endif %}
       </div>
     </div>

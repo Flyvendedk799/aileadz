@@ -6,7 +6,7 @@
 {% block content %}
 <div class="fm-wrap">
 {% set active_hr_page = 'approvals' %}{% include 'fm/_hr_subnav.html' %}
-<div class="crumb"><a href="{{ url_for('hr_dashboard.dashboard') }}">HR-workspace</a><i class="fa-solid fa-chevron-right"></i><a href="{{ url_for('hr_dashboard.billing_overview') }}">Ordrer</a><i class="fa-solid fa-chevron-right"></i><span>#{{ order.order_id[:8] }}</span></div>
+<div class="crumb"><a href="{{ url_for('hr_dashboard.dashboard') }}">HR-workspace</a><i class="fa-solid fa-chevron-right"></i><a href="{{ url_for('hr_dashboard.billing_overview') if can_bill else url_for('hr_dashboard.pending_approvals') }}">{{ 'Ordrer' if can_bill else 'Godkendelser' }}</a><i class="fa-solid fa-chevron-right"></i><span>#{{ order.order_id[:8] }}</span></div>
 
   <div class="fm-spread" style="margin-bottom:14px;flex-wrap:wrap;gap:10px">
     <div></div>
@@ -35,8 +35,8 @@
       {% if order.product_handle %}<div class="kv"><span class="k">Kursus i kataloget</span><span class="v"><a href="{{ url_for('catalog.product_detail', handle=order.product_handle) }}">{{ order.product_handle }}</a></span></div>{% endif %}
       {% if order.variant_location %}<div class="kv"><span class="k">Lokation</span><span class="v">{{ order.variant_location }}</span></div>{% endif %}
       {% if order.variant_date %}<div class="kv"><span class="k">Dato</span><span class="v">{{ order.variant_date }}</span></div>{% endif %}
-      <div class="kv"><span class="k">Pris</span><span class="v mono" style="color:var(--fm-primary)">{{ order.price }} kr</span></div>
-      <div class="kv"><span class="k">Oprettet</span><span class="v">{{ order.created_at.strftime('%d.%m.%Y %H:%M') if order.created_at else 'N/A' }}</span></div>
+      <div class="kv"><span class="k">Pris</span><span class="v mono" style="color:var(--fm-primary)">{{ '{:,.0f}'.format(order.price|float).replace(',', '.') }} kr</span></div>
+      <div class="kv"><span class="k">Oprettet</span><span class="v">{{ order.created_at.strftime('%d.%m.%Y %H:%M') if order.created_at else 'Ikke angivet' }}</span></div>
       {% if order.booked_at %}<div class="kv"><span class="k">Booket</span><span class="v">{{ order.booked_at.strftime('%d.%m.%Y') }}{% if order.booked_by %} · {{ order.booked_by }}{% endif %}</span></div>{% endif %}
       {% if order.completion_deadline %}<div class="kv"><span class="k">Frist</span><span class="v">{{ order.completion_deadline.strftime('%d.%m.%Y') }}</span></div>{% endif %}
       {% if order.completion_date %}<div class="kv"><span class="k">Gennemført</span><span class="v">{{ order.completion_date.strftime('%d.%m.%Y') }}</span></div>{% endif %}
@@ -106,10 +106,10 @@
     <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-user"></i></span><h3>Medarbejder</h3></div>
     <div class="fm-card-body"><div class="info-list">
       <div class="kv"><span class="k">Navn</span><span class="v">{{ order.username }}</span></div>
-      <div class="kv"><span class="k">Email</span><span class="v">{{ order.email or order.user_email or 'N/A' }}</span></div>
-      <div class="kv"><span class="k">Afdeling</span><span class="v">{{ order.department or 'N/A' }}</span></div>
-      <div class="kv"><span class="k">Stilling</span><span class="v">{{ order.job_title or 'N/A' }}</span></div>
-      <div class="kv"><span class="k">Medarbejder-ID</span><span class="v">{{ order.employee_id or 'N/A' }}</span></div>
+      <div class="kv"><span class="k">Email</span><span class="v">{{ order.email or order.user_email or 'Ikke angivet' }}</span></div>
+      <div class="kv"><span class="k">Afdeling</span><span class="v">{{ order.department or 'Ikke angivet' }}</span></div>
+      <div class="kv"><span class="k">Stilling</span><span class="v">{{ order.job_title or 'Ikke angivet' }}</span></div>
+      <div class="kv"><span class="k">Medarbejder-ID</span><span class="v">{{ order.employee_id or 'Ikke angivet' }}</span></div>
     </div></div></div>
 
     {% if can_manage and next_statuses %}
@@ -170,6 +170,7 @@ document.querySelectorAll('[data-bill]').forEach(function(btn){
     var f = document.getElementById('billForm');
     var v = {};
     new FormData(f).forEach(function(val, key){ if (val) v[key] = val; });
+    if (btn.dataset.bill === 'credited' && !confirm('Krediter ordren? Beløbet markeres som krediteret.')) return;
     v.billing_status = btn.dataset.bill;
     if (v.note) v.billing_note = v.note;
     btn.disabled = true;

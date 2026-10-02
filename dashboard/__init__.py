@@ -3,6 +3,54 @@ from flask import Blueprint, render_template, session, current_app, redirect, ur
 dashboard_bp = Blueprint('dashboard', __name__, template_folder='templates')
 
 
+_ROLE_LABELS_DA = {
+    'admin': 'Administrator',
+    'company_admin': 'Virksomhedsadministrator',
+    'hr_manager': 'HR-leder',
+    'department_head': 'Afdelingsleder',
+    'employee': 'Medarbejder',
+}
+
+
+@dashboard_bp.app_template_filter('dknum')
+def dknum(value, decimals=None):
+    """Danish number format: '.' as thousands separator, ',' as decimal mark.
+
+    ``decimals=None`` keeps whole numbers whole and shows one decimal for
+    fractions (12.5 -> '12,5'); an explicit ``decimals`` fixes the precision.
+    Non-numeric input is returned unchanged so a template never breaks on it.
+    """
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return value
+    if decimals is None:
+        decimals = 0 if num.is_integer() else 1
+    text = "{:,.{d}f}".format(num, d=int(decimals))
+    return text.replace(",", "\x00").replace(".", ",").replace("\x00", ".")
+
+
+@dashboard_bp.app_template_filter('dkdate')
+def dkdate(value, with_time=False):
+    """Danish date format 'dd.mm.yyyy' (optionally ' hh:mm') for datetimes and
+    ISO strings ('2026-10-01', '2026-10-01T08:30:00'). Empty input gives '';
+    unparseable input is returned unchanged."""
+    import datetime as _dt
+    if value is None or value == '':
+        return ''
+    dt_value = value
+    if isinstance(value, str):
+        try:
+            dt_value = _dt.datetime.fromisoformat(value.strip().replace('Z', '')[:19])
+        except ValueError:
+            return value
+    if isinstance(dt_value, _dt.datetime):
+        return dt_value.strftime('%d.%m.%Y %H:%M' if with_time else '%d.%m.%Y')
+    if isinstance(dt_value, _dt.date):
+        return dt_value.strftime('%d.%m.%Y')
+    return value
+
+
 def _fetch_dashboard_kpis():
     kpis = {
         'unread_notifications': 0,
@@ -10,8 +58,11 @@ def _fetch_dashboard_kpis():
         'catalog_tools': None,
         'role_label': 'Bruger',
     }
-    role = session.get('role', 'user')
-    kpis['role_label'] = 'Administrator' if role == 'admin' else 'Bruger'
+    try:
+        from capabilities import effective_role
+        kpis['role_label'] = _ROLE_LABELS_DA.get(effective_role(), 'Bruger')
+    except Exception:
+        kpis['role_label'] = 'Bruger'
 
     user_id = session.get('user')
     company_id = session.get('company_id')

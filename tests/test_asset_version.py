@@ -44,7 +44,14 @@ class AssetVersionTests(unittest.TestCase):
         checks = {
             os.path.join("fm", "chat.html"): ("futurematch/assets/chat.js", "futurematch/assets/chat.css"),
             os.path.join("fm", "ai_profiler.html"): ("futurematch/assets/chat.js", "futurematch/assets/chat.css"),
-            "fm_base.html": ("futurematch/assets/ai-sidebar.js",),
+            # fm-pages.css sat at a hand-bumped ?v=15 after the HR panel's [hidden] fix, so
+            # browsers that had cached the earlier file kept an HR popup that could not be closed.
+            "fm_base.html": (
+                "futurematch/assets/ai-sidebar.js",
+                "futurematch/assets/fm.css",
+                "futurematch/assets/fm-pages.css",
+                "futurematch/assets/shell.js",
+            ),
         }
         for template, assets in checks.items():
             with open(os.path.join(_TEMPLATES, template), encoding="utf-8") as fh:
@@ -55,6 +62,17 @@ class AssetVersionTests(unittest.TestCase):
                     re.search(re.escape(asset) + r"'\) \}\}\?v=\d", src),
                     f"{template} still hand-versions {asset}",
                 )
+
+    def test_no_template_hand_versions_a_shared_asset(self):
+        pattern = re.compile(r"futurematch/assets/[\w.-]+\.(?:css|js)'\) \}\}\?v=\d")
+        offenders = []
+        for root, _dirs, files in os.walk(_TEMPLATES):
+            for name in files:
+                path = os.path.join(root, name)
+                with open(path, encoding="utf-8") as fh:
+                    if pattern.search(fh.read()):
+                        offenders.append(os.path.relpath(path, _TEMPLATES))
+        self.assertEqual(offenders, [], "use ?v={{ asset_version('...') }} instead of a hand-bumped number")
 
     def test_app_registers_the_template_global(self):
         os.environ.setdefault("SANDBOX", "1")

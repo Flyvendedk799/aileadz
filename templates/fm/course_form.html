@@ -11,18 +11,18 @@
     <div class="fm-card" style="padding:24px;margin-bottom:18px">
       <span class="fm-eyebrow"><i class="fa-solid fa-circle-info"></i> Grundlæggende</span>
       <h3 class="fm-section-title" style="margin:4px 0 16px">Information</h3>
-      <div class="fm-grid" style="grid-template-columns:repeat(2,1fr)">
-        <label class="fm-field" style="grid-column:1/-1"><span>Kursusnavn *</span><input type="text" class="fm-input" name="title" value="{{ course.title if course else '' }}" required></label>
-        <label class="fm-field" style="grid-column:1/-1"><span>Beskrivelse</span><textarea class="fm-input" name="description" rows="3">{{ course.description if course else '' }}</textarea></label>
-        <label class="fm-field"><span>Kategori</span><input type="text" class="fm-input" name="category" value="{{ course.category if course else '' }}" placeholder="f.eks. Ledelse, IT, Sikkerhed"></label>
-        <label class="fm-field"><span>Tags (komma-separeret)</span><input type="text" class="fm-input" name="tags" value="{{ course.tags if course else '' }}" placeholder="f.eks. onboarding, compliance"></label>
+      <div class="fm-grid" style="grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr))">
+        <label class="fm-field" style="grid-column:1/-1"><span>Kursusnavn *</span><input type="text" class="fm-input" name="title" value="{{ course.title or '' }}" required></label>
+        <label class="fm-field" style="grid-column:1/-1"><span>Beskrivelse</span><textarea class="fm-input" name="description" rows="3">{{ course.description or '' }}</textarea></label>
+        <label class="fm-field"><span>Kategori</span><input type="text" class="fm-input" name="category" value="{{ course.category or '' }}" placeholder="f.eks. Ledelse, IT, Sikkerhed"></label>
+        <label class="fm-field"><span>Tags (komma-separeret)</span><input type="text" class="fm-input" name="tags" value="{{ course.tags or '' }}" placeholder="f.eks. onboarding, compliance"></label>
       </div>
     </div>
 
     <div class="fm-card" style="padding:24px;margin-bottom:18px">
       <span class="fm-eyebrow"><i class="fa-solid fa-gear"></i> Format</span>
       <h3 class="fm-section-title" style="margin:4px 0 16px">Format og detaljer</h3>
-      <div class="fm-grid" style="grid-template-columns:repeat(3,1fr)">
+      <div class="fm-grid" style="grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr))">
         <label class="fm-field"><span>Kursustype</span>
           <select class="fm-input" name="course_type">
             <option value="internal" {% if not course or course.course_type == 'internal' %}selected{% endif %}>Internt</option>
@@ -46,26 +46,26 @@
             <option value="advanced" {% if course and course.difficulty_level == 'advanced' %}selected{% endif %}>Avanceret</option>
           </select>
         </label>
-        <label class="fm-field"><span>Varighed (timer)</span><input type="number" class="fm-input" name="duration_hours" step="0.5" min="0" value="{{ course.duration_hours if course else '' }}"></label>
-        <label class="fm-field"><span>Pris (DKK)</span><input type="number" class="fm-input" name="price" step="0.01" min="0" value="{{ course.price if course else '0' }}"></label>
-        <label class="fm-field"><span>Maks. deltagere</span><input type="number" class="fm-input" name="max_participants" min="0" value="{{ course.max_participants if course else '' }}" placeholder="Tomt = ubegrænset"></label>
+        <label class="fm-field"><span>Varighed (timer)</span><input type="number" class="fm-input" name="duration_hours" step="0.5" min="0" value="{{ course.duration_hours or '' }}"></label>
+        <label class="fm-field"><span>Pris (DKK)</span><input type="number" class="fm-input" name="price" step="0.01" min="0" value="{{ course.price if course and course.price is not none else '0' }}"></label>
+        <label class="fm-field"><span>Maks. deltagere</span><input type="number" class="fm-input" name="max_participants" min="0" value="{{ course.max_participants or '' }}" placeholder="Tomt = ubegrænset"></label>
       </div>
     </div>
 
     <div class="fm-card" style="padding:24px;margin-bottom:18px">
       <span class="fm-eyebrow"><i class="fa-solid fa-chalkboard-user"></i> Underviser</span>
       <h3 class="fm-section-title" style="margin:4px 0 16px">Underviser og lokation</h3>
-      <div class="fm-grid" style="grid-template-columns:repeat(2,1fr)">
-        <label class="fm-field"><span>Underviser</span><input type="text" class="fm-input" name="instructor" value="{{ course.instructor if course else '' }}"></label>
-        <label class="fm-field"><span>Lokation</span><input type="text" class="fm-input" name="location" value="{{ course.location if course else '' }}" placeholder="f.eks. Kontor, Online, Adresse"></label>
+      <div class="fm-grid" style="grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr))">
+        <label class="fm-field"><span>Underviser</span><input type="text" class="fm-input" name="instructor" value="{{ course.instructor or '' }}"></label>
+        <label class="fm-field"><span>Lokation</span><input type="text" class="fm-input" name="location" value="{{ course.location or '' }}" placeholder="f.eks. Kontor, Online, Adresse"></label>
         <label class="fm-field"><span>Afdeling (valgfrit)</span>
           <select class="fm-input" name="department">
             <option value="">Alle afdelinger</option>
             {% for dept in departments %}<option value="{{ dept }}" {% if course and course.department == dept %}selected{% endif %}>{{ dept }}</option>{% endfor %}
           </select>
         </label>
-        <label class="fm-field"><span>Kompetence-tags</span><input type="text" class="fm-input" name="skill_tags" value="{{ course.skill_tags if course else '' }}" placeholder="f.eks. ledelse, kommunikation"></label>
-        <label class="fm-field" style="grid-column:1/-1"><span>Eksternt link (valgfrit)</span><input type="url" class="fm-input" name="external_url" value="{{ course.external_url if course else '' }}" placeholder="https://..."></label>
+        <label class="fm-field"><span>Kompetence-tags</span><input type="text" class="fm-input" name="skill_tags" value="{{ course.skill_tags or '' }}" placeholder="f.eks. ledelse, kommunikation"></label>
+        <label class="fm-field" style="grid-column:1/-1"><span>Eksternt link (valgfrit)</span><input type="url" class="fm-input" name="external_url" value="{{ course.external_url or '' }}" placeholder="https://..."></label>
       </div>
     </div>
 

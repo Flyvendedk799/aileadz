@@ -8,7 +8,7 @@
 {% set active_hr_page = 'departments' %}{% include 'fm/_hr_subnav.html' %}
 
   <div class="fm-section-head" style="margin-top:0"><div><span class="fm-eyebrow"><i class="fa-solid fa-sitemap"></i> Organisering</span><h2 class="fm-section-title">Afdelinger</h2></div>
-    <button class="btn btn-primary btn-sm" onclick="openDeptModal()"><i class="fa-solid fa-plus"></i> Ny afdeling</button>
+    <button type="button" class="btn btn-primary btn-sm" onclick="openDeptModal()"><i class="fa-solid fa-plus"></i> Ny afdeling</button>
   </div>
 
   {% if departments %}
@@ -18,21 +18,21 @@
     <div class="fm-card" style="padding:20px">
       <div class="fm-spread" style="margin-bottom:14px">
         <div class="fm-flex fm-ac fm-gap12">
-          <span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-people-group"></i></span>
+          <span style="width:42px;height:42px;flex:0 0 42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-people-group"></i></span>
           <div>
             <h3 style="font-size:16px;font-weight:700">{{ dept.department_name }}</h3>
             {% if dept.department_code %}<span class="fm-chip" style="margin-top:2px">{{ dept.department_code }}</span>{% endif %}
           </div>
         </div>
         <div class="fm-flex fm-gap8">
-          <button class="fm-icon-btn" style="width:34px;height:34px" title="Rediger"
+          <button type="button" class="fm-icon-btn" style="width:34px;height:34px" title="Rediger {{ dept.department_name|e }}" aria-label="Rediger {{ dept.department_name|e }}"
             onclick="editDept('{{ dept.id }}', this)"
             data-name="{{ dept.department_name|e }}"
             data-code="{{ dept.department_code or '' }}"
             data-desc="{{ dept.description or '' }}"
-            data-budget="{{ budget }}"><i class="fa-solid fa-pen"></i></button>
-          <form method="POST" action="{{ url_for('hr_dashboard.delete_department', dept_id=dept.id) }}" onsubmit="return confirm('Er du sikker på du vil slette denne afdeling?')" style="display:inline">
-            <button type="submit" class="fm-icon-btn" style="width:34px;height:34px;color:var(--fm-danger)" title="Slet"><i class="fa-solid fa-trash"></i></button>
+            data-budget="{{ '%g'|format(budget) }}"><i class="fa-solid fa-pen"></i></button>
+          <form method="POST" action="{{ url_for('hr_dashboard.delete_department', dept_id=dept.id) }}" onsubmit="return confirm({{ ('Slet afdelingen ' ~ dept.department_name ~ '? Det kan ikke fortrydes.')|tojson|forceescape }})" style="display:inline">
+            <button type="submit" class="fm-icon-btn" style="width:34px;height:34px;color:var(--fm-danger)" title="Slet {{ dept.department_name|e }}" aria-label="Slet {{ dept.department_name|e }}"><i class="fa-solid fa-trash"></i></button>
           </form>
         </div>
       </div>
@@ -49,6 +49,7 @@
         </div>
         {% endif %}
       </div>
+      <a href="{{ url_for('hr_dashboard.team_cockpit', department=dept.department_name) }}" class="btn btn-ghost btn-sm" style="margin-top:14px"><i class="fa-solid fa-users-rectangle"></i> Se team</a>
     </div>
     {% endfor %}
   </div>
@@ -62,14 +63,14 @@
   {% endif %}
 </div>
 
-<div id="deptModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center">
+<div id="deptModal" role="dialog" aria-modal="true" aria-labelledby="deptModalTitle" onclick="if(event.target===this)closeDeptModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center">
   <div class="fm-card" style="max-width:480px;width:90%;padding:22px">
     <h3 id="deptModalTitle" style="font-size:17px;font-weight:700;margin-bottom:14px">Ny afdeling</h3>
     <form method="POST" id="deptForm" action="{{ url_for('hr_dashboard.add_department') }}">
       <label class="fm-field"><span>Afdelingsnavn *</span><input type="text" class="fm-input" name="department_name" id="dept_name" required placeholder="f.eks. Salg, IT, Marketing"></label>
       <label class="fm-field"><span>Afdelingskode</span><input type="text" class="fm-input" name="department_code" id="dept_code" maxlength="20" placeholder="f.eks. SAL, IT, MKT"></label>
       <label class="fm-field"><span>Beskrivelse</span><textarea class="fm-input" name="description" id="dept_desc" rows="2" placeholder="Hvad laver afdelingen?"></textarea></label>
-      <label class="fm-field"><span>Læringsbudget pr. medarbejder (kr)</span><input type="number" class="fm-input" name="learning_budget_per_employee" id="dept_budget" value="0" min="0" step="100"></label>
+      <label class="fm-field"><span>Læringsbudget pr. medarbejder (kr)</span><input type="number" class="fm-input" name="learning_budget_per_employee" id="dept_budget" value="0" min="0" step="1"></label>
       <div class="fm-flex fm-gap8" style="justify-content:flex-end;margin-top:14px">
         <button type="button" class="btn btn-ghost btn-sm" onclick="closeDeptModal()">Annuller</button>
         <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-check"></i> Gem</button>
@@ -91,6 +92,7 @@ function openDeptModal(){
   document.getElementById('deptModal').style.display = 'flex';
 }
 function closeDeptModal(){ document.getElementById('deptModal').style.display = 'none'; }
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeDeptModal(); });
 function editDept(id, btn){
   document.getElementById('deptModalTitle').textContent = 'Rediger afdeling';
   document.getElementById('deptForm').action = '/hr/departments/' + id + '/edit';

@@ -33,7 +33,7 @@
         <div class="fm-field"><label>Fulde navn *</label><input type="text" class="fm-input" name="full_name" id="full_name_field" required placeholder="f.eks. Jens Hansen"></div>
         <div class="fm-field"><label>Brugernavn *</label><input type="text" class="fm-input" name="username" id="username_field" required placeholder="f.eks. jens.hansen"><div style="font-size:12px;color:var(--fm-ink-3);margin-top:3px">Bruges til login — foreslås automatisk</div></div>
         <div class="fm-field"><label>Email *</label><input type="email" class="fm-input" name="email" required placeholder="jens@firma.dk"></div>
-        <div class="fm-field"><label>Adgangskode <span style="font-weight:400;color:var(--fm-ink-3)">(valgfri)</span></label><div class="pw-input"><input type="text" class="fm-input" name="password" id="passwordField" autocomplete="off"><button type="button" class="btn btn-ghost" onclick="generatePassword()"><i class="fa-solid fa-dice"></i></button></div><div style="font-size:12px;color:var(--fm-ink-3);margin-top:3px">Lad feltet stå tomt, så får medarbejderen en invitation på e-mail og vælger selv sin adgangskode. Det anbefaler vi.</div></div>
+        <div class="fm-field"><label>Adgangskode <span style="font-weight:400;color:var(--fm-ink-3)">(valgfri)</span></label><div class="pw-input"><input type="text" class="fm-input" name="password" id="passwordField" autocomplete="off" placeholder="Tom = send invitation"><button type="button" class="btn btn-ghost" onclick="generatePassword()" title="Generér en tilfældig adgangskode" aria-label="Generér en tilfældig adgangskode"><i class="fa-solid fa-dice"></i></button></div><div style="font-size:12px;color:var(--fm-ink-3);margin-top:3px">Lad feltet stå tomt, så får medarbejderen en invitation på e-mail og vælger selv sin adgangskode. Det anbefaler vi.</div></div>
         <div class="fm-field"><label>Medarbejder-ID</label><input type="text" class="fm-input" name="employee_id" placeholder="Auto-genereres hvis tom"></div>
       </div>
       <div class="stack">
@@ -86,7 +86,6 @@ function generatePassword() {
     for (let i = 0; i < 12; i++) pw += chars[Math.floor(Math.random() * chars.length)];
     document.getElementById('passwordField').value = pw;
 }
-generatePassword();
 (function() {
     const nameField = document.getElementById('full_name_field');
     const ufield = document.getElementById('username_field');

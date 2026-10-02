@@ -12,15 +12,11 @@
 </style>
 {% endblock %}
 {% block content %}
+{% macro dt(v, f='%d/%m/%Y') %}{{ v.strftime(f) if v and v.strftime else (v or '—') }}{% endmacro %}
 <div class="fm-wrap">
 {% set active_hr_page = 'employees' %}{% include 'fm/_hr_subnav.html' %}
 <div class="crumb"><a href="{{ url_for('hr_dashboard.dashboard') }}">HR-workspace</a><i class="fa-solid fa-chevron-right"></i><a href="{{ url_for('companies.employees') }}">Medarbejdere</a><i class="fa-solid fa-chevron-right"></i><span>{{ employee.username }}</span></div>
 
-  {% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}{% for category, message in messages %}
-  <div class="fm-card" style="padding:12px 16px;margin-bottom:12px;border-left:3px solid var(--fm-primary)">{{ message }}</div>
-  {% endfor %}{% endif %}
-  {% endwith %}
 
   <section class="detail-hero" data-reveal>
     <div class="detail-mark av" style="background:linear-gradient(140deg,var(--fm-primary),var(--fm-primary-700))">{{ employee.username[0].upper() if employee.username else 'U' }}</div>
@@ -35,6 +31,7 @@
         {% else %}<span class="fm-badge dot">Medarbejder</span>{% endif %}
         {% if employee.status == 'active' %}<span class="fm-badge green dot">Aktiv</span>
         {% elif employee.status == 'inactive' %}<span class="fm-badge dot">Inaktiv</span>
+        {% elif employee.status == 'pending' %}<span class="fm-badge amber dot">Afventer</span>
         {% else %}<span class="fm-badge amber dot">Orlov</span>{% endif %}
         {% if employee.email %}<span class="fm-badge"><i class="fa-solid fa-envelope"></i> {{ employee.email }}</span>{% endif %}
       </div>
@@ -61,7 +58,7 @@
         <div class="kv"><span class="k">Afdeling</span><span class="v">{{ employee.department or 'Ingen afdeling' }}</span></div>
         {% if employee.employee_id %}<div class="kv"><span class="k">Medarbejder-ID</span><span class="v">{{ employee.employee_id }}</span></div>{% endif %}
         <div class="kv"><span class="k">Ansættelse</span><span class="v">{{ {'full_time':'Fuldtid','part_time':'Deltid','contract':'Kontrakt','intern':'Praktikant'}.get(employee.employment_type, 'Fuldtid') }}</span></div>
-        {% if employee.hire_date %}<div class="kv"><span class="k">Ansat</span><span class="v">{{ employee.hire_date }}</span></div>{% endif %}
+        {% if employee.hire_date %}<div class="kv"><span class="k">Ansat</span><span class="v">{{ dt(employee.hire_date) }}</span></div>{% endif %}
         {% if employee.manager_name %}<div class="kv"><span class="k">Manager</span><span class="v">{{ employee.manager_name }}</span></div>{% endif %}
         {% if employee.total_learning_time %}<div class="kv"><span class="k">Total læringstid</span><span class="v">{{ (employee.total_learning_time / 60)|round(1) }} timer</span></div>{% endif %}
       </div></div></div>
@@ -73,8 +70,8 @@
         <form method="POST" action="{{ url_for('hr_dashboard.reset_employee_password', user_id=employee.user_id) }}" onsubmit="return confirm('Medarbejderen får en e-mail med et link til at vælge en ny adgangskode. Fortsæt?')" style="margin-bottom:8px">
           <button type="submit" class="btn btn-ghost btn-sm" style="width:100%"><i class="fa-solid fa-key"></i> Send link til ny adgangskode</button>
         </form>
-        {% if employee.status == 'active' and employee.role != 'company_admin' %}
-        <form method="POST" action="{{ url_for('hr_dashboard.toggle_employee_status', user_id=employee.user_id) }}" onsubmit="return confirm('Deaktiver denne medarbejder?')">
+        {% if employee.status in ('active', 'on_leave', 'pending') and employee.role != 'company_admin' %}
+        <form method="POST" action="{{ url_for('hr_dashboard.toggle_employee_status', user_id=employee.user_id) }}" onsubmit="return confirm({{ ('Deaktiver ' ~ employee.username ~ '? Personen mister adgang med det samme.')|tojson|forceescape }})">
           <input type="hidden" name="new_status" value="inactive">
           <button type="submit" class="btn btn-ghost btn-sm" style="width:100%;color:var(--fm-clay)"><i class="fa-solid fa-user-xmark"></i> Deaktiver</button>
         </form>
@@ -88,15 +85,15 @@
 
       <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-clock-rotate-left"></i></span><h3>Aktivitetslog</h3></div>
       <div class="fm-card-body"><div class="info-list">
-        <div class="kv"><span class="k">Seneste login</span><span class="v">{{ employee.last_login or 'Aldrig' }}</span></div>
-        <div class="kv"><span class="k">Seneste chatbot-brug</span><span class="v">{{ employee.last_chatbot_interaction or 'Aldrig' }}</span></div>
+        <div class="kv"><span class="k">Seneste login</span><span class="v">{{ dt(employee.last_login, '%d/%m/%Y %H:%M') if employee.last_login else 'Aldrig' }}</span></div>
+        <div class="kv"><span class="k">Seneste chatbot-brug</span><span class="v">{{ dt(employee.last_chatbot_interaction, '%d/%m/%Y %H:%M') if employee.last_chatbot_interaction else 'Aldrig' }}</span></div>
         <div class="kv"><span class="k">Tilføjet af</span><span class="v">{{ employee.added_by or '—' }}</span></div>
       </div></div></div>
 
     </div>
     <div class="stack">
 
-      <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-brain"></i></span><h3>Kompetencer</h3>{% if employee_skills %}<span class="fm-badge" style="margin-left:auto">{{ employee_skills|length }} skills</span>{% endif %}</div>
+      <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-brain"></i></span><h3>Kompetencer</h3>{% if employee_skills %}<span class="fm-badge" style="margin-left:auto">{{ employee_skills|length }} kompetencer</span>{% endif %}</div>
       <div class="fm-card-body">
         {% if employee_skills %}
         <div class="split"><div style="position:relative;height:260px"><canvas id="skillRadar" aria-label="Radardiagram: nuværende kompetenceniveau vs. mål for {{ employee.username|e }}" role="img"></canvas></div>
@@ -127,13 +124,13 @@
 
       {% if employee_completed_courses %}
       <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-certificate"></i></span><h3>Gennemførte kurser &amp; certifikater</h3><span class="fm-badge gold" style="margin-left:auto">{{ employee_completed_courses|length }}</span></div>
-      <div class="fm-card-body" style="padding:0"><table class="fm-table"><thead><tr><th>Kursus/Certifikat</th><th>Udbyder</th><th>Dato</th></tr></thead><tbody>
-        {% for cc in employee_completed_courses %}<tr><td style="font-weight:650">{{ cc.course_title }}</td><td class="muted">{{ cc.vendor or '—' }}</td><td class="muted">{{ cc.completed_date or '—' }}</td></tr>{% endfor %}
+      <div class="fm-card-body" style="padding:0;overflow-x:auto"><table class="fm-table"><thead><tr><th>Kursus/Certifikat</th><th>Udbyder</th><th>Dato</th></tr></thead><tbody>
+        {% for cc in employee_completed_courses %}<tr><td style="font-weight:650">{{ cc.course_title }}</td><td class="muted">{{ cc.vendor or '—' }}</td><td class="muted">{{ dt(cc.completed_date) }}</td></tr>{% endfor %}
       </tbody></table></div></div>
       {% endif %}
 
       <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-graduation-cap"></i></span><h3>Kursushistorik</h3><span class="fm-badge" style="margin-left:auto">{{ course_history|length }}</span></div>
-      <div class="fm-card-body" style="padding:0">
+      <div class="fm-card-body" style="padding:0;overflow-x:auto">
         {% if course_history %}
         {% set _spark = course_history|map(attribute='time_spent_minutes')|map('default', 0)|list %}
         {% if _spark|select|list %}
@@ -146,14 +143,14 @@
         {% for c in course_history %}
           <tr>
             <td style="font-weight:650">{{ c.product_title or c.product_handle }}</td>
-            <td class="mono" style="text-align:right">{{ c.price or 0 }} kr</td>
+            <td class="mono" style="text-align:right;white-space:nowrap">{{ c.price or 0 }} kr</td>
             <td style="text-align:center"><div class="fm-flex fm-ac" style="gap:8px;justify-content:center"><div class="fm-prog" style="width:60px"><span style="width:{{ c.progress_percentage or 0 }}%"></span></div><small>{{ (c.progress_percentage or 0)|round|int }}%</small></div></td>
             <td style="text-align:center">
               {% if c.completion_status == 'completed' %}<span class="fm-badge green dot">Gennemført</span>
               {% elif c.completion_status == 'in_progress' %}<span class="fm-badge dot">I gang</span>
               {% else %}<span class="fm-badge">Ikke startet</span>{% endif %}
             </td>
-            <td class="muted">{{ c.enrollment_date }}</td>
+            <td class="muted" style="white-space:nowrap">{{ dt(c.enrollment_date) }}</td>
           </tr>
         {% endfor %}
         </tbody></table>
@@ -163,7 +160,7 @@
       </div></div>
 
       <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-robot"></i></span><h3>Chatbot-aktivitet</h3></div>
-      <div class="fm-card-body" style="padding:0">
+      <div class="fm-card-body" style="padding:0;overflow-x:auto">
         {% if chatbot_sessions %}
         <table class="fm-table"><thead><tr><th>Dato/Tid</th><th>Beskeder</th><th style="text-align:right"></th></tr></thead><tbody>
         {% for s in chatbot_sessions[:10] %}

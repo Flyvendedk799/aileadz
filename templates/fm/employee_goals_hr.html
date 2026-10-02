@@ -31,7 +31,7 @@
       <div style="flex:1;min-width:220px">
         <div style="font-weight:650">{{ g.goal_title }}</div>
         {% if g.goal_description %}<div class="muted" style="font-size:13px">{{ g.goal_description }}</div>{% endif %}
-        <div class="muted" style="font-size:12px;margin-top:4px">{% if g.target_date %}Måldato {{ g.target_date }} · {% endif %}{% if is_shared and g.shared_at %}Delt {{ g.shared_at }}{% endif %}{% if is_shared and g.share_note %} · “{{ g.share_note }}”{% endif %}</div>
+        <div class="muted" style="font-size:12px;margin-top:4px">{% if g.target_date %}Måldato {{ g.target_date.strftime('%d/%m/%Y') if g.target_date.strftime else g.target_date }} · {% endif %}{% if is_shared and g.shared_at %}Delt {{ g.shared_at.strftime('%d/%m/%Y') if g.shared_at.strftime else g.shared_at }}{% endif %}{% if is_shared and g.share_note %} · “{{ g.share_note }}”{% endif %}</div>
       </div>
       <form method="post" action="{{ url_for('hr_dashboard.employee_goal_share', goal_id=g.id) }}" class="fm-flex fm-gap8" style="align-items:center;flex-wrap:wrap">
         {% if is_shared %}

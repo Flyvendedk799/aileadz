@@ -27,7 +27,7 @@
   </div>
 
   {% if paths %}
-  <div class="fm-grid" style="grid-template-columns:repeat(auto-fill,minmax(420px,1fr))">
+  <div class="fm-grid" style="grid-template-columns:repeat(auto-fill,minmax(min(420px,100%),1fr))">
     {% for path in paths %}
     {% set prog = path.avg_progress|round(0)|int %}
     {% set barcol = 'var(--fm-success)' if prog >= 70 else ('var(--fm-warning)' if prog >= 40 else 'var(--fm-primary)') %}
@@ -37,17 +37,17 @@
           <span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-route"></i></span>
           <div>
             <h3 style="font-size:16px;font-weight:700;letter-spacing:-.02em">{{ path.path_name }}{% if not path.is_active %} <span class="fm-chip">Inaktiv</span>{% endif %}</h3>
-            <div style="font-size:12px;color:var(--fm-ink-3)">{% if path.path_category %}{{ path.path_category }} · {% endif %}{{ (path.difficulty_level or 'beginner')|title }}</div>
+            <div style="font-size:12px;color:var(--fm-ink-3)">{% if path.path_category %}{{ path.path_category }} · {% endif %}{{ {'beginner':'Begynder','intermediate':'Øvet','advanced':'Avanceret'}.get(path.difficulty_level or 'beginner', path.difficulty_level) }}</div>
           </div>
         </div>
         <div class="fm-flex fm-gap8">
-          {% if can_create %}<button class="fm-icon-btn" style="width:32px;height:32px" title="Tildel" onclick="openAssign({{ path.id }})"><i class="fa-solid fa-user-plus"></i></button>{% endif %}
+          {% if can_create %}<button class="fm-icon-btn" style="width:32px;height:32px" title="Tildel" aria-label="Tildel forløbet" onclick="openAssign({{ path.id }})"><i class="fa-solid fa-user-plus"></i></button>{% endif %}
           {% if can_manage %}
           <form method="POST" action="{{ url_for('hr_dashboard.toggle_learning_path', path_id=path.id) }}" style="display:inline">
-            <button type="submit" class="fm-icon-btn" style="width:32px;height:32px" title="{{ 'Deaktiver' if path.is_active else 'Aktiver' }}"><i class="fa-solid fa-{{ 'pause' if path.is_active else 'play' }}"></i></button>
+            <button type="submit" class="fm-icon-btn" style="width:32px;height:32px" title="{{ 'Deaktiver' if path.is_active else 'Aktiver' }}" aria-label="{{ 'Deaktiver forløbet' if path.is_active else 'Aktiver forløbet' }}"><i class="fa-solid fa-{{ 'pause' if path.is_active else 'play' }}"></i></button>
           </form>
           <form method="POST" action="{{ url_for('hr_dashboard.delete_learning_path', path_id=path.id) }}" style="display:inline" onsubmit="return confirm('Slet dette læringsforløb og alle tilmeldinger?')">
-            <button type="submit" class="fm-icon-btn" style="width:32px;height:32px;color:var(--fm-danger)" title="Slet"><i class="fa-solid fa-trash"></i></button>
+            <button type="submit" class="fm-icon-btn" style="width:32px;height:32px;color:var(--fm-danger)" title="Slet" aria-label="Slet forløbet"><i class="fa-solid fa-trash"></i></button>
           </form>
           {% endif %}
         </div>
@@ -70,7 +70,7 @@
 
       {% set path_enrollments = enrollments.get(path.id, []) %}
       {% if path_enrollments %}
-      <div class="fm-table-wrap" style="max-height:240px;overflow-y:auto;margin:0">
+      <div class="fm-table-wrap" style="max-height:240px;overflow:auto;margin:0">
         <table class="fm-table"><thead><tr><th>Medarbejder</th><th>Afdeling</th><th>Status</th><th>Fremskridt</th><th>Frist</th></tr></thead><tbody>
           {% for e in path_enrollments %}
           <tr>
@@ -166,10 +166,19 @@
 {% endblock %}
 {% block extra_scripts %}
 <script>
-function openCreatePath(){ document.getElementById('createPathModal').style.display = 'flex'; }
+function showModal(el){ el.style.display = 'flex'; var f = el.querySelector('input:not([type=hidden]),select,textarea'); if (f) f.focus(); }
+function openCreatePath(){ showModal(document.getElementById('createPathModal')); }
 function closeCreatePath(){ document.getElementById('createPathModal').style.display = 'none'; }
-function openAssign(id){ document.getElementById('assignModal' + id).style.display = 'flex'; }
+function openAssign(id){ showModal(document.getElementById('assignModal' + id)); }
 function closeAssign(id){ document.getElementById('assignModal' + id).style.display = 'none'; }
+// Esc and a click on the backdrop close any open modal (they were mouse-and-button only before).
+document.addEventListener('keydown', function(e){
+  if (e.key !== 'Escape') return;
+  document.querySelectorAll('#createPathModal, .fm-modal-bk').forEach(function(m){ m.style.display = 'none'; });
+});
+document.addEventListener('mousedown', function(e){
+  if (e.target.id === 'createPathModal' || e.target.classList.contains('fm-modal-bk')) e.target.style.display = 'none';
+});
 function toggleAssignFields(pathId) {
   const type = document.getElementById('assignType' + pathId).value;
   document.getElementById('individualField' + pathId).style.display = type === 'individual' ? '' : 'none';

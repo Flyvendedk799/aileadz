@@ -1,6 +1,14 @@
 {% extends "fm_base.html" %}
 {% import 'fm/_macros.html' as ui %}
 
+{% macro discount(type, value) -%}
+  {%- set v = (value|float) -%}
+  {%- set n = ('%d' % v) if v == v|int else ('%.2f' % v)|replace('.', ',') -%}
+  {%- if type == 'percentage' %}{{ n }}% rabat
+  {%- elif type == 'fixed_amount' %}{{ n }} kr i rabat
+  {%- elif type == 'fixed_price' %}Fastpris {{ n }} kr
+  {%- else %}{{ n }}{% endif %}
+{%- endmacro %}
 {% block page_id %}procurement{% endblock %}
 {% block title %}Indkøb & leverandører · Futurematch{% endblock %}
 {% block topbar_title %}Indkøb & leverandører{% endblock %}
@@ -35,6 +43,7 @@
       <span class="fm-ch-icon"><i class="fa-solid fa-store"></i></span>
       <h3>Leverandørdækning</h3>
       {% if vendors %}<span class="fm-badge" style="margin-left:auto">{{ vendors|length }} leverandører</span>{% endif %}
+      <a class="btn btn-ghost btn-sm" {% if not vendors %}style="margin-left:auto"{% endif %} href="{{ url_for('hr_dashboard.supplier_management') }}"><i class="fa-solid fa-sliders"></i> Administrér</a>
     </div>
     <div class="fm-card-body" style="padding-top:6px">
       {% if cov_err %}
@@ -73,7 +82,7 @@
                   <span class="status-pill teal">{{ ag.get('name') or 'Aftale' }}</span>
                   {% if ag.get('value') is not none %}
                     <div style="font-size:11px;color:var(--fm-ink-2);margin-top:3px">
-                      {% if ag.get('type') == 'percentage' %}{{ ag.value|round(0)|int }}% rabat{% elif ag.get('type') %}{{ ag.value }} ({{ ag.type }}){% else %}{{ ag.value }}{% endif %}
+                      {{ discount(ag.get('type'), ag.value) }}
                     </div>
                   {% endif %}
                   {% if ag.get('valid_until') %}<div style="font-size:11px;color:var(--fm-ink-3)">Til {{ ag.valid_until }}</div>{% endif %}
@@ -99,6 +108,7 @@
       <span class="fm-ch-icon"><i class="fa-solid fa-hourglass-half"></i></span>
       <h3>Aftaler der udløber snart</h3>
       {% if exp.get('within_days') %}<span class="fm-badge" style="margin-left:auto">inden for {{ exp.within_days }} dage</span>{% endif %}
+      <a class="btn btn-ghost btn-sm" {% if not exp.get('within_days') %}style="margin-left:auto"{% endif %} href="{{ url_for('hr_dashboard.supplier_agreements') }}"><i class="fa-solid fa-handshake"></i> Administrér aftaler</a>
     </div>
     <div class="fm-card-body" style="padding-top:6px">
       {% if exp_err %}
@@ -140,7 +150,7 @@
               </td>
               <td>
                 {% if a.get('discount_value') is not none %}
-                  {% if a.get('discount_type') == 'percentage' %}{{ a.discount_value }}%{% elif a.get('discount_type') %}{{ a.discount_value }} ({{ a.discount_type }}){% else %}{{ a.discount_value }}{% endif %}
+                  {{ discount(a.get('discount_type'), a.discount_value) }}
                 {% else %}<span style="color:var(--fm-ink-3)">—</span>{% endif %}
               </td>
               <td style="font-size:12px;color:var(--fm-ink-2)">{{ a.get('valid_until') or '—' }}</td>

@@ -1,7 +1,7 @@
 {% extends "fm_base.html" %}
 {% import 'fm/_macros.html' as ui %}
 {% block page_id %}training_plan{% endblock %}
-{% block title %}Træningsplan{% endblock %}
+{% block title %}Træningsplan · Futurematch{% endblock %}
 {% block topbar_title %}Træningsplan{% endblock %}
 {% block topbar_sub %}AI-anbefalet udviklingsplan baseret på kompetencegab, budget og leverandøraftaler{% if company and company.company_name %} for {{ company.company_name }}{% endif %}.{% endblock %}
 
@@ -65,18 +65,18 @@
   {% if not has_plan %}
   {{ ui.empty(
       'Ingen træningsplan endnu' if not has_error else 'Kunne ikke hente træningsplan',
-      has_error or 'Definér kompetencemål og budgetter, eller vælg en afdeling/et fokusområde — så bygger AI en prioriteret udviklingsplan her.',
+      'Prøv igen om lidt.' if has_error else 'Definér kompetencemål og budgetter, eller vælg en afdeling/et fokusområde — så bygger AI en prioriteret udviklingsplan her.',
       'fa-list-check') }}
   {% else %}
 
   {# ---- KPI tiles ---- #}
   {% set crit_gaps = gaps | selectattr('critical') | list | length %}
   <div class="kpi-row k3" style="margin-top:16px">
-    {{ ui.kpi('Prioriterede gap', gaps|length, (crit_gaps ~ ' kritiske') if crit_gaps else 'ingen kritiske', 'fa-triangle-exclamation', 'clay' if crit_gaps else '') }}
+    {{ ui.kpi('Prioriterede kompetencegab', gaps|length, (crit_gaps ~ ' kritiske') if crit_gaps else 'ingen kritiske', 'fa-triangle-exclamation', 'clay' if crit_gaps else '') }}
     {{ ui.kpi('Anbefalede kurser', courses|length, 'matcher kompetencebehov', 'fa-graduation-cap', 'indigo') }}
     {% if budget_total %}
-      {{ ui.kpi('Budget tilbage', '{:,.0f}'.format(budget_total.get('remaining', 0)|float).replace(',', '.') ~ ' kr',
-          'af ' ~ '{:,.0f}'.format(budget_total.get('budget', 0)|float).replace(',', '.') ~ ' kr',
+      {{ ui.kpi('Budget tilbage', (budget_total.get('remaining', 0)|float|dknum(0)) ~ ' kr',
+          'af ' ~ (budget_total.get('budget', 0)|float|dknum(0)) ~ ' kr',
           'fa-wallet', 'green' if (budget_total.get('remaining', 0)|float) > 0 else 'clay') }}
     {% else %}
       {{ ui.kpi('Fokusområde', (plan.get('focus') or 'Bred') | truncate(20, true), plan.get('department') or 'Alle afdelinger', 'fa-bullseye', 'gold') }}
@@ -88,24 +88,24 @@
     <div class="fm-card">
       <div class="fm-card-head">
         <span class="fm-ch-icon"><i class="fa-solid fa-brain"></i></span>
-        <h3>Prioriterede kompetencegap</h3>
+        <h3>Prioriterede kompetencegab</h3>
         <a href="{{ url_for('hr_dashboard.skill_gaps_view') }}" class="btn btn-ghost btn-sm" style="margin-left:auto"><i class="fa-solid fa-arrow-up-right-from-square"></i> Alle</a>
       </div>
       <div class="fm-card-body" style="padding-top:6px">
         {% if gaps %}
         <div style="position:relative;height:{{ [gaps|length * 34 + 24, 120]|max }}px;margin-bottom:14px"><canvas id="tpGapChart" aria-label="Vandret søjlediagram: størrelsen af prioriterede kompetencegab pr. kompetence" role="img"></canvas></div>
         <div class="fm-table-wrap" style="border:0;box-shadow:none">
-          <table class="fm-table">
-            <thead><tr><th>Kompetence</th><th>Afdeling</th><th class="tnum">Niveau / mål</th><th class="tnum">Gap</th></tr></thead>
+          <table class="fm-table" style="min-width:0">
+            <thead><tr><th>Kompetence</th><th>Afdeling</th><th class="tnum">Niveau / mål</th><th class="tnum">Gab</th></tr></thead>
             <tbody>
               {% for g in gaps %}
               <tr>
                 <td style="font-weight:650">{{ g.get('skill') or '—' }}{% if g.get('critical') %} <span class="status-pill red" style="font-size:10px">kritisk</span>{% endif %}</td>
                 <td><span class="fm-badge">{{ g.get('department') or 'Alle' }}</span></td>
-                <td class="tnum">{{ g.get('avg_current', 0) }} / {{ g.get('target', 0) }}</td>
+                <td class="tnum">{{ g.get('avg_current', 0)|dknum }} / {{ g.get('target', 0)|dknum }}</td>
                 <td class="tnum">
                   {% set gv = g.get('gap', 0)|float %}
-                  <span class="status-pill {{ 'red' if g.get('critical') else ('amber' if gv > 0 else 'green') }}">{{ '+' ~ gv if gv > 0 else gv }}</span>
+                  <span class="status-pill {{ 'red' if g.get('critical') else ('amber' if gv > 0 else 'green') }}">{{ ('+' ~ (gv|dknum)) if gv > 0 else (gv|dknum) }}</span>
                 </td>
               </tr>
               {% endfor %}
@@ -203,7 +203,7 @@
   FMChart.bar('tpGapChart', {
     labels: gaps.map(function (g) { return g.skill || '—'; }),
     series: [{
-      label: 'Gap (mål − nuværende)',
+      label: 'Gab (mål − nuværende)',
       data: gaps.map(function (g) { return Math.max(Number(g.gap) || 0, 0); }),
       color: gaps.map(function (g) { return g.critical ? clay : primary; })
     }],

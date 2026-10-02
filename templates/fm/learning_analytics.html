@@ -2,7 +2,7 @@
 {% from 'fm/_macros.html' import empty %}
 {% import 'fm/_macros.html' as ui %}
 {% block page_id %}hr{% endblock %}
-{% block title %}Futurematch{% endblock %}
+{% block title %}Læringsanalyse · Futurematch{% endblock %}
 {% block topbar_title %}Læringsanalyse{% endblock %}
 {% block topbar_sub %}Deltagelse, gennemførelse og udvikling over tid.{% endblock %}
 {% block extra_head %}
@@ -16,8 +16,10 @@
 <div class="fm-wrap">
 {% set active_hr_page = 'learning_analytics' %}{% include 'fm/_hr_subnav.html' %}
 
-  {% set total_enroll = 0 %}{% set total_complete = 0 %}
-  {% for c in (popular_courses or []) %}{% set total_enroll = total_enroll + (c.enrollments or 0) %}{% set total_complete = total_complete + (c.completions or 0) %}{% endfor %}
+  {# Jinja scoping: a plain {% set %} inside a for-loop does not leak out, so accumulate in a namespace. #}
+  {% set tot = namespace(enroll=0, complete=0) %}
+  {% for t in (learning_trends or []) %}{% set tot.enroll = tot.enroll + (t.enrollments or 0) %}{% set tot.complete = tot.complete + (t.completions or 0) %}{% endfor %}
+  {% set total_enroll = tot.enroll %}{% set total_complete = tot.complete %}
   <div class="fm-flex fm-gap8" style="margin-bottom:14px;justify-content:flex-end;flex-wrap:wrap">
     {{ ui.export_buttons(url_for('hr_dashboard.export_report', report_type='course_completions')) }}
     {% for p,lbl in [('7d','7 dage'),('30d','30 dage'),('90d','90 dage'),('1y','1 år')] %}
@@ -27,13 +29,13 @@
 
   <div class="kpi-row k3">
     <div class="kpi-tile"><div class="kl">Tilmeldinger</div><div class="kv tnum">{{ total_enroll }}</div><div class="kd">i valgt periode</div></div>
-    <div class="kpi-tile"><div class="kl">Gennemført</div><div class="kv tnum">{{ total_complete }}</div><div class="kd">{{ ((total_complete/total_enroll*100)|round(0)|int) if total_enroll else 0 }}% rate</div></div>
-    <div class="kpi-tile"><div class="kl">Populære kurser</div><div class="kv tnum">{{ popular_courses|length }}</div><div class="kd">med aktivitet</div></div>
+    <div class="kpi-tile"><div class="kl">Gennemført</div><div class="kv tnum">{{ total_complete }}</div><div class="kd">{{ ((total_complete/total_enroll*100)|round(0)|int) if total_enroll else 0 }}% gennemførelsesrate</div></div>
+    <div class="kpi-tile"><div class="kl">Kurser med aktivitet</div><div class="kv tnum">{{ popular_courses|length }}</div><div class="kd">op til de 10 mest bestilte</div></div>
   </div>
 
   <div class="split">
     <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-line"></i></span><h3>Tilmeldinger vs. gennemførelser</h3></div><div class="fm-card-body"><div class="la-chart-wrap"><canvas id="trendChart" role="img" aria-label="Linjediagram: tilmeldinger og gennemførelser pr. dag i valgt periode"></canvas></div></div></div>
-    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-sitemap"></i></span><h3>Gennemførselsrate pr. afdeling</h3></div><div class="fm-card-body"><div class="la-chart-wrap"><canvas id="deptChart" role="img" aria-label="Søjlediagram: gennemførselsrate i procent pr. afdeling"></canvas></div></div></div>
+    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-sitemap"></i></span><h3>Gennemførelsesrate pr. afdeling</h3></div><div class="fm-card-body"><div class="la-chart-wrap"><canvas id="deptChart" role="img" aria-label="Søjlediagram: gennemførelsesrate i procent pr. afdeling"></canvas></div></div></div>
   </div>
 
   <div class="fm-card" style="margin-top:16px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-clock"></i></span><h3>Hvornår på dagen lærer medarbejderne?</h3><span class="fm-ch-sub">Interaktioner pr. time i valgt periode</span></div><div class="fm-card-body">
@@ -42,15 +44,15 @@
   </div></div>
 
   <div class="split" style="margin-top:16px">
-    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-route"></i></span><h3>Læringsforløb der faktisk gennemføres</h3><span class="fm-ch-sub">Gennemsnitlig fremdrift og gennemførselsrate pr. forløb</span></div><div class="fm-card-body">
+    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-route"></i></span><h3>Læringsforløb der faktisk gennemføres</h3><span class="fm-ch-sub">Gennemsnitlig fremdrift og gennemførelsesrate pr. forløb</span></div><div class="fm-card-body">
       {% if path_effectiveness %}
-      <div class="la-chart-wrap"><canvas id="pathChart" role="img" aria-label="Liggende søjlediagram: gennemsnitlig fremdrift og gennemførselsrate i procent pr. læringsforløb"></canvas></div>
+      <div class="la-chart-wrap"><canvas id="pathChart" role="img" aria-label="Liggende søjlediagram: gennemsnitlig fremdrift og gennemførelsesrate i procent pr. læringsforløb"></canvas></div>
       {% if path_anon %}<p class="la-anon"><i class="fa-solid fa-user-shield"></i> {{ path_anon }}</p>{% endif %}
       {% else %}
-      {{ empty('Ingen forløbsdata i perioden', 'Når medarbejdere starter på et læringsforløb vises fremdrift og gennemførsel her.', 'fa-route') }}
+      {{ empty('Ingen forløbsdata i perioden', 'Når medarbejdere starter på et læringsforløb vises fremdrift og gennemførelse her.', 'fa-route') }}
       {% endif %}
     </div></div>
-    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-layer-group"></i></span><h3>Bestilte vs. gennemførte kurser pr. kategori</h3><span class="fm-ch-sub">Bestillingsvolumen mod gennemførsler — ikke kompetencebehov</span></div><div class="fm-card-body">
+    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-layer-group"></i></span><h3>Bestilte vs. gennemførte kurser pr. kategori</h3><span class="fm-ch-sub">Bestillingsvolumen mod gennemførelser — ikke kompetencebehov</span></div><div class="fm-card-body">
       {% if category_throughput %}
       <div class="la-chart-wrap"><canvas id="categoryChart" role="img" aria-label="Søjlediagram: antal bestilte og gennemførte kurser pr. kursuskategori"></canvas></div>
       {% if category_anon %}<p class="la-anon"><i class="fa-solid fa-user-shield"></i> {{ category_anon }}</p>{% endif %}
@@ -64,7 +66,7 @@
     <a class="btn btn-ghost btn-sm" href="{{ url_for('multitenant_reports.reports') }}">Se samtaler i detaljer</a></div>
   {% if ai_usage and ai_usage.total_interactions %}
   <div class="kpi-row k4">
-    <div class="kpi-tile"><div class="kl">Samtaler</div><div class="kv tnum">{{ ai_usage.total_interactions }}</div><div class="kd">{{ ai_usage.unique_users }} unikke brugere</div></div>
+    <div class="kpi-tile"><div class="kl">Samtaler</div><div class="kv tnum">{{ ai_usage.total_interactions|dknum }}</div><div class="kd">{{ ai_usage.unique_users }} unikke brugere</div></div>
     <div class="kpi-tile"><div class="kl">Tilfredshed</div><div class="kv tnum">{{ '%.0f'|format((ai_usage.avg_quality or 0) * 100) }}%</div><div class="kd">gns. kvalitetsscore</div></div>
     <div class="kpi-tile"><div class="kl">Svartid</div><div class="kv tnum">{{ '%.0f'|format(ai_usage.avg_response_time or 0) }} ms</div><div class="kd">gennemsnit</div></div>
     <div class="kpi-tile"><div class="kl">Medarbejdere</div><div class="kv tnum">{{ headcount.total or 0 }}</div><div class="kd">{{ headcount.active or 0 }} aktive · {{ headcount.new_hires or 0 }} nye</div></div>
@@ -76,9 +78,9 @@
 
   <div class="fm-table-wrap" style="margin-top:16px"><div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><h3 style="font-size:15px;font-weight:700">Mest populære kurser</h3></div>
   {% if popular_courses %}
-  <table class="fm-table"><thead><tr><th>Kursus</th><th>Tilmeldinger</th><th>Gennemført</th><th>Rate</th></tr></thead><tbody>
+  <table class="fm-table"><thead><tr><th>Kursus</th><th>Tilmeldinger</th><th>Gennemført</th><th>Gennemførelsesrate</th></tr></thead><tbody>
     {% for c in popular_courses %}
-    <tr><td style="font-weight:650">{{ c.product_title }}</td><td class="mono">{{ c.enrollments }}</td><td class="mono">{{ c.completions }}</td><td><span class="fm-badge {{ 'green' if (c.completion_rate or 0)|float >= 70 else 'amber' }}">{{ c.completion_rate or 0 }}%</span></td></tr>
+    <tr><td style="font-weight:650">{{ c.product_title }}</td><td class="mono">{{ c.enrollments }}</td><td class="mono">{{ c.completions }}</td><td><span class="fm-badge {{ 'green' if (c.completion_rate or 0)|float >= 70 else 'amber' }}">{{ (c.completion_rate or 0)|dknum }}%</span></td></tr>
     {% endfor %}
   </tbody></table>
   {% else %}
@@ -116,7 +118,7 @@
   var dc = {{ (department_comparison or [])|list|tojson|safe }};
   FMChart.bar('deptChart', {
     labels: dc.map(function (d) { return d.department || '—'; }),
-    series: [{ label: 'Gennemførselsrate (%)', data: dc.map(function (d) { return Number(d.completion_rate) || 0; }), color: FMChart.cssVar('--fm-indigo', '#4f46e5') }],
+    series: [{ label: 'Gennemførelsesrate (%)', data: dc.map(function (d) { return Number(d.completion_rate) || 0; }), color: FMChart.cssVar('--fm-indigo', '#4f46e5') }],
     empty: 'Ingen afdelingsdata i perioden'
   });
 
@@ -138,14 +140,14 @@
       labels: pe.map(function (p) { return p.path_name; }),
       series: [
         { label: 'Gns. fremdrift (%)', data: pe.map(function (p) { return Number(p.avg_progress) || 0; }), color: FMChart.cssVar('--fm-indigo', '#4f46e5') },
-        { label: 'Gennemførselsrate (%)', data: pe.map(function (p) { return Number(p.completion_rate) || 0; }), color: FMChart.cssVar('--fm-success', '#16a34a') }
+        { label: 'Gennemførelsesrate (%)', data: pe.map(function (p) { return Number(p.completion_rate) || 0; }), color: FMChart.cssVar('--fm-success', '#16a34a') }
       ],
       empty: 'Ingen forløbsdata i perioden'
     });
   }
 
   // Course-category throughput — bestilte vs. gennemførte kurser
-  // (bestillingsvolumen mod gennemførsler, IKKE kompetencebehov mod udbud).
+  // (bestillingsvolumen mod gennemførelser, IKKE kompetencebehov mod udbud).
   // Sub-k categories already dropped server-side.
   var ct = {{ (category_throughput or [])|list|tojson|safe }};
   if (ct.length) {

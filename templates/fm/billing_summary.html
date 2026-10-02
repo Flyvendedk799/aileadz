@@ -1,32 +1,32 @@
 <!DOCTYPE html>
-<html lang="da"><head><meta charset="UTF-8"><title>Faktureringsoversigt {{ company.company_name }}</title>
+<html lang="da"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Faktureringsoversigt {{ company.company_name }}</title>
 <style>
   body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:32px;font-size:13px}
   h1{font-size:20px;margin:0 0 4px} .sub{color:#555;margin-bottom:18px}
   table{border-collapse:collapse;width:100%;margin-top:14px} th,td{border-bottom:1px solid #ddd;padding:6px 8px;text-align:left}
   th{background:#f3f3f3;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
   .num{text-align:right;white-space:nowrap}
-  .kpis{display:flex;gap:24px;margin:10px 0} .kpis div{border:1px solid #ddd;padding:8px 14px;border-radius:6px}
+  .kpis{display:flex;flex-wrap:wrap;gap:12px 24px;margin:10px 0} .tw{overflow-x:auto} .kpis div{border:1px solid #ddd;padding:8px 14px;border-radius:6px}
   .kpis b{display:block;font-size:17px}
   @media print{.noprint{display:none}}
 </style></head><body>
 <button class="noprint" onclick="window.print()">Print / gem som PDF</button>
 <h1>Faktureringsoversigt · {{ company.company_name }}</h1>
-<div class="sub">Periode: {{ date_from or 'start' }} til {{ date_to or 'i dag' }} · udskrevet {{ today }}. Betaling sker uden for appen; fakturaer findes i det eksterne økonomisystem.</div>
+<div class="sub">Periode: {{ date_from or 'begyndelsen' }} til {{ date_to or 'i dag' }} · udskrevet {{ today }}. Betaling sker uden for appen; fakturaer findes i det eksterne økonomisystem.</div>
 <div class="kpis">
-  <div>Ikke faktureret<b>{{ "{:,.0f}".format(summary.not_invoiced_value).replace(",", ".") }} kr</b>{{ summary.not_invoiced }} ordrer</div>
-  <div>Faktureret<b>{{ "{:,.0f}".format(summary.invoiced_value).replace(",", ".") }} kr</b>{{ summary.invoiced }} ordrer</div>
-  <div>Betalt<b>{{ "{:,.0f}".format(summary.paid_value).replace(",", ".") }} kr</b>{{ summary.paid }} ordrer</div>
-  <div>Forfaldne<b>{{ "{:,.0f}".format(summary.overdue_value).replace(",", ".") }} kr</b>{{ summary.overdue }} ordrer</div>
+  <div>Ikke faktureret<b>{{ "{:,.0f}".format(summary.not_invoiced_value).replace(",", ".") }} kr</b>{{ summary.not_invoiced }} {{ 'ordre' if summary.not_invoiced == 1 else 'ordrer' }}</div>
+  <div>Faktureret<b>{{ "{:,.0f}".format(summary.invoiced_value).replace(",", ".") }} kr</b>{{ summary.invoiced }} {{ 'ordre' if summary.invoiced == 1 else 'ordrer' }}</div>
+  <div>Betalt<b>{{ "{:,.0f}".format(summary.paid_value).replace(",", ".") }} kr</b>{{ summary.paid }} {{ 'ordre' if summary.paid == 1 else 'ordrer' }}</div>
+  <div>Forfaldne<b>{{ "{:,.0f}".format(summary.overdue_value).replace(",", ".") }} kr</b>{{ summary.overdue }} {{ 'ordre' if summary.overdue == 1 else 'ordrer' }}</div>
 </div>
 {% if orders %}
-<table>
+<div class="tw"><table>
   <thead><tr><th>Ordre</th><th>Kursus</th><th>Medarbejder</th><th class="num">Pris</th><th>Fakturering</th><th>Fakturanr.</th><th>Forfald</th><th>Betalt</th></tr></thead>
   <tbody>{% for o in orders %}
     <tr><td>{{ o.order_id[:8] }}</td><td>{{ o.product_title }}</td><td>{{ o.user_name or o.username }}</td>
     <td class="num">{{ "{:,.0f}".format(o.price or 0).replace(",", ".") }} kr</td><td>{{ order_billing_label(o.billing_status) }}</td>
     <td>{{ o.invoice_number or '' }}</td><td>{{ o.invoice_due_date or '' }}</td><td>{{ o.payment_date or '' }}</td></tr>
   {% endfor %}</tbody>
-</table>
+</table></div>
 {% else %}<p>Ingen ordrer i perioden.</p>{% endif %}
 </body></html>

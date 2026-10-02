@@ -79,13 +79,13 @@
           <td style="min-width:140px"><div class="fm-prog thin" style="margin-bottom:4px"><span style="width:{{ [rate,100]|min }}%;background:{{ barcol }}"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">{{ rate }}%</span></td>
           <td style="text-align:right;white-space:nowrap">
             <button class="btn btn-ghost btn-sm" onclick="toggleDrill({{ loop.index0 }})"><i class="fa-solid fa-list-ul"></i> Detaljer</button>
-            <button class="btn btn-ghost btn-sm" title="Redigér" onclick='editRequirement({{ {"id": req.id, "title": req.title, "category": req.category or "", "dept": req.applies_to_department or "", "role": req.applies_to_role or "", "handle": req.required_course_handle or "", "rec": req.recurrence_months or 0, "stat": 1 if req.is_statutory else 0}|tojson }})'><i class="fa-solid fa-pen"></i></button>
+            <button class="btn btn-ghost btn-sm" title="Redigér" aria-label="Redigér kravet" onclick='editRequirement({{ {"id": req.id, "title": req.title, "category": req.category or "", "dept": req.applies_to_department or "", "role": req.applies_to_role or "", "handle": req.required_course_handle or "", "rec": req.recurrence_months or 0, "stat": 1 if req.is_statutory else 0}|tojson }})'><i class="fa-solid fa-pen"></i></button>
             {% if req.required_course_handle and (row.overdue > 0) %}
             <form method="post" action="{{ url_for('hr_dashboard.assign_compliance_course', req_id=req.id) }}" style="display:inline" onsubmit="return confirm('Bestil kurset til alle, der mangler det? Bestillingerne sendes til godkendelse.')">
               <button class="btn btn-primary btn-sm" type="submit"><i class="fa-solid fa-user-plus"></i> Tildel kursus</button></form>
             {% endif %}
             <form method="post" action="{{ url_for('hr_dashboard.delete_compliance_requirement', req_id=req.id) }}" style="display:inline" onsubmit="return confirm('Slet dette krav?')">
-              <button class="btn btn-ghost btn-sm" type="submit" title="Slet"><i class="fa-solid fa-trash"></i></button></form>
+              <button class="btn btn-ghost btn-sm" type="submit" title="Slet" aria-label="Slet kravet"><i class="fa-solid fa-trash"></i></button></form>
           </td>
         </tr>
         <tr id="drill-{{ loop.index0 }}" style="display:none">
@@ -254,6 +254,7 @@ function openComplianceModal(){
   var f = document.getElementById('cmpForm'); f.reset(); f.action = ADD_URL;
   document.getElementById('cmpTitle').textContent = 'Tilføj compliance-krav';
   document.getElementById('complianceModal').style.display='flex';
+  f.title.focus();
 }
 function editRequirement(r){
   var f = document.getElementById('cmpForm'); f.reset();
@@ -266,6 +267,8 @@ function editRequirement(r){
   document.getElementById('complianceModal').style.display='flex';
 }
 function closeComplianceModal(){ document.getElementById('complianceModal').style.display='none'; }
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeComplianceModal(); });
+document.getElementById('complianceModal').addEventListener('mousedown', function(e){ if (e.target === this) closeComplianceModal(); });
 function toggleDrill(i){ var el=document.getElementById('drill-'+i); if(el){ el.style.display = (el.style.display==='none'?'table-row':'none'); } }
 </script>
 {% endblock %}

@@ -6,6 +6,9 @@
 {% block content %}
 <div class="fm-wrap">
   {% set active_hr_page = '' %}{% include 'fm/_hr_subnav.html' %}
+  <div class="fm-flex fm-gap8" style="margin-bottom:12px;flex-wrap:wrap" role="group" aria-label="Periode">
+    {% for d in [7, 30, 90] %}<a class="btn {{ 'btn-primary' if days == d else 'btn-ghost' }} btn-sm" href="{{ url_for('credits.company_credits', days=d) }}"{% if days == d %} aria-current="true"{% endif %}>{{ d }} dage</a>{% endfor %}
+  </div>
   {% include 'fm/_credit_usage.html' %}
 
   {% if summary and summary.account %}

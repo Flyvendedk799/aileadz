@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Profil · Leverandorportal · Futurematch</title>
+  <title>Profil · Leverandørportal · Futurematch</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -44,18 +44,7 @@
   </style>
 </head>
 <body data-page="vendor-profile">
-  <header class="vp-top">
-    <span class="vp-mark">F</span>
-    <span class="name">Leverandorportal</span>
-    <span class="who">{{ vendor.vendor_name or '' }}</span>
-  </header>
-  <nav class="vp-nav">
-    <a href="{{ url_for('vendor.vendor_dashboard') }}">Oversigt</a>
-    <a href="{{ url_for('vendor.vendor_orders') }}">Bestillinger{% if vendor_awaiting_count %} <span class="badge pending">{{ vendor_awaiting_count }}</span>{% endif %}</a>
-    <a href="{{ url_for('vendor.vendor_submit') }}">Indsend katalog</a>
-    <a href="{{ url_for('vendor.vendor_profile') }}" class="active">Profil</a>
-    <form method="post" action="{{ url_for('vendor.vendor_logout') }}" style="margin:0 0 0 auto"><button type="submit" class="logout" style="background:none;border:0;padding:0;font:inherit;color:var(--fm-ink-3);cursor:pointer">Log ud</button></form>
-  </nav>
+  {% set vendor_tab = 'profile' %}{% include 'fm/_vendor_nav.html' %}
 
   <main class="vp-wrap">
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -65,11 +54,11 @@
     {% endwith %}
 
     <h1 class="vp-h1">Din profil</h1>
-    <p class="vp-lead">Opdater dine offentlige leverandoroplysninger.</p>
+    <p class="vp-lead">Opdater dine offentlige leverandøroplysninger.</p>
 
     <div class="vp-card">
       <div class="vp-meta">
-        Leverandor: <b>{{ vendor.vendor_name or '—' }}</b>
+        Leverandør: <b>{{ vendor.vendor_name or '—' }}</b>
         {% if vendor.status %} · Status: <b>{{ vendor.status }}</b>{% endif %}
       </div>
 
@@ -95,7 +84,7 @@
           <textarea class="vp-textarea" id="description" name="description"
                     placeholder="Fortael om jeres kurser og ekspertise...">{{ vendor.description or '' }}</textarea>
         </div>
-        <button class="vp-btn" type="submit">Gem aendringer</button>
+        <button class="vp-btn" type="submit">Gem ændringer</button>
       </form>
     </div>
   </main>

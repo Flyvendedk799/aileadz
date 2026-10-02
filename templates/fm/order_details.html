@@ -4,9 +4,15 @@
 {% block topbar_title %}Ordre #{{ order.order_id[:8] }}{% endblock %}
 {% block topbar_sub %}{{ order.product_title }} · {{ order.username }}{% endblock %}
 {% block content %}
+{% from 'fm/_macros.html' import crumbs %}
 <div class="fm-wrap">
+{% if admin_view %}
+{% include 'fm/_admin_subnav.html' %}
+{{ crumbs([('Adminoversigt', url_for('admin_dashboard.admin_home')), ('Fakturering', url_for('admin_dashboard.admin_billing', company_id=order.company_id) if order.company_id else url_for('admin_dashboard.admin_billing')), ('#' ~ order.order_id[:8], None)]) }}
+{% else %}
 {% set active_hr_page = 'approvals' %}{% include 'fm/_hr_subnav.html' %}
-<div class="crumb"><a href="{{ url_for('hr_dashboard.dashboard') }}">HR-workspace</a><i class="fa-solid fa-chevron-right"></i><a href="{{ url_for('hr_dashboard.billing_overview') if can_bill else url_for('hr_dashboard.pending_approvals') }}">{{ 'Ordrer' if can_bill else 'Godkendelser' }}</a><i class="fa-solid fa-chevron-right"></i><span>#{{ order.order_id[:8] }}</span></div>
+{{ crumbs([('Oversigt', url_for('hr_dashboard.dashboard')), ('Fakturering', url_for('hr_dashboard.billing_overview')) if can_bill else ('Godkendelser', url_for('hr_dashboard.pending_approvals')), ('#' ~ order.order_id[:8], None)]) }}
+{% endif %}
 
   <div class="fm-spread" style="margin-bottom:14px;flex-wrap:wrap;gap:10px">
     <div></div>
@@ -16,7 +22,8 @@
       {% endif %}
       <button class="btn btn-ghost btn-sm" onclick="window.print()"><i class="fa-solid fa-print"></i> Print</button>
       {% if admin_view %}
-      {% if order.company_id %}<form method="post" action="{{ url_for('admin_dashboard.impersonate_company', company_id=order.company_id) }}" style="display:inline;margin:0"><button type="submit" class="btn btn-soft btn-sm" title="Åbn HR-dashboard som denne virksomhed (logges)"><i class="fa-solid fa-user-secret"></i> Åbn som virksomhed (HR)</button></form>{% endif %}
+      {% if order.company_id %}<a href="{{ url_for('companies.admin_company_detail', company_id=order.company_id) }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-building"></i> {{ order.company_name or 'Virksomhed' }}</a>
+      <form method="post" action="{{ url_for('admin_dashboard.impersonate_company', company_id=order.company_id) }}" style="margin:0"><button type="submit" class="btn btn-soft btn-sm" title="Åbn HR-dashboard som denne virksomhed (logges)"><i class="fa-solid fa-user-secret"></i> Åbn som virksomhed (HR)</button></form>{% endif %}
       <a href="{{ url_for('admin_reports.chatbot_dashboard') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-arrow-left"></i> Chatbot BI</a>
       {% else %}
       <a href="{{ url_for('hr_dashboard.pending_approvals') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-arrow-left"></i> Godkendelser</a>
@@ -105,7 +112,7 @@
 
     <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-user"></i></span><h3>Medarbejder</h3></div>
     <div class="fm-card-body"><div class="info-list">
-      <div class="kv"><span class="k">Navn</span><span class="v">{{ order.username }}</span></div>
+      <div class="kv"><span class="k">Navn</span><span class="v">{% if not admin_view and order.user_id %}<a href="{{ url_for('hr_dashboard.employee_details', user_id=order.user_id) }}">{{ order.username }}</a>{% else %}{{ order.username }}{% endif %}</span></div>
       <div class="kv"><span class="k">Email</span><span class="v">{{ order.email or order.user_email or 'Ikke angivet' }}</span></div>
       <div class="kv"><span class="k">Afdeling</span><span class="v">{{ order.department or 'Ikke angivet' }}</span></div>
       <div class="kv"><span class="k">Stilling</span><span class="v">{{ order.job_title or 'Ikke angivet' }}</span></div>

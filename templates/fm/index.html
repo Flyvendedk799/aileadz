@@ -106,6 +106,12 @@
 {% set _credits = credit_chip().balance if credit_chip is defined else 0 %}
 <div class="fm-wrap">
 
+        {# Managers land here with a company; platform admins may have none, so every
+           HR link falls back to the matching admin page instead of bouncing. #}
+        {% set _hr = session.get('company_id') and can('company.workspace') %}
+        {% set _ws_href = url_for('hr_dashboard.dashboard') if _hr else url_for('admin_dashboard.admin_home') %}
+        {% set _approvals_href = url_for('hr_dashboard.pending_approvals') if _hr else url_for('admin_dashboard.admin_billing') %}
+        {% set _analytics_href = url_for('hr_dashboard.learning_analytics') if (_hr and can('company.analytics')) else (url_for('hr_dashboard.team_cockpit') if _hr else url_for('admin_reports.chatbot_dashboard')) %}
         <!-- Hero -->
         <section class="dash-hero">
           <div class="hero-panel" data-reveal data-d="1">
@@ -113,7 +119,7 @@
             <h1 class="hero-title">Styr læring, mennesker og <em>indsigt</em> i én flade.</h1>
             <p class="hero-copy">Gå direkte til kursuskatalog, HR-workspace, rapporter og godkendelser — uden unødig navigation. Bygget til hurtige beslutninger.</p>
             <div class="hero-actions">
-              <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-primary"><i class="fa-solid fa-building"></i> Åbn HR-workspace</a>
+              <a href="{{ _ws_href }}" class="btn btn-primary"><i class="fa-solid {{ 'fa-gauge' if _hr else 'fa-shield-halved' }}"></i> {{ 'Åbn HR-oversigt' if _hr else 'Åbn adminoversigt' }}</a>
               <a href="{{ url_for('catalog.catalog_index') }}" class="btn btn-ghost"><i class="fa-solid fa-graduation-cap"></i> Kursuskatalog</a>
               <a href="{{ url_for('futurematch.chat') }}" class="btn btn-ghost"><i class="fa-solid fa-comment-dots"></i> Spørg AI</a>
             </div>
@@ -152,14 +158,14 @@
             <div class="kpi-foot">
               <svg class="spark" width="74" height="26" viewBox="0 0 74 26" fill="none" role="img" aria-label="Udvikling seneste 7 dage"><polyline points="{{ spark_poly((extras.sparks.get('notifications') if extras and extras.sparks else None)) }}" stroke="var(--fm-clay)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           </a>
-          <a class="kpi" data-reveal data-d="2" href="{{ url_for('hr_dashboard.pending_approvals') }}" title="Gå til godkendelser">
+          <a class="kpi" data-reveal data-d="2" href="{{ _approvals_href }}" title="{{ 'Gå til godkendelser' if _hr else 'Se alle ordrer' }}">
             <div class="kpi-top"><span class="kpi-ic teal"><i class="fa-solid fa-clipboard-check"></i></span><span class="fm-badge amber dot">Afventer</span></div>
             <div class="kpi-val tnum">{{ (kpis.pending_approvals if kpis and kpis.pending_approvals is not none else 0) }}</div>
             <div class="kpi-lab">Ordrer afventer godkendelse</div>
             <div class="kpi-foot">
               <svg class="spark" width="74" height="26" viewBox="0 0 74 26" fill="none" role="img" aria-label="Udvikling seneste 7 dage"><polyline points="{{ spark_poly((extras.sparks.get('approvals') if extras and extras.sparks else None)) }}" stroke="var(--fm-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           </a>
-          <a class="kpi" data-reveal data-d="3" href="{{ url_for('hr_dashboard.dashboard') }}" title="Se ordrer i HR-workspace">
+          <a class="kpi" data-reveal data-d="3" href="{{ _ws_href }}" title="{{ 'Se ordrer i HR-oversigten' if _hr else 'Se adminoversigten' }}">
             <div class="kpi-top"><span class="kpi-ic indigo"><i class="fa-solid fa-graduation-cap"></i></span><span class="fm-badge indigo">Læring</span></div>
             <div class="kpi-val tnum">{{ (kpis.catalog_tools if kpis and kpis.catalog_tools is not none else 0) }}</div>
             <div class="kpi-lab">Kursusordrer i alt</div>
@@ -197,12 +203,12 @@
             <div><h3>Kursuskatalog</h3><p>Gennemse produkter, kategorier og leverandører direkte.</p></div>
             <div class="tool-foot"><span class="tag">Selvbetjening</span><span class="tool-arrow"><i class="fa-solid fa-arrow-right"></i></span></div>
           </a>
-          <a href="{{ url_for('hr_dashboard.dashboard') }}" class="tool" data-reveal data-d="3">
+          <a href="{{ _ws_href if _hr else url_for('companies.admin_companies_list') }}" class="tool" data-reveal data-d="3">
             <div class="tool-top"><span class="tool-ic"><i class="fa-solid fa-building"></i></span><span class="fm-badge">HR</span></div>
-            <div><h3>HR-workspace</h3><p>Medarbejdere, budgetter, godkendelser, forløb og kompetencegab.</p></div>
+            <div>{% if _hr %}<h3>HR-oversigt</h3><p>Medarbejdere, budgetter, godkendelser, forløb og kompetencegab.</p>{% else %}<h3>Virksomheder</h3><p>Vælg en virksomhed, og åbn dens HR-workspace som administrator.</p>{% endif %}</div>
             <div class="tool-foot"><span class="tag">{{ session.get('company_name', 'Virksomhed') }}</span><span class="tool-arrow"><i class="fa-solid fa-arrow-right"></i></span></div>
           </a>
-          <a href="{{ url_for('pages.analytics') }}" class="tool" data-reveal data-d="4">
+          <a href="{{ _analytics_href }}" class="tool" data-reveal data-d="4">
             <div class="tool-top"><span class="tool-ic"><i class="fa-solid fa-chart-simple"></i></span><span class="fm-badge indigo">Analyse</span></div>
             <div><h3>Virksomhedsanalyse</h3><p>Følg aktivitet, konvertering og læringsstatus på tværs.</p></div>
             <div class="tool-foot"><span class="tag">BI</span><span class="tool-arrow"><i class="fa-solid fa-arrow-right"></i></span></div>

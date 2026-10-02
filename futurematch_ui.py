@@ -21,6 +21,207 @@ def _fm_pages():
         return set()
 
 
+# ── Navigation state: where am I? ───────────────────────────────────────────
+# The sidebar (fm_base.html) and the two section sub-navs (fm/_hr_subnav.html,
+# fm/_admin_subnav.html) highlight the current location from ONE place, keyed
+# on the request endpoint. Templates still may set ``page_id`` /
+# ``active_hr_page`` / ``active_admin_page``; an explicit sub-nav key wins, the
+# page id is the fallback for pages rendered outside their route (the /ui
+# design gallery). One sidebar entry stands for a whole group of sub-nav tabs,
+# so the sidebar and the sub-nav always agree on the section you are in.
+
+# HR sub-nav tab per endpoint (keys = fm/_hr_subnav.html `_hp` values).
+HR_TAB_BY_ENDPOINT = {
+    'hr_dashboard.dashboard': 'dashboard',
+    'hr_dashboard.team_cockpit': 'team',
+    'companies.employees': 'employees',
+    'companies.add_employee': 'employees',
+    'companies.edit_employee': 'employees',
+    'bulk_invite.bulk_invite': 'employees',
+    'hr_dashboard.employee_details': 'employees',
+    'hr_dashboard.employee_goals': 'employees',
+    'hr_dashboard.employee_progress': 'employee_progress',
+    'hr_dashboard.departments': 'departments',
+    'hr_dashboard.pending_approvals': 'approvals',
+    'hr_dashboard.company_order_details': 'approvals',
+    'course_assign.assign_course': 'approvals',
+    'hr_dashboard.approval_policies': 'approval_policies',
+    'hr_dashboard.department_budgets': 'budgets',
+    'hr_dashboard.billing_overview': 'billing',
+    'hr_dashboard.learning_analytics': 'learning_analytics',
+    'hr_dashboard.roi_dashboard': 'roi',
+    'hr_dashboard.funnel_dashboard': 'funnel',
+    'hr_dashboard.retention_dashboard': 'retention',
+    'hr_dashboard.benchmarking_view': 'benchmarking',
+    'hr_dashboard.skill_gaps_view': 'skill_gaps',
+    'hr_ext.engagement': 'engagement',
+    'hr_ext.ai_quality': 'ai_quality',
+    'hr_ext.training_plan': 'training_plan',
+    'hr_dashboard.learning_paths': 'learning_paths',
+    'hr_dashboard.bulk_assign_form': 'learning_paths',
+    'hr_dashboard.internal_courses': 'internal_courses',
+    'hr_dashboard.add_internal_course': 'internal_courses',
+    'hr_dashboard.edit_internal_course': 'internal_courses',
+    'hr_dashboard.compliance_matrix': 'compliance',
+    'hr_ext.procurement': 'procurement',
+    'hr_dashboard.supplier_management': 'suppliers',
+    'hr_dashboard.supplier_agreements': 'suppliers',
+    'hr_dashboard.reports': 'reports',
+    'multitenant_reports.reports': 'reports',
+}
+
+# HR sub-nav tab -> the sidebar section (``hr.<section>``) that owns it.
+HR_TAB_SECTION = {
+    'dashboard': 'dashboard',
+    'team': 'team',
+    'employees': 'employees', 'employee_progress': 'employees', 'departments': 'employees',
+    'approvals': 'approvals', 'approval_policies': 'approvals', 'budgets': 'approvals',
+    'billing': 'approvals',
+    'learning_analytics': 'analytics', 'roi': 'analytics', 'funnel': 'analytics',
+    'retention': 'analytics', 'benchmarking': 'analytics', 'skill_gaps': 'analytics',
+    'engagement': 'analytics', 'ai_quality': 'analytics',
+    'training_plan': 'training', 'learning_paths': 'training', 'internal_courses': 'training',
+    'compliance': 'compliance',
+    'procurement': 'procurement', 'suppliers': 'procurement',
+    'reports': 'reports',
+}
+
+# Capability that shows a section's sidebar entry (must match the `can(...)` around
+# that entry in fm_base.html). When the viewer lacks it, e.g. a department head on
+# "Afdelinger", the section's entry is hidden, so "Oversigt" lights up instead.
+HR_SECTION_CAPABILITY = {
+    'dashboard': 'company.workspace',
+    'team': 'company.team',
+    'employees': 'company.employees',
+    'approvals': 'company.approvals',
+    'analytics': 'company.analytics',
+    'training': 'company.workspace',
+    'compliance': 'company.analytics',
+    'procurement': 'company.workspace',
+    'reports': 'company.analytics',
+}
+
+# Platform-admin sub-nav tab per endpoint (keys = fm/_admin_subnav.html `_ap`
+# values; the sidebar entry is ``admin.<tab>``).
+ADMIN_TAB_BY_ENDPOINT = {
+    'admin_dashboard.admin_home': 'home',
+    'companies.admin_companies_list': 'companies',
+    'companies.admin_company_detail': 'companies',
+    'admin_dashboard.user_list': 'users',
+    'admin_dashboard.credits': 'credits',
+    'credits.admin_company_credits': 'credits',
+    'admin_dashboard.admin_billing': 'billing',
+    'admin_dashboard.admin_order_detail': 'billing',
+    'admin_dashboard.admin_catalog': 'catalog',
+    'admin_dashboard.admin_catalog_ai_preview': 'catalog',
+    'admin_dashboard.admin_catalog_import_preview': 'catalog',
+    'catalog_admin.products': 'catalog',
+    'catalog_admin.edit_product': 'catalog',
+    'admin_reports.catalog_freshness_dashboard': 'freshness',
+    'admin_dashboard.admin_vendors': 'vendors',
+    'admin_dashboard.admin_agreements': 'agreements',
+    'admin_reports.chatbot_dashboard': 'chatbot',
+    'admin_reports.conversion_funnel': 'funnel',
+    'admin_reports.cohort_retention_dashboard': 'retention',
+    'admin_reports.ai_cost_dashboard': 'aicost',
+    'admin_dashboard.admin_ai_quality': 'aiquality',
+    'admin_dashboard.ai_settings': 'ai',
+    'admin_notifications.notifications_dashboard': 'notifications',
+    'admin_dashboard.admin_audit_log': 'log',
+    'admin_dashboard.admin_system_health': 'health',
+    'gdpr.admin_console': 'gdpr',
+    'futurematch.showcase_index': 'ui',
+    'futurematch.showcase': 'ui',
+}
+
+# Sidebar entry for everything outside the two sub-nav sections.
+SIDEBAR_BY_ENDPOINT = {
+    'futurematch.employee_home': 'emphome',
+    'futurematch.timeline': 'timeline',
+    'futurematch.my_order': 'timeline',
+    'futurematch.learning_goals': 'goals',
+    'futurematch.chat': 'chat',
+    'futurematch.ai_profiler': 'profiler',
+    'futurematch.mind_map': 'mindmap',
+    'futurematch.cv_upload': 'cvupload',
+    'catalog.catalog_index': 'catalog',
+    'catalog.product_detail': 'catalog',
+    'catalog.category_index': 'catalog',
+    'catalog.category_detail': 'catalog',
+    'catalog.vendor_index': 'catalog',
+    'catalog.vendor_detail': 'catalog',
+    'pages.notifications': 'notifications',
+    'pages.profile': 'profile',
+    'pages.analytics': 'usage',
+    'pages.settings': 'settings',
+    'auth.account_2fa': 'settings',
+    'hr_dashboard.hr_chatbot': 'hr.assistant',
+    'hr_dashboard.chatbot_sessions': 'hr.assistant',
+    'hr_dashboard.chatbot_session_detail': 'hr.assistant',
+    'settings_hub.index': 'hr.settings',
+    'settings_hub.tab': 'hr.settings',
+    'companies.settings': 'hr.settings',
+    'companies.branding': 'hr.settings',
+    'hr_dashboard.chatbot_settings': 'hr.settings',
+    'hr_dashboard.widget_creator': 'hr.settings',
+    'enterprise_settings.webhooks_page': 'hr.settings',
+}
+
+# Legacy ``page_id`` values -> sidebar entry (fallback when the endpoint is unknown).
+PAGE_ID_ALIASES = {
+    'hr': 'hr.dashboard', 'team': 'hr.team', 'compliance': 'hr.compliance',
+    'benchmark': 'hr.analytics', 'engagement': 'hr.analytics', 'ai_quality': 'hr.analytics',
+    'company': 'hr.analytics', 'training_plan': 'hr.training', 'assign_path': 'hr.training',
+    'procurement': 'hr.procurement', 'creports': 'hr.reports',
+    'csettings': 'hr.settings', 'webhooks': 'hr.settings', 'sso': 'hr.settings',
+    'analytics': 'usage', 'account-2fa': 'settings',
+    'admin': 'admin.home', 'acompanies': 'admin.companies', 'ausers': 'admin.users',
+    'acatalog': 'admin.catalog', 'vendors': 'admin.vendors', 'agreements': 'admin.agreements',
+    'abot': 'admin.chatbot', 'aicost': 'admin.aicost', 'aiquality': 'admin.aiquality',
+    'aiset': 'admin.ai', 'funnel': 'admin.funnel', 'retention': 'admin.retention',
+    'freshness': 'admin.freshness', 'notif': 'admin.notifications', 'alog': 'admin.log',
+    'syshealth': 'admin.health', 'gdpr': 'admin.gdpr', 'ui': 'admin.ui',
+}
+
+
+def _current_endpoint():
+    try:
+        from flask import has_request_context
+        return (request.endpoint or '') if has_request_context() else ''
+    except Exception:
+        return ''
+
+
+@futurematch_bp.app_template_global('nav_state')
+def nav_state(page_id='', hr_tab='', admin_tab=''):
+    """Active keys for the sidebar and the sub-navs of the current request.
+
+    Returns ``{'side': <sidebar key>, 'hr': <HR tab>, 'admin': <admin tab>}``.
+    An explicit ``hr_tab``/``admin_tab`` (the page's own setting) wins over the
+    endpoint map; ``page_id`` is the last resort for the sidebar.
+    """
+    endpoint = _current_endpoint()
+    hr = hr_tab or HR_TAB_BY_ENDPOINT.get(endpoint, '')
+    admin = admin_tab or ADMIN_TAB_BY_ENDPOINT.get(endpoint, '')
+    page = (page_id or '').strip()
+    if endpoint in SIDEBAR_BY_ENDPOINT:
+        side = SIDEBAR_BY_ENDPOINT[endpoint]
+    elif hr:
+        section = HR_TAB_SECTION.get(hr, 'dashboard')
+        try:
+            import capabilities
+            if not capabilities.can(HR_SECTION_CAPABILITY.get(section, 'company.workspace')):
+                section = 'dashboard'
+        except Exception:
+            section = 'dashboard'
+        side = 'hr.' + section
+    elif admin:
+        side = 'admin.' + admin
+    else:
+        side = PAGE_ID_ALIASES.get(page, page)
+    return {'side': side, 'hr': hr, 'admin': admin}
+
+
 @futurematch_bp.route('/chat')
 def chat():
     """AI assistant chat surface (standalone shell with chat.js)."""

@@ -46,9 +46,9 @@
                 <td style="font-weight:650">{{ v.vendor_name }}{% if v.website %}<br><a class="muted" style="font-size:11.5px" href="{{ v.website }}" target="_blank" rel="noopener">{{ v.website }}</a>{% endif %}</td>
                 <td class="muted">{{ v.contact_email or '-' }}</td>
                 <td>
-                  <span class="fm-badge {{ 'teal' if v.status == 'active' else 'amber' if v.status == 'pending' else 'red' }}">{{ v.status }}</span>
+                  <span class="fm-badge {{ 'teal' if v.status == 'active' else 'amber' if v.status == 'pending' else 'red' }}">{{ {'active': 'Aktiv', 'pending': 'Inviteret', 'suspended': 'Suspenderet'}.get(v.status, v.status) }}</span>
                 </td>
-                <td style="text-align:right;font-weight:650">{{ v.course_count }}</td>
+                <td style="text-align:right;font-weight:650">{% if v.course_count and has_endpoint('catalog_admin.products') %}<a href="{{ url_for('catalog_admin.products', vendor=v.vendor_name) }}" title="Se {{ v.vendor_name }}s kurser i katalogadministrationen">{{ v.course_count }}</a>{% else %}{{ v.course_count or 0 }}{% endif %}</td>
                 <td style="text-align:right;white-space:nowrap">
                   {% if v.status != 'suspended' %}
                   <form class="vnd-status-form" method="POST" action="{{ url_for('admin_dashboard.admin_vendor_resend_invite', vendor_id=v.id) }}">

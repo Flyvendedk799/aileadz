@@ -1,20 +1,21 @@
 {% extends "fm_base.html" %}
-{% block page_id %}{% endblock %}
-{% block title %}Futurematch{% endblock %}
+{% block page_id %}acompanies{% endblock %}
+{% block title %}{{ company.company_name }} · Virksomheder{% endblock %}
 {% block topbar_title %}{{ company.company_name }}{% endblock %}
-{% block topbar_sub %}Tenant-indstillinger og feature-kontrol.{% endblock %}
+{% block topbar_sub %}Virksomhedens profil, abonnement, branding og adgang til HR-data.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="crumb"><a href="{{ url_for('companies.admin_companies_list') }}">Virksomheder</a><i class="fa-solid fa-chevron-right"></i><span>{{ company.company_name }}</span></div>
+{% set active_admin_page = 'companies' %}{% include 'fm/_admin_subnav.html' %}
+<div class="crumb"><a href="{{ url_for('admin_dashboard.admin_home') }}">Adminoversigt</a><i class="fa-solid fa-chevron-right"></i><a href="{{ url_for('companies.admin_companies_list') }}">Virksomheder</a><i class="fa-solid fa-chevron-right"></i><span>{{ company.company_name }}</span></div>
 
 <section class="detail-hero" data-reveal>
   <div class="detail-mark av">{{ (company.company_name[:2]|upper) if company.company_name else '??' }}</div>
   <div class="detail-info">
-    <div class="detail-kick">{{ (company.subscription_plan or 'trial')|capitalize }} tenant</div>
+    <div class="detail-kick">{{ (company.subscription_plan or "trial")|capitalize }}-abonnement</div>
     <h1 class="detail-title">{{ company.company_name }}</h1>
     <p class="detail-sub">Slug: <span class="mono">{{ company.company_slug }}</span>{% if company.company_slug %} · <a href="{{ url_for('auth.login', slug=company.company_slug) }}" target="_blank">login-side</a>{% endif %} · {{ employee_count }} aktive medarbejdere.</p>
     <div class="detail-tags">
-      <span class="fm-badge {{ 'green dot' if (company.status or 'active') == 'active' else '' }}">{{ (company.status or 'active')|capitalize }}</span>
+      <span class="fm-badge {{ 'green dot' if (company.status or 'active') == 'active' else '' }}">{{ {'active': 'Aktiv', 'suspended': 'Suspenderet', 'inactive': 'Inaktiv'}.get(company.status or 'active', company.status) }}</span>
       <span class="fm-badge indigo">{{ (company.subscription_plan or 'trial')|capitalize }}</span>
       {% if whitelabel_active %}<span class="fm-badge">White-label</span>{% endif %}
     </div>
@@ -30,9 +31,9 @@
         <div class="fm-field full"><label>Virksomhedsnavn</label><input type="text" class="fm-input" name="company_name" value="{{ company.company_name }}" required></div>
         <div class="fm-field"><label>Status</label>
           <select class="fm-select" name="status">
-            <option value="active" {% if (company.status or 'active') == 'active' %}selected{% endif %}>Active</option>
-            <option value="suspended" {% if company.status == 'suspended' %}selected{% endif %}>Suspended</option>
-            <option value="inactive" {% if company.status == 'inactive' %}selected{% endif %}>Inactive</option>
+            <option value="active" {% if (company.status or 'active') == 'active' %}selected{% endif %}>Aktiv</option>
+            <option value="suspended" {% if company.status == 'suspended' %}selected{% endif %}>Suspenderet</option>
+            <option value="inactive" {% if company.status == 'inactive' %}selected{% endif %}>Inaktiv</option>
           </select>
         </div>
         <div class="fm-field"><label>Branche</label><input type="text" class="fm-input" name="industry" value="{{ company.industry or '' }}"></div>
@@ -95,12 +96,14 @@
   </div></div>
 
   <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-magnifying-glass-chart"></i></span><h3>Analysér virksomhed</h3></div><div class="fm-card-body">
-    <p style="font-size:12.5px;color:var(--fm-ink-2);margin:0 0 12px">Drill ned i denne tenants data (virksomhedsafgrænset).</p>
+    <p style="font-size:12.5px;color:var(--fm-ink-2);margin:0 0 12px">Drill ned i denne tenants data (virksomhedsafgrænset). HR-workspacet åbnes som virksomheden; derfra når du medarbejdere, godkendelser, analyse og indstillinger.</p>
     <div style="display:flex;flex-direction:column;gap:8px">
-      <form method="post" action="{{ url_for('admin_dashboard.impersonate_company', company_id=company.id) }}" style="margin:0"><button type="submit" class="btn btn-primary btn-sm" style="width:100%"><i class="fa-solid fa-user-secret"></i> Åbn HR-dashboard (logges, udløber efter 2 timer)</button></form>
+      <form method="post" action="{{ url_for('admin_dashboard.impersonate_company', company_id=company.id) }}" style="margin:0"><button type="submit" class="btn btn-primary btn-sm" style="width:100%"><i class="fa-solid fa-user-secret"></i> Åbn HR-workspace (logges, udløber efter 2 timer)</button></form>
+      <a href="{{ url_for('admin_dashboard.user_list', q=company.company_name) }}" class="btn btn-soft btn-sm" style="width:100%"><i class="fa-solid fa-users"></i> Brugere i virksomheden</a>
+      <a href="{{ url_for('admin_dashboard.admin_billing', company_id=company.id) }}" class="btn btn-soft btn-sm" style="width:100%"><i class="fa-solid fa-file-invoice-dollar"></i> Fakturering</a>
       <a href="{{ url_for('admin_reports.conversion_funnel', company_id=company.id) }}" class="btn btn-soft btn-sm" style="width:100%"><i class="fa-solid fa-filter"></i> Konverteringstragt</a>
-      <a href="{{ url_for('admin_reports.chatbot_dashboard') }}" class="btn btn-ghost btn-sm" style="width:100%"><i class="fa-solid fa-robot"></i> Chatbot-BI (platform)</a>
       <a href="{{ url_for('admin_dashboard.admin_audit_log', company_id=company.id) }}" class="btn btn-ghost btn-sm" style="width:100%"><i class="fa-solid fa-clock-rotate-left"></i> Aktivitetslog</a>
+      <a href="{{ url_for('admin_reports.chatbot_dashboard') }}" class="btn btn-ghost btn-sm" style="width:100%"><i class="fa-solid fa-robot"></i> Chatbot BI (hele platformen)</a>
     </div>
   </div></div>
 </div>

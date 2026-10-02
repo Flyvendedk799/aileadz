@@ -131,6 +131,20 @@ class NavResolvesTests(unittest.TestCase):
         tabs = dict(re.findall(r"url_for\('([^']+)'\) }}\"><i class=\"fa-solid [^\"]+\"></i> ([^<]+)</a>", admin_src))
         self.assertEqual(side, tabs)
 
+    def test_hr_assistant_destination_labels_match_the_subnav(self):
+        """The HR assistant's navigation buttons use the sub-nav's words."""
+        import html as _html
+        from app1 import sse_events
+        tabs = {ep: _html.unescape(label).strip() for ep, label in re.findall(
+            r"url_for\('([^']+)'\) }}\"><i class=\"fa-solid [^\"]+\"></i> ([^<]+)</a>", _src("fm/_hr_subnav.html"))}
+        # "employees" is the assistant's word for the people overview it opens
+        # (Fremdrift); its own sub-nav tab "Medarbejdere" is the admin list.
+        known = {"employees"}
+        for key, (endpoint, _path, label) in sse_events.HR_DESTINATIONS.items():
+            if key in known:
+                continue
+            self.assertEqual(label, tabs.get(endpoint), key)
+
     def test_sidebar_hr_labels_match_their_subnav_tab(self):
         base, hr_src = _src("fm_base.html"), _src("fm/_hr_subnav.html")
         block = base[base.index('fm-nav-label">Virksomhed'):base.index('fm-nav-label">Konto')]

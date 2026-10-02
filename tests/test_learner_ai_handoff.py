@@ -285,11 +285,11 @@ class OpenInAppHandoffTests(unittest.TestCase):
 
     def test_profiler_and_advisor_carry_a_validated_focus(self):
         out = self._open(action="open_profiler", section="experience", intent="Lad os uddybe min erfaring")
-        self.assertTrue(out["target"].startswith("/ai-profiler?from=chat&focus=section%3Aexperience&intent="))
+        self.assertTrue(out["target"].startswith("/chat?from=chat&focus=section%3Aexperience&intent="))
         out = self._open(action="open_advisor", node="skill:42", intent="Find kurser")
         self.assertIn("from=profiler", out["target"])
         self.assertIn("focus=skill%3A42", out["target"])
-        self.assertEqual(self._open(action="open_profiler", node="evil text")["target"], "/ai-profiler")
+        self.assertEqual(self._open(action="open_profiler", node="evil text")["target"], "/chat")
 
     def test_catalog_query_is_url_encoded(self):
         self.assertEqual(self._open(action="open_catalog", query="ledelse & kommunikation")["target"],
@@ -357,7 +357,7 @@ class SurfaceTemplateTests(unittest.TestCase):
         src = _read("templates/fm/mind_map.html")
         self.assertNotIn("window.prompt", src)
         self.assertIn("method:editId?'PUT':'POST'", src)
-        self.assertIn("'/ai-profiler'", src)
+        self.assertIn("'/chat'", src)
         self.assertIn("q.set('from','mind_map')", src)
 
     def test_chat_status_is_need_driven_and_shared(self):

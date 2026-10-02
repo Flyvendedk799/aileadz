@@ -349,6 +349,40 @@ GEM UNDERVEJS:
   Du behøver ikke opremse, hvad der mangler."""
 
 
+SYSTEM_PLAYBOOK_ASSISTANT = """DIN ROLLE:
+Du er brugerens AI-assistent hos Futurematch: en sparringspartner om karriere og læring, der
+også kender kursuskataloget. Én samtale dækker det hele: hvor de står, hvor de vil hen, og
+hvilke kurser der kan føre dem derhen. Værktøjerne er noget, du bruger undervejs, ikke et
+manuskript, du følger.
+
+DET DU ALLEREDE VED:
+Brugerprofilen, hukommelsen og opsummeringen af tidligere samtaler i konteksten er etableret
+viden. Byg videre på den og spørg ikke om det igen. Spørg kun ind til noget, der allerede
+står der, når du har en konkret grund til at tro, det har ændret sig ("Er du stadig hos X?").
+
+NÅR DET ER RELEVANT, SPØRG:
+- Spørg kun, når svaret vil ændre din rådgivning mærkbart. Det kan være en mangel i profilen,
+  en retning du ikke kender, eller noget, brugeren selv har antydet. Ét spørgsmål ad gangen,
+  bundet til det, de lige skrev.
+- Kender du ikke deres ønskede retning (target_role), er den ofte det mest værdifulde at finde
+  ud af, fordi den afgør, hvilke kompetencegab og kurser der betyder noget. Gem den med
+  update_user_profile(action='set_target_role').
+- Beder brugeren om noget konkret (et kursus, en pris, en sammenligning), så svar på det først.
+  Profilspørgsmål kommer bagefter og kun, hvis de hjælper.
+- Er profilen rig, så byd ind med indsigt ("med din baggrund i X ligner næste skridt Y") frem
+  for at interviewe.
+- Du behøver ikke vente på en "færdig" profil. Så snart du kan sige noget nyttigt om deres
+  retning, så sig det, og vis gerne kurser, der peger den vej.
+
+GEM UNDERVEJS:
+- Det strukturerede (kompetencer, erfaring, uddannelse, certificeringer, sprog, mål) gemmes med
+  update_user_profile eller request_user_input; det løsere (præferencer, livssituation, hvad der
+  driver dem) med remember_about_user.
+- Ret eller fjern noget eksisterende med id'et fra profilen ([#id]).
+- Kvittér kort for det, du gemmer, og lad brugeren mærke, at det bliver brugt til noget.
+  Du behøver ikke opremse, hvad der mangler."""
+
+
 # ── Cross-surface / mode configuration ──
 import os as _os_mod
 
@@ -398,6 +432,16 @@ MODE_PROFILES = {
         "few_shot": "advisor", "stage_hints": True, "memory_limit": 6,
         "prefer_quality": False, "handoff": None, "handoff_pct": None, "proactive": False,
     },
+    # The one user-facing employee assistant: the advisor's course toolbox plus
+    # the profiler's profile awareness. ``ask()`` maps every logged-in turn here;
+    # "default" stays the anonymous advisor and "profiler" the legacy persona
+    # (kept so callers and tests that name it still resolve).
+    "assistant": {
+        "label": "AI-assistent", "core_playbook": SYSTEM_PLAYBOOK_ASSISTANT, "playbook": SYSTEM_PLAYBOOK_ASSISTANT,
+        "flow_playbooks": ("buying", "profile_save", "cv_onboarding", "search", "situation"),
+        "few_shot": "advisor", "stage_hints": True, "memory_limit": 12,
+        "prefer_quality": False, "handoff": None, "handoff_pct": None, "proactive": False,
+    },
     "profiler": {
         "label": "AI Profiler", "core_playbook": SYSTEM_PLAYBOOK_PROFILER, "playbook": SYSTEM_PLAYBOOK_PROFILER,
         "flow_playbooks": ("buying", "profile_save", "search_on_request"),
@@ -411,6 +455,10 @@ MODE_PROFILES = {
 
 def mode_profile(mode):
     return MODE_PROFILES.get(mode) or MODE_PROFILES["default"]
+
+
+# Modes that carry the profile toolbox and the need-driven profile context.
+PROFILING_MODES = ("assistant", "profiler")
 
 
 # A course request inside the profiler: a learning-goal phrase that actually
@@ -1436,7 +1484,7 @@ def _fallback_suggestions(*, mode="default", had_cards=False, completeness=None,
     <suggestions> tag — so a turn never dead-ends. Deterministic (no API call),
     chosen from what actually happened this turn. Max 3, Danish, action-oriented.
     """
-    if mode == "profiler":
+    if mode == "profiler" or (mode == "assistant" and not had_cards):
         # Need-driven, not field-driven. The old chips ("Udfyld Erfaring",
         # "Hvad mangler i min profil?") were the form-filler framing showing
         # through on the one surface the user actually clicks — they described
@@ -2015,7 +2063,7 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
     # LLM router is disabled, errors, or times out.
     if turn_kind == "seed":
         # UI-generated opener: there is no user text to classify.
-        regex_intent = "profiler_resume" if mode == "profiler" else "needs_clarification"
+        regex_intent = "profiler_resume" if mode in PROFILING_MODES else "needs_clarification"
     else:
         regex_intent = _classify_intent_local(user_query, messages, shown_count)
     intent = regex_intent
@@ -2346,7 +2394,7 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                 if _cv_note:
                     context_layers.append(_ctx.layer("cv_just_applied", _cv_note))
 
-                if mode == "profiler":
+                if mode in PROFILING_MODES:
                     try:
                         from app1.user_profile_db import profile_completeness
                         _profiler_completeness = profile_completeness(logged_in_user, profile=db_profile or None)
@@ -2541,8 +2589,8 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                 }
             tool_choice = make_tool_choice(toolset_meta.get("forced_tool"))
             max_iterations = choose_max_iterations(intent, scope="employee")
-            if mode == "profiler":
-                # Profiler turns often chain save → gaps → recommendation.
+            if mode in PROFILING_MODES:
+                # Profile turns often chain save → gaps → recommendation.
                 max_iterations = max(max_iterations, 3)
             iteration = 0
             had_tool_calls = False
@@ -3160,7 +3208,7 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                             pass
                     _payload = [{"id": m["id"], "label": m["label"], "category": m.get("category")} for m in _used]
                     yield f"data: {json.dumps({'type': 'memory_used', 'memories': _payload}, ensure_ascii=False)}\n\n"
-            if mode == "profiler" and logged_in_user:
+            if mode in PROFILING_MODES and logged_in_user:
                 _profile_mutated = any(
                     getattr(_tr, "name", "") in _PROFILE_MUTATING_TOOLS
                     for _tr in (runtime_result.tool_results or [])

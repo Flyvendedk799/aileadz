@@ -60,31 +60,27 @@ def _app_with(cursor):
 
 
 class SessionIdTests(unittest.TestCase):
-    def test_surfaces_get_independent_session_ids(self):
+    def test_every_mode_shares_the_one_assistant_session(self):
+        """The AI Profiler was merged into the assistant: old `profiler` callers
+        and the sidebar vocabulary resolve to the same session id."""
         sess = {}
-        chat_sid = cs.resolve_sid(sess, "default")
-        prof_sid = cs.resolve_sid(sess, "profiler")
-        self.assertNotEqual(chat_sid, prof_sid)
-        self.assertEqual(cs.resolve_sid(sess, "chat"), chat_sid)
-        self.assertEqual(sess["session_ids"], {"chat": chat_sid, "profiler": prof_sid})
+        sid = cs.resolve_sid(sess, "assistant")
+        for mode in ("default", "profiler", "chat"):
+            self.assertEqual(cs.resolve_sid(sess, mode), sid)
+        self.assertEqual(sess["session_ids"], {"chat": sid})
 
-    def test_new_session_only_resets_its_own_surface(self):
+    def test_new_session_replaces_the_open_conversation(self):
         sess = {}
-        chat_sid = cs.resolve_sid(sess, "default")
-        prof_sid = cs.resolve_sid(sess, "profiler")
+        old = cs.resolve_sid(sess, "assistant")
         fresh = cs.start_new_session(sess, "profiler")
-        self.assertNotEqual(fresh, prof_sid)
-        self.assertEqual(sess["session_ids"]["chat"], chat_sid)
+        self.assertNotEqual(fresh, old)
+        self.assertEqual(cs.resolve_sid(sess, "assistant"), fresh)
         self.assertEqual(sess["session_id"], fresh)
 
-    def test_legacy_session_id_is_not_adopted_by_the_wrong_surface(self):
+    def test_legacy_session_id_is_adopted_by_the_assistant(self):
         sess = {"session_id": "legacy-chat"}
         with mock.patch.object(cs, "load", return_value={"mode": "chat", "messages": []}):
-            sid = cs.resolve_sid(sess, "profiler", username="eva")
-        self.assertNotEqual(sid, "legacy-chat")
-        with mock.patch.object(cs, "load", return_value={"mode": "chat", "messages": []}):
-            self.assertEqual(cs.resolve_sid({"session_id": "legacy-chat"}, "default", username="eva"),
-                             "legacy-chat")
+            self.assertEqual(cs.resolve_sid(sess, "assistant", username="eva"), "legacy-chat")
 
     def test_all_session_ids_lists_every_surface(self):
         sess = {"session_ids": {"chat": "a", "profiler": "b"}, "session_id": "b"}
@@ -108,7 +104,7 @@ class LoadTests(unittest.TestCase):
                "state_json": json.dumps({"handoff": {"attempts": 1}}), "updated_at": None}
         with mock.patch.object(cs, "current_app", new=_app_with(_Cursor(fetchone=[row]))):
             conv = cs.load("eva", "s1")
-        self.assertEqual(conv["mode"], "profiler")
+        self.assertEqual(conv["mode"], "chat")  # old profiler rows resume in the assistant
         self.assertEqual(conv["rev"], 3)
         self.assertEqual(conv["state"], {"handoff": {"attempts": 1}})
         self.assertEqual(conv["messages"][0]["content"], "hej")
@@ -125,10 +121,10 @@ class SaveTurnTests(unittest.TestCase):
         cur = _Cursor(fetchone=[None])
         with mock.patch.object(cs, "current_app", new=_app_with(cur)), \
                 mock.patch.object(cs, "set_active") as set_active:
-            result = cs.save_turn("eva", "s1", "profiler", self._MSGS)
+            result = cs.save_turn("eva", "s1", "assistant", self._MSGS)
         self.assertEqual(result["rev"], 1)
         self.assertTrue(any(sql.startswith("INSERT INTO conversation_history") for sql, _ in cur.executed))
-        set_active.assert_called_once_with("eva", "profiler", "s1")
+        set_active.assert_called_once_with("eva", "chat", "s1")
         stored = json.loads(next(p for s, p in cur.executed if s.startswith("INSERT"))[4])
         self.assertEqual([m["role"] for m in stored], ["user", "assistant"])
 
@@ -179,11 +175,11 @@ class DigestTests(unittest.TestCase):
                 mock.patch.object(cs, "save_session_summary") as save_session, \
                 mock.patch.object(cs, "save_mode_summary") as save_mode, \
                 mock.patch("app1.user_knowledge.index_conversation_summary") as index:
-            out = cs.digest_session("eva", "s1", "profiler", msgs)
+            out = cs.digest_session("eva", "s1", "chat", msgs)
         self.assertEqual(out, "sessionsum")
         save_session.assert_called_once_with("eva", "s1", "sessionsum", 2)
-        save_mode.assert_called_once_with("eva", "profiler", "merged digest", source_session_id="s1")
-        index.assert_called_once_with("eva", "s1", "profiler", "sessionsum")
+        save_mode.assert_called_once_with("eva", "chat", "merged digest", source_session_id="s1")
+        index.assert_called_once_with("eva", "s1", "chat", "sessionsum")
 
     def test_rule_based_session_summary_offline(self):
         from ai_context import summarize_session
@@ -211,13 +207,13 @@ class RouteTests(unittest.TestCase):
                 sess[k] = v
         return client
 
-    def test_new_session_never_deletes_and_keeps_other_surface(self):
+    def test_new_session_never_deletes_the_old_conversation(self):
         import app1.agent as agent
         agent.CHAT_MEMORY["prof-old"] = [{"role": "system", "content": "s"},
                                          {"role": "user", "content": "hej"},
                                          {"role": "assistant", "content": "hej selv"}]
-        client = self._client(user="eva", session_ids={"chat": "chat-open", "profiler": "prof-old"},
-                              session_id="prof-old", session_surface="profiler")
+        client = self._client(user="eva", session_ids={"chat": "prof-old"},
+                              session_id="prof-old", session_surface="chat")
         with mock.patch("app1.user_profile_db.ensure_tables", lambda: None), \
                 mock.patch("app1.user_profile_db.clear_conversation") as clear, \
                 mock.patch.object(cs, "save_turn", return_value={"rev": 2}) as save_turn, \
@@ -225,15 +221,14 @@ class RouteTests(unittest.TestCase):
                 mock.patch.object(cs, "set_active") as set_active:
             resp = client.post("/app1/new_session", json={"mode": "profiler"})
         data = resp.get_json()
-        self.assertEqual(data["mode"], "profiler")
+        self.assertEqual(data["mode"], "chat")  # a legacy `profiler` client lands on the assistant
         clear.assert_not_called()
         save_turn.assert_called_once()
         digest.assert_called_once()
         self.assertNotIn("prof-old", agent.CHAT_MEMORY)
-        set_active.assert_called_once_with("eva", "profiler", data["session_id"])
+        set_active.assert_called_once_with("eva", "chat", data["session_id"])
         with client.session_transaction() as sess:
-            self.assertEqual(sess["session_ids"]["chat"], "chat-open")
-            self.assertEqual(sess["session_ids"]["profiler"], data["session_id"])
+            self.assertEqual(sess["session_ids"]["chat"], data["session_id"])
             self.assertNotEqual(data["session_id"], "prof-old")
 
     def test_legacy_load_conversation_opens_a_new_chat(self):
@@ -242,8 +237,8 @@ class RouteTests(unittest.TestCase):
         never a server session that silently continues it."""
         stored = {"id": 3, "session_id": "prof-open", "title": "t", "mode": "profiler",
                   "messages": [{"role": "user", "content": "gammel samtale"}]}
-        client = self._client(user="eva", session_ids={"chat": "chat-open", "profiler": "prof-open"},
-                              session_id="prof-open", session_surface="profiler")
+        client = self._client(user="eva", session_ids={"chat": "prof-open"},
+                              session_id="prof-open", session_surface="chat")
         with mock.patch("app1.user_profile_db.ensure_tables", lambda: None), \
                 mock.patch.object(cs, "get_active", return_value="prof-open"), \
                 mock.patch.object(cs, "load", return_value=stored), \
@@ -254,10 +249,9 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(data["messages"], [])
         self.assertNotEqual(data["session_id"], "prof-open")
         digest.assert_called_once()  # the conversation we left is still digested
-        set_active.assert_called_once_with("eva", "profiler", data["session_id"])
+        set_active.assert_called_once_with("eva", "chat", data["session_id"])
         with client.session_transaction() as sess:
-            self.assertEqual(sess["session_ids"]["profiler"], data["session_id"])
-            self.assertEqual(sess["session_ids"]["chat"], "chat-open")
+            self.assertEqual(sess["session_ids"]["chat"], data["session_id"])
 
     def test_confirm_resolves_tokens_from_either_surface(self):
         client = self._client(user="eva", session_ids={"chat": "chat-sid", "profiler": "prof-sid"},

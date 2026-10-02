@@ -57,7 +57,7 @@ For the AI internals see [ai-framework.md](ai-framework.md). For standing constr
 ### AI
 | Module | Role |
 |---|---|
-| `app1/` | employee AI advisor and profiler: `agent.py` (prompts + turn loop), `tools.py` (tool implementations), `rag.py` (hybrid retrieval), `memory_store.py`, `user_knowledge.py`, `user_profile_db.py`, `conversation_state.py`, `help_kb.py` + `help_kb/*.md`, `order_handler.py`, `sse_events.py`; routes under `/app1` (`/ask` SSE, `/widget/<token>`) |
+| `app1/` | employee AI assistant (advisor + profiler in one): `agent.py` (prompts + turn loop), `tools.py` (tool implementations), `rag.py` (hybrid retrieval), `memory_store.py`, `user_knowledge.py`, `user_profile_db.py`, `conversation_state.py`, `help_kb.py` + `help_kb/*.md`, `order_handler.py`, `sse_events.py`; routes under `/app1` (`/ask` SSE, `/widget/<token>`) |
 | `ai_runtime.py`, `ai_provider.py`, `ai_provider_anthropic.py` | shared tool-loop runtime; OpenAI <-> Claude provider switch (`AI_PROVIDER` setting) |
 | `ai_tool_registry.py`, `anon_migration.py` (anonymous -> logged-in memory), `ai_context.py`, `ai_context_layers.py`, `ai_cost_model.py`, `ai_secrets.py`, `ai_reply.py`, `grounding.py`, `tool_confirm.py` | tool selection policy, context assembly, cost model, encrypted provider keys, grounding/prompt-injection hardening, confirm-before-mutate |
 | `hr_agent.py`, `hr_tools.py`, `hr_conversations.py` | HR assistant and its tools |

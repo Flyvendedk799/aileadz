@@ -42,27 +42,39 @@ offered, the model decides; nothing here may add a mandatory step.
 | CV text/image extraction + LLM parse; CV parse-job store | `cv_ingest.py`; `cv_parse_store.py` |
 | Profile REST API, CV parse/stream/apply/improve, mind-map graph (`mindmap_payload`), workspace summary | `api.py` |
 | Cross-surface handoff context (`{from, focus}` -> `surface_context` layer + read tools) | `app1/surface_context.py` |
-| Page shells (`/chat`, `/ai-profiler`, `/mind-map`, `/profil-upload`, `/min-laering`, ...) | `futurematch_ui.py` |
+| Page shells (`/chat`, `/mind-map`, `/profil-upload`, `/min-laering`, ...; `/ai-profiler` is a 301 to `/chat`) | `futurematch_ui.py` |
 | Orders / policy / credits | `order_lifecycle.py`, `order_service.py`, `team_order_policy.py`, `credit_service.py` |
 | Guest -> user memory migration | `anon_migration.py` |
 | Chat frontend (SSE dispatch, renderers) | `static/futurematch/assets/chat.js`, `chat.css` |
-| Templates | `templates/fm/{chat,ai_profiler,my_profile,cv_upload,mind_map,_ai_panel}.html`, `templates/fm_base.html` |
+| Templates | `templates/fm/{chat,my_profile,cv_upload,mind_map,_ai_panel}.html`, `templates/fm_base.html` |
 | GDPR export/erase coverage | `gdpr_service.py` (drift test `tests/test_gdpr_table_coverage.py`) |
 
-## 1. One engine, two "AIs"
+## 1. One engine, one assistant
 
-The employee AI is **one agentic chat engine** (OpenAI or Claude, admin toggle)
-exposed as two modes chosen by a client-supplied `mode`:
+The employee AI is **one agentic chat engine** (OpenAI or Claude, admin toggle) with one
+persona. The former AI Profiler is built into the assistant; there is no mode switch and no
+separate page. `ask()` (`app1/__init__.py`) ignores the client's `mode` and picks it from the
+session:
 
-| Mode | Shell route | Difference |
+| Mode | Who | What |
 |---|---|---|
-| `default` - course advisor | `/chat` | recommender; stage hints; playbooks `buying, profile_save, cv_onboarding, search, situation` |
-| `profiler` - AI Profiler | `/ai-profiler` (login-gated) | `core_playbook` (never trimmed), need-driven `profiler_state`, profiler few-shots, `prefer_quality` (main model every turn), `profiler_progress`, persisted handoff to course recommendations |
+| `assistant` | every logged-in user (`/chat`) | `SYSTEM_PLAYBOOK_ASSISTANT` as `core_playbook` (never trimmed), the advisor's stage hints, all flow playbooks (`buying, profile_save, cv_onboarding, search, situation`), the profiler's need-driven `profiler_state` layer, `profiler_progress`, the full profile/gap/path/goal toolbox on every non-chit-chat turn, 12 memories |
+| `default` | anonymous visitors | the plain course advisor (there is no profile to build on) |
+| `profiler` | legacy / tests only | the old persona, still resolvable in `MODE_PROFILES`; no request reaches it any more |
 
-One endpoint (`POST /app1/ask`, `ask()`), one frontend (`chat.js`), one toolset.
-Per-mode policy lives in `MODE_PROFILES` (`app1/agent.py`): core playbook, allowed
-flow playbooks, few-shot set, stage hints, memory limit (6 / 12), `prefer_quality`,
-handoff thresholds. A new persona is a new entry there.
+`PROFILING_MODES = ("assistant", "profiler")` gates every profile-aware branch in `agent.py`
+and the tool selector. The assistant **asks follow-ups only when the answer would change its
+advice** and answers a concrete request first; profile questions come after and only if they
+help. Everything else about the engine (one endpoint `POST /app1/ask`, one frontend
+`chat.js`, one toolset) is unchanged. Per-mode policy lives in `MODE_PROFILES`
+(`app1/agent.py`): core playbook, flow playbooks, few-shot set, stage hints, memory limit,
+`prefer_quality`, handoff thresholds.
+
+**One surface.** `conversation_state.surface_for_mode` maps every mode to `chat`, so there is
+one open conversation, one digest and one session id. Conversations that began in the old
+profiler (`conversation_history.mode = 'profiler'`) resume in `/chat`; the sidebar shows them
+all under one "Assistent" badge. `/ai-profiler[?from&focus&intent&c]` redirects (301) to
+`/chat` with the same query string, so bookmarks and old links keep working.
 
 `/app1/ask` also accepts `kind: "seed"` for UI-generated openers (profiler
 Start/Fortsæt, `window.fmSendSeed`): the regex intent classifier is skipped
@@ -70,11 +82,10 @@ Start/Fortsæt, `window.fmSendSeed`): the regex intent classifier is skipped
 
 ### 1b. One learner workspace: handoffs between surfaces
 
-The chat, the profiler, the Mind-Map, the profile page (`/profile`) and the CV portal
+The assistant, the Mind-Map, the profile page (`/profile`) and the CV portal
 share one profile and one memory, and hand the user to each other with context:
 
-- **URL contract:** `?from=<surface>&focus=<ref>&intent=<text>` on `/chat` or
-  `/ai-profiler`. `chat.js bootChat()` strips the params, then sends `context: {from,
+- **URL contract:** `?from=<surface>&focus=<ref>&intent=<text>` on `/chat`. `chat.js bootChat()` strips the params, then sends `context: {from,
   focus}` with the **first** message only (a retry re-sends it). `intent` goes in as
   the user's message; a `focus` without words sends a neutral seed; a bare `from` waits
   for the first message (or the profiler's own opener, which no longer fires on top of a
@@ -355,13 +366,13 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
   `target_role`. Consumed by `/api/profile/completeness`, `/api/profile/workspace`,
   the profile page, `futurematch_ui._home_skill_completeness`, the profiler ring, the
   chat status and the mind-map; every one of them displays `weighted_pct`.
-- **Profiler -> suggester handoff:** fires when `weighted_pct >= AI_PROFILER_HANDOFF_PCT`
+- **Profiler -> suggester handoff (legacy `profiler` persona only; the assistant recommends
+  courses itself via `recommend_for_profile` once it knows a direction):** fires when `weighted_pct >= AI_PROFILER_HANDOFF_PCT`
   (70) or a target role is set and `weighted_pct >= 40`: `recommend_for_profile` ->
   `course_cards` + CTA. Persisted in `conversation_history.state_json.handoff`; marked
   fired only when courses were shown, else retried up to 2 attempts.
-- **Proactive profiler:** `ai_profiler.html` auto-sends a neutral seed ("Start /
-  Fortsæt profilsamtalen", `kind:"seed"`) once per browser session on an empty thread,
-  unless a handoff already sent the first message.
+- **No scripted opener:** the assistant does not auto-send a seed on an empty thread;
+  `kind:"seed"` remains for UI-generated openers (e.g. a handoff with a `focus` but no words).
 - **CV awareness:** `apply_cv_items` stores `session['cv_applied'] = {t, counts, gaps}`;
   `cv_applied_note(surface=...)` becomes the `cv_just_applied` layer once per surface
   within the hour (`mark_cv_note_seen` runs in the request phase: the cookie session is
@@ -434,8 +445,8 @@ AI entry points between surfaces are listed in 1b.
 **State - `conversation_state.py`.** Every conversation is a `conversation_history` row
 keyed `(username, session_id)` with a `rev` counter (`user_conversations` is legacy,
 read-only, still in GDPR).
-- `resolve_sid(session, mode)` -> `session["session_ids"][surface]` (`chat`|`profiler`).
-  Surfaces never share a conversation.
+- `resolve_sid(session, mode)` -> `session["session_ids"]["chat"]`: every mode maps to the one
+  surface (`surface_for_mode`), so old `profiler` rows and pointers resume in the assistant.
 - `load(username, sid)` reads exactly that row - no "latest" fallback on `/ask`.
 - `save_turn(..., expected_rev=CHAT_MEMORY_REV[sid])` uses `WHERE rev = %s`; a stale worker
   merges (`merge_transcripts`) instead of overwriting; a worker with a different cached rev

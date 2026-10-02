@@ -6136,8 +6136,8 @@ def _execute_open_in_app(args, username=None):
         focus = _handoff_focus(args)
         out["intent"] = intent
         out["focus"] = focus
-        out["target"] = _handoff_url("/ai-profiler", "chat", focus, intent)
-        out["label"] = label or "Fortsæt i AI Profiler"
+        out["target"] = _handoff_url("/chat", "chat", focus, intent)
+        out["label"] = label or "Fortsæt i AI-assistenten"
 
     elif action == "open_advisor":
         intent = (args.get("intent") or args.get("query") or "").strip()
@@ -6145,7 +6145,7 @@ def _execute_open_in_app(args, username=None):
         out["intent"] = intent
         out["focus"] = focus
         out["target"] = _handoff_url("/chat", "profiler", focus, intent)
-        out["label"] = label or "Fortsæt i Kursusrådgiver"
+        out["label"] = label or "Fortsæt i AI-assistenten"
         out["new_tab"] = False
 
     elif action == "open_catalog":

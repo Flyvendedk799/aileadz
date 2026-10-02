@@ -141,7 +141,7 @@ SIDEBAR_BY_ENDPOINT = {
     'futurematch.my_order': 'timeline',
     'futurematch.learning_goals': 'goals',
     'futurematch.chat': 'chat',
-    'futurematch.ai_profiler': 'profiler',
+    'futurematch.ai_profiler': 'chat',
     'futurematch.mind_map': 'mindmap',
     'futurematch.cv_upload': 'cvupload',
     'catalog.catalog_index': 'catalog',
@@ -253,11 +253,10 @@ def _chat_cfg():
 
 @futurematch_bp.route('/ai-profiler')
 def ai_profiler():
-    """AI Profiler — the same chat engine in profile-completion mode."""
-    if not session.get('user'):
-        flash('Log ind for at bruge AI Profiler.', 'danger')
-        return redirect(url_for('auth.login'))
-    return render_template('fm/ai_profiler.html')
+    """Legacy URL. The AI Profiler is built into the assistant, so bookmarks,
+    old handoff links and the profiler's own conversations (?c=) land in /chat
+    with their query string (from / focus / intent / c) intact."""
+    return redirect(url_for('futurematch.chat', **request.args.to_dict(flat=True)), code=301)
 
 
 @futurematch_bp.route('/mind-map')

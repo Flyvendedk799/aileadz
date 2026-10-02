@@ -1037,7 +1037,7 @@ def get_employee_tool_selection(
     confirmation turn matched nothing and took them off the menu — leaving the
     model to tell the user to go and order on the course page instead.
 
-    ``mode`` is the chat surface mode ("default" or "profiler").  In profiler mode
+    ``mode`` is the chat surface mode ("default", "assistant" or "profiler").  In the profiling modes
     the full set of profile, learning-path, goal, and gap tools are always on the
     menu so the model can save data and recommend without waiting for a keyword hit.
 
@@ -1072,7 +1072,7 @@ def get_employee_tool_selection(
     # can save data, suggest paths, show gaps, and recommend courses on any turn
     # without waiting for a keyword match. This is the single biggest lever for
     # making the profiler "smart" — it can always act on what it learns.
-    if mode == "profiler" and logged_in:
+    if mode in ("profiler", "assistant") and logged_in:
         names.update({
             "get_user_profile", "update_user_profile", "request_user_input",
             "remember_about_user", "recommend_for_profile",

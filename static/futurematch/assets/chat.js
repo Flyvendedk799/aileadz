@@ -12,7 +12,6 @@
   // so they must be restricted to a safe token charset (no quotes/brackets) to
   // prevent breakout. Falls back to a neutral icon when empty/invalid.
   const icon = (s) => (String(s == null ? "" : s).replace(/[^a-z0-9 _-]/gi, "").slice(0, 40) || "fa-graduation-cap");
-  const isProfiler = window.CHAT_MODE === "profiler";
   let activeConvId = null;
   function trackLearner(event, meta) {
     try {
@@ -236,7 +235,7 @@
     t.setAttribute("aria-live", "polite");
     t.innerHTML = `<span class="d" aria-hidden="true"></span><span class="d" aria-hidden="true"></span><span class="d" aria-hidden="true"></span>`;
     body.appendChild(t); down();
-    thinkStatus(body, isProfiler ? "Gennemgår din profil…" : "Arbejder…");
+    thinkStatus(body, "Arbejder…");
     return t;
   }
   // Map a tool category/name to a human phase label for the status placeholder.
@@ -1621,9 +1620,7 @@
     if (!suggestions || !suggestions.length) {
       suggestions = cardsSeen > 0
         ? ["Sammenlign de to bedste", "Vis billigere alternativer", "Fortæl mig mere"]
-        : (isProfiler
-            ? ["Hvor vil jeg gerne hen?", "Find kurser til min profil"]
-            : ["Vis populære kurser", "Hjælp mig med at vælge"]);
+        : ["Vis populære kurser", "Hjælp mig med at vælge"];
     }
     if (suggestions && suggestions.length) addChips(body, suggestions);
     return { fullText: fullText, messageIndex: messageIndex, eventsReceived: eventsReceived };
@@ -1688,7 +1685,7 @@
   }
   function ask(text) { run(text); }
   window.fmAsk = ask;
-  // UI-generated openers (the profiler's Start / Fortsæt). The server skips
+  // UI-generated openers (e.g. a handoff from another surface). The server skips
   // intent classification for a seed, so the opener's wording can never pull
   // in a playbook the user didn't ask for.
   window.fmSendSeed = (text) => run(text, { kind: "seed" });
@@ -1712,37 +1709,17 @@
 
   /* ---------------- welcome ---------------- */
   function welcome() {
-    if (isProfiler) {
-      thread.innerHTML = `
-        <div class="welcome profiler-welcome">
-          <div class="w-logo">${BOT}</div>
-          <div class="w-eyebrow">AI Profiler</div>
-          <div class="w-title">Hvor vil du gerne hen?</div>
-          <div class="w-sub">Fortæl hvor du står, og hvad du gerne vil — så hjælper jeg dig med at finde vejen og gemmer det vigtige på din profil undervejs.</div>
-          <div class="w-hint">Profilmode · det du fortæller kan gemmes på din profil</div>
-          <div class="w-grid">
-            <button class="w-card" data-seed="Start profilsamtalen"><span class="ic"><i class="fa-solid fa-user-check"></i></span><span><div class="t">Start samtalen</div><div class="h">Jeg tager udgangspunkt i det, jeg ved</div></span></button>
-            <button class="w-card" data-q="Jeg vil opdatere mine kompetencer og niveauer"><span class="ic"><i class="fa-solid fa-layer-group"></i></span><span><div class="t">Kompetencer</div><div class="h">Tilføj skills og niveauer</div></span></button>
-            <button class="w-card" data-q="Jeg vil fortælle om min erfaring og tidligere roller"><span class="ic"><i class="fa-solid fa-briefcase"></i></span><span><div class="t">Erfaring</div><div class="h">Gem roller og resultater</div></span></button>
-            <button class="w-card" data-q="Jeg vil sætte mine læringsmål"><span class="ic"><i class="fa-solid fa-bullseye"></i></span><span><div class="t">Læringsmål</div><div class="h">Definer hvad du vil opnå</div></span></button>
-          </div>
-        </div>`;
-      thread.querySelectorAll(".w-card").forEach((c) => c.onclick = () => (
-        c.dataset.seed ? run(c.dataset.seed, { kind: "seed" }) : ask(c.dataset.q)
-      ));
-      return;
-    }
     thread.innerHTML = `
       <div class="welcome">
         <div class="w-logo">${BOT}</div>
-        <div class="w-eyebrow">Futurematch kursusrådgiver</div>
-        <div class="w-title">Hvad skal dit team lære?</div>
-        <div class="w-sub">Beskriv et behov, en rolle eller en kompetence — så finder jeg relevante kurser, sammenligner muligheder og foreslår hold.</div>
+        <div class="w-eyebrow">Futurematch AI-assistent</div>
+        <div class="w-title">Hvad vil du gerne hjælpes med?</div>
+        <div class="w-sub">Fortæl, hvor du står og hvor du vil hen, eller beskriv et behov, en rolle eller en kompetence. Så finder jeg kurser, sammenligner muligheder og husker det vigtige på din profil.</div>
         <div class="w-hint">Anbefalinger tilpasses din profil</div>
         <div class="w-grid">
           <button class="w-card" data-q="Vis mig populære projektledelseskurser"><span class="ic"><i class="fa-solid fa-diagram-project"></i></span><span><div class="t">Populære kurser</div><div class="h">Se hvad andre vælger</div></span></button>
-          <button class="w-card" data-q="Hvilke kurser er gratis?"><span class="ic"><i class="fa-solid fa-gift"></i></span><span><div class="t">Gratis kurser</div><div class="h">Kom i gang uden omkostninger</div></span></button>
-          <button class="w-card" data-q="Vis ledelseskurser til mellemledere"><span class="ic"><i class="fa-solid fa-users-gear"></i></span><span><div class="t">Ledelseskurser</div><div class="h">Udvikl dine lederevner</div></span></button>
+          <button class="w-card" data-q="Jeg vil gerne tale om, hvor jeg vil hen i min karriere"><span class="ic"><i class="fa-solid fa-compass"></i></span><span><div class="t">Min retning</div><div class="h">Sparring om næste skridt</div></span></button>
+          <button class="w-card" data-q="Hvilke kompetencer mangler jeg for at nå mit mål?"><span class="ic"><i class="fa-solid fa-layer-group"></i></span><span><div class="t">Mine kompetencegab</div><div class="h">Se hvad der mangler</div></span></button>
           <button class="w-card" data-q="Opdater mit CV — jeg har erfaring med projektledelse og teamledelse"><span class="ic"><i class="fa-solid fa-id-card"></i></span><span><div class="t">Opdater dit CV</div><div class="h">Fortæl mig om din erfaring</div></span></button>
         </div>
       </div>`;
@@ -1755,8 +1732,7 @@
     // never silently inherits the previous conversation's context. A failed
     // call still resets the UI — better a fresh screen than a stuck button.
     try {
-      // The chat and the profiler each keep their own open conversation, so
-      // tell the server which one to reset — the other surface stays untouched.
+      // Reset this surface's open conversation on the server.
       await fetch("/app1/new_session", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
@@ -1922,7 +1898,7 @@
   };
 
   /* ---------------- init ----------------
-     Like every mainstream AI chat: opening /chat or /ai-profiler starts a NEW
+     Like every mainstream AI chat: opening /chat starts a NEW
      conversation, and past ones live in the sidebar. The server session is
      reset too (newChat → /new_session for this surface), so a blank thread can
      never be quietly continuing an old one; what the AI should remember comes
@@ -1958,7 +1934,7 @@
       if (pendingHandoff && pendingHandoff.focus) {
         // Arrived with something in focus but no words: open with a neutral
         // seed so the AI starts from what the user was looking at. A bare
-        // `from` waits for the first message (or the profiler's own opener).
+        // `from` waits for the first message .
         run("Lad os tage udgangspunkt i det, jeg kiggede på", { kind: "seed" });
         return true;
       }

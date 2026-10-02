@@ -163,6 +163,9 @@
   // cohort is k-safe — sub-k metrics carry your_percentile=null and are
   // excluded here, so nothing identifiable can render. Higher = better for
   // every metric (the server already inverts direction for lower-is-better).
+  {# Recomputed here: a {% set %} inside the content block is not visible in
+     this block, so the chart used to receive [] and stay blank. #}
+  {% set safe_metrics = ((data.metrics if data else []) or [])|selectattr('safe')|selectattr('your_percentile', 'ne', None)|list %}
   var pct = {{ (safe_metrics or [])|map(attribute='your_percentile')|list|tojson|safe }};
   var labels = {{ (safe_metrics or [])|map(attribute='label')|list|tojson|safe }};
   if (pct.length) {

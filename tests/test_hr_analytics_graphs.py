@@ -285,6 +285,8 @@ class SkillEngagementBenchmarkTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 200, html[:300])
         self.assertIn("Under branchens median", html)
         self.assertIn("50 er branchens median", html)
+        # The chart gets the real percentiles (it used to read a block-scoped var).
+        self.assertIn("var pct = [72, 30];", html)
 
 
 class OperationsPagesTests(unittest.TestCase):

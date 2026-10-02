@@ -747,7 +747,7 @@ def ask():
         if turn_kind not in ("message", "seed"):
             turn_kind = "message"
         # Cross-surface handoff ({from, focus}) sent with the first message after
-        # the user arrives from the Mind-Map, the profile or the CV portal.
+        # the user arrives from the Mind-Map or the profile page (incl. its CV import).
         # Whitelisted here; resolved against the user's own data in the agent.
         from app1.surface_context import normalize_context
         surface_context = normalize_context(request.json.get("context"))

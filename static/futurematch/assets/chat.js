@@ -1128,7 +1128,7 @@
   const ACTION_ICONS = {
     view_product: "fa-up-right-from-square", open_compare: "fa-scale-balanced",
     open_profile: "fa-user-pen", open_mind_map: "fa-brain",
-    open_cv_upload: "fa-file-arrow-up",
+    open_cv_upload: "fa-file-arrow-up", open_my_cv: "fa-file-lines",
     open_learning_path: "fa-route", open_catalog: "fa-magnifying-glass",
     start_order: "fa-cart-plus", open_profiler: "fa-user-check", open_advisor: "fa-comments",
   };
@@ -1260,7 +1260,7 @@
       <div class="csv-pills">${pillsHtml}</div>
       ${previewHtml}${emptyNote}
       <div class="csv-footer">
-        <button class="csv-btn primary" data-url="/profil-upload"><i class="fa-solid ${icon("fa-file-arrow-up")}"></i> ${total > 0 ? "Opdater CV" : "Upload CV"}</button>
+        <button class="csv-btn primary" data-url="/profil#cv"><i class="fa-solid ${icon("fa-file-arrow-up")}"></i> ${total > 0 ? "Opdater CV" : "Upload CV"}</button>
         ${total > 0 ? `<button class="csv-btn" data-url="/profile"><i class="fa-solid ${icon("fa-user")}"></i> Se profil</button>` : ""}
       </div>`;
     card.querySelectorAll("[data-url]").forEach((b) =>
@@ -1933,7 +1933,7 @@
      ?c=<id> reopens a specific conversation (sidebar links, reloads — the open
      conversation is pinned in the URL); ?intent= sends into a fresh chat. */
   // {from, focus} from the URL of a cross-surface handoff (mind-map node,
-  // profile section, CV portal); consumed by the first message (app1/surface_context.py).
+  // profile section, CV import); consumed by the first message (app1/surface_context.py).
   let pendingHandoff = null;
   function takeHandoff() { const h = pendingHandoff; pendingHandoff = null; return h; }
   function bootChat() {

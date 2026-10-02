@@ -119,7 +119,7 @@ _EMPLOYEE_META = {
         "open_in_app", toolset_tags=("navigation", "ui"), cache_ttl=0,
     ),
     # Read-only profile snapshots rendered as inline chat cards (no mutation).
-    # The card itself links the user on to the 3D CV portal / mind-map.
+    # The card itself links the user on to the CV import on the profile page / mind-map.
     "show_cv_summary": ToolMeta(
         "show_cv_summary", auth_required=True, toolset_tags=("profile", "ui"), cache_ttl=20,
     ),
@@ -1176,7 +1176,7 @@ def get_employee_tool_selection(
     if logged_in:
         if intent in {"profile_update", "profile_and_search"} or _has_any(query, ("profil", "cv", "kompetence", "erfaring", "uddannelse")):
             names.update({"get_user_profile", "update_user_profile", "request_user_input"})
-            # Inline read-only CV snapshot card (links on to the 3D CV portal). The
+            # Inline read-only CV snapshot card (links on to the CV import on the profile page). The
             # model decides between summarising in chat vs sending the user to upload.
             names.add("show_cv_summary")
             # Skill-gap card: current vs target on the 1-5 scale — the grounded

@@ -65,7 +65,7 @@
             </div>
             <div class="emp-cta" style="margin-top:14px">
               <a class="btn btn-primary" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-user-check"></i> Fortæl AI'en om dig</a>
-              <a class="btn btn-ghost" href="{{ url_for('futurematch.cv_upload') }}"><i class="fa-solid fa-file-arrow-up"></i> Upload dit CV</a>
+              <a class="btn btn-ghost" href="{{ url_for('pages.profile') ~ '#cv' }}"><i class="fa-solid fa-file-arrow-up"></i> Upload dit CV</a>
               <a class="btn btn-ghost" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-graduation-cap"></i> Udforsk kataloget</a>
             </div>
           </div>
@@ -187,7 +187,7 @@
               <span class="learn-thumb" style="margin:2px auto 10px"><i class="fa-solid fa-id-card"></i></span>
               <div style="font-weight:700;font-size:14.5px">Kom godt i gang</div>
               <p style="font-size:13px;color:var(--fm-ink-2);margin:6px auto 14px;max-width:30ch;line-height:1.5">Udfyld din profil med erfaring og kompetencer, så bliver anbefalingerne skarpere.</p>
-              <a href="{{ url_for('futurematch.cv_upload') }}" class="btn btn-primary btn-sm" style="width:100%"><i class="fa-solid fa-file-arrow-up"></i> Upload CV</a>
+              <a href="{{ url_for('pages.profile') ~ '#cv' }}" class="btn btn-primary btn-sm" style="width:100%"><i class="fa-solid fa-file-arrow-up"></i> Upload CV</a>
               <a href="{{ url_for('pages.profile') }}" class="btn btn-soft btn-sm" style="width:100%;margin-top:8px"><i class="fa-solid fa-pen"></i> Udfyld profil manuelt</a>
             </div></div>
             {% endif %}

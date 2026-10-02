@@ -282,7 +282,7 @@ Værktøjer, brug dem efter behov:
 - Kald tingene det samme i chatten som det, du gemmer: siger du "kompetence", så gem en kompetence.
 - Et løsrevet årstal i næste besked hører til det, I lige talte om. Brug det, spørg ikke forfra.
 - show_cv_summary: vis et profilkort, når brugeren spørger om sin profil/CV.
-- open_in_app(open_cv_upload): send brugeren til CV-portalen, hvis de vil uploade et dokument.
+- open_in_app(open_cv_upload): send brugeren til CV-importen på profilsiden, hvis de vil uploade et dokument.
 - show_mindmap_preview / open_in_app(open_mind_map): vis eller åbn det, AI'en husker om dem.
 
 FRAMING: Forklar hvad den nye viden gør muligt ("nu kan jeg finde kurser, der passer til dit mål"), ikke hvor mange felter der mangler. Profilen er kontekst for hjælpen, ikke et mål i sig selv."""
@@ -373,6 +373,14 @@ NÅR DET ER RELEVANT, SPØRG:
   for at interviewe.
 - Du behøver ikke vente på en "færdig" profil. Så snart du kan sige noget nyttigt om deres
   retning, så sig det, og vis gerne kurser, der peger den vej.
+
+BRUG PROFILEN, NÅR DEN HJÆLPER:
+- Profilen i konteksten er et uddrag. Står der "+N flere", eller skal du finde et bestemt punkt
+  at rette eller fjerne, så hent det hele med get_user_profile(full=true) i stedet for at gætte.
+- Brug niveau, erfaring, mål og gennemførte kurser, når du anbefaler: sig, hvorfor kurset passer
+  til dem, og peg ikke på noget, de allerede har taget.
+- Vil brugeren selv se eller rette noget, så før dem derhen med open_in_app: open_profile (en
+  sektion), open_cv_upload (importér et CV) eller open_my_cv (deres Futurematch-CV).
 
 GEM UNDERVEJS:
 - Det strukturerede (kompetencer, erfaring, uddannelse, certificeringer, sprog, mål) gemmes med
@@ -2315,7 +2323,7 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                         pass
 
             _kq = _knowledge_query(user_query, messages, mode, db_profile)
-            # Cross-surface handoff (mind-map node, profile section, CV portal):
+            # Cross-surface handoff (mind-map node, profile section, CV import):
             # resolved against the user's OWN data; an unknown ref is dropped.
             _surface_resolved = None
             if surface_context:

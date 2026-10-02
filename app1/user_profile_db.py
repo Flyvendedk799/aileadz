@@ -1581,12 +1581,23 @@ def get_full_profile(username):
     }
 
 
-def format_profile_for_ai(profile_data, include_ids=False):
+# How many rows of each section the per-turn ``profile`` layer shows. The layer is a budgeted
+# summary; anything beyond these caps is announced ("+N flere") and read in full with
+# get_user_profile(full=true), so the assistant never mistakes a cut-off list for the whole profile.
+_PROFILE_LAYER_CAPS = {"goals": 6, "skills": 25, "experience": 8, "education": 5, "courses": 15,
+                       "certifications": 10, "languages": 10, "links": 6, "paths": 5}
+_PROFILE_FULL_CAP = 100
+
+
+def format_profile_for_ai(profile_data, include_ids=False, full=False):
     """Format the full profile into a concise text block for the AI system message.
 
     ``include_ids`` prefixes editable rows with ``[#id]`` so the agent can call
     update_*/remove_* actions (which require an id) without an extra lookup —
     before this the model had no way to edit or remove an entry it could see.
+
+    ``full`` lifts the per-section row caps and text cuts (the get_user_profile tool); the
+    default is the compact per-turn summary, which says how many rows it left out.
     """
     if not profile_data:
         return ""
@@ -1595,11 +1606,22 @@ def format_profile_for_ai(profile_data, include_ids=False):
         rid = item.get("id") if include_ids and isinstance(item, dict) else None
         return f"[#{rid}] " if rid not in (None, "") else ""
 
+    def _cap(key):
+        return _PROFILE_FULL_CAP if full else _PROFILE_LAYER_CAPS[key]
+
+    def _more(total, key):
+        left = total - _cap(key)
+        return f" (+{left} flere, hent alle med get_user_profile)" if left > 0 else ""
+
+    def _cut(text, n):
+        text = text or ""
+        return text if full else text[:n]
+
     parts = []
     if profile_data.get("headline"):
         parts.append(f"Overskrift: {profile_data['headline']}")
     if profile_data.get("bio"):
-        parts.append(f"Bio: {profile_data['bio'][:400]}")
+        parts.append(f"Bio: {_cut(profile_data['bio'], 400)}")
     if profile_data.get("target_role"):
         parts.append(f"Ønsket rolle/karriereretning: {profile_data['target_role'][:120]}")
     if profile_data.get("goals"):
@@ -1607,8 +1629,8 @@ def format_profile_for_ai(profile_data, include_ids=False):
     active_goals = [g for g in profile_data.get("learning_goals", []) if g.get("status") == "aktiv"]
     if active_goals:
         gstrs = [_rid(g) + g["title"] + (f" (inden {g['target_date']})" if g.get("target_date") else "")
-                 for g in active_goals[:6]]
-        parts.append("Aktive udviklingsmål: " + "; ".join(gstrs))
+                 for g in active_goals[:_cap("goals")]]
+        parts.append("Aktive udviklingsmål: " + "; ".join(gstrs) + _more(len(active_goals), "goals"))
     if profile_data.get("preferred_location"):
         parts.append(f"Foretrukken lokation: {profile_data['preferred_location']}")
     if profile_data.get("preferred_format"):
@@ -1618,66 +1640,67 @@ def format_profile_for_ai(profile_data, include_ids=False):
 
     skills = profile_data.get("skills", [])
     if skills:
-        skill_strs = [f"{s['name']} ({s['level']})" for s in skills[:25]]
-        parts.append(f"Kompetencer: {', '.join(skill_strs)}")
+        skill_strs = [f"{s['name']} ({s['level']})" for s in skills[:_cap("skills")]]
+        parts.append(f"Kompetencer: {', '.join(skill_strs)}{_more(len(skills), 'skills')}")
 
     exp = profile_data.get("experience", [])
     if exp:
         exp_strs = []
-        for e in exp[:8]:
+        for e in exp[:_cap("experience")]:
             period = f"{e['start_year'] or '?'}-{'nu' if e['is_current'] else (e['end_year'] or '?')}"
             line = f"{_rid(e)}{e['title']} @ {e['company']} ({period})"
             desc = (e.get('description') or '').strip()
             if desc:
-                line += f" — {desc[:120]}"
+                line += f" — {_cut(desc, 120)}"
             exp_strs.append(line)
-        parts.append(f"Erfaring: {'; '.join(exp_strs)}")
+        parts.append(f"Erfaring: {'; '.join(exp_strs)}{_more(len(exp), 'experience')}")
 
     edu = profile_data.get("education", [])
     if edu:
         edu_strs = []
-        for e in edu[:5]:
+        for e in edu[:_cap("education")]:
             line = f"{_rid(e)}{e['degree']} — {e['institution']} ({e.get('year_completed', '?')})"
             desc = (e.get('description') or '').strip()
             if desc:
-                line += f" — {desc[:100]}"
+                line += f" — {_cut(desc, 100)}"
             edu_strs.append(line)
-        parts.append(f"Uddannelse: {'; '.join(edu_strs)}")
+        parts.append(f"Uddannelse: {'; '.join(edu_strs)}{_more(len(edu), 'education')}")
 
     courses = profile_data.get("completed_courses", [])
     if courses:
-        course_strs = [f"{c['title']} ({c['vendor']})" for c in courses[:15]]
-        parts.append(f"Gennemførte kurser: {', '.join(course_strs)}")
+        course_strs = [f"{_rid(c)}{c['title']} ({c['vendor']})" + (f", {c['completed_date']}" if full and c.get("completed_date") else "")
+                       for c in courses[:_cap("courses")]]
+        parts.append(f"Gennemførte kurser: {', '.join(course_strs)}{_more(len(courses), 'courses')}")
 
     certs = profile_data.get("certifications", [])
     if certs:
         cert_strs = []
-        for c in certs[:10]:
+        for c in certs[:_cap("certifications")]:
             s = _rid(c) + c["name"]
             if c.get("issuer"):
                 s += f" ({c['issuer']})"
             if c.get("expiry_date"):
                 s += f", udløber {c['expiry_date']}"
             cert_strs.append(s)
-        parts.append(f"Certificeringer: {'; '.join(cert_strs)}")
+        parts.append(f"Certificeringer: {'; '.join(cert_strs)}{_more(len(certs), 'certifications')}")
 
     languages = profile_data.get("languages", [])
     if languages:
-        lang_strs = [f"{_rid(l)}{l['language']} ({l['proficiency']})" for l in languages[:10]]
-        parts.append(f"Sprog: {', '.join(lang_strs)}")
+        lang_strs = [f"{_rid(l)}{l['language']} ({l['proficiency']})" for l in languages[:_cap("languages")]]
+        parts.append(f"Sprog: {', '.join(lang_strs)}{_more(len(languages), 'languages')}")
 
     links = profile_data.get("portfolio_links", [])
     if links:
-        link_strs = [f"{_rid(p)}{p.get('label') or p.get('url')}" for p in links[:6]]
-        parts.append(f"Portfolio/links: {'; '.join(link_strs)}")
+        link_strs = [f"{_rid(p)}{p.get('label') or p.get('url')}" for p in links[:_cap("links")]]
+        parts.append(f"Portfolio/links: {'; '.join(link_strs)}{_more(len(links), 'links')}")
 
     # Active learning paths — so the profiler knows what plans the user is following
     paths = profile_data.get("learning_paths", [])
     active_paths = [p for p in paths if p.get("status") != "arkiveret"]
     if active_paths:
         path_strs = [p.get("title", "?") + (f" ({p['status']})" if p.get("status") else "")
-                     for p in active_paths[:5]]
-        parts.append(f"Læringsstier: {'; '.join(path_strs)}")
+                     for p in active_paths[:_cap("paths")]]
+        parts.append(f"Læringsstier: {'; '.join(path_strs)}{_more(len(active_paths), 'paths')}")
 
     return "\n".join(parts) if parts else ""
 

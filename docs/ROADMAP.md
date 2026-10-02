@@ -10,12 +10,6 @@ Sizes: **XS** under 1 h, **S** up to 1/2 day, **M** 1 to 3 days, **L** 1 to 2 we
 |---|---|---|---|
 | R-1 | **SAML and LDAP/AD SSO** (deferred by decision, pick up only when an enterprise customer requires it). Needs: SAML signature verified against the stored certificate plus audience/destination/time-window checks (new dependency such as `python3-saml`; none in `requirements.txt` today), LDAP filter escaping, ACS/metadata URL fields in the config form (`generate_saml_request` raises `KeyError` on `acs_url`), and a settings-hub UI option (it offers OIDC only). | `enterprise_sso/__init__.py`: `SSO_DISABLED_MESSAGE`, `_has_signature` (presence-only check, forgeable), LDAP filter, `generate_saml_request`; `settings_hub.py` | L |
 
-## Learner profile and CV UI
-
-| ID | Item | Where | Size |
-|---|---|---|---|
-| R-3 | **Two Three.js versions** ship: 0.160 ES module (unpkg) on the CV portal, r128 UMD (cdnjs) on the mind map. Consolidate to one, lazy-loaded. | `templates/fm/cv_upload.html:12`, `templates/fm/mind_map.html:11-12` | M |
-
 ## Not on the roadmap, on purpose
 
 - Payment providers, card or bank flows, invoice PDFs: billing is tracked, not processed (see DECISIONS.md).

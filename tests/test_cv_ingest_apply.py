@@ -149,10 +149,9 @@ class CompletedCoursesPath(unittest.TestCase):
         self.assertIn("kind in ('courses', 'course')", source)
         self.assertIn("add_completed_course(username, course_title=title", source)
 
-    def test_portal_sends_that_kind(self):
-        portal = open("templates/fm/cv_upload.html", encoding="utf-8").read()
-        self.assertIn("kind:'courses'", portal)          # 3D review objects
-        self.assertIn("name=\"accept_course\"", portal)  # no-JS fallback form
+    def test_profile_import_sends_that_kind(self):
+        js = open("static/futurematch/assets/profile-cv.js", encoding="utf-8").read()
+        self.assertIn('["courses", "courses", "Kurser"', js)  # review list kind == what /api/cv/apply takes
 
 
 if __name__ == "__main__":

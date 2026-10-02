@@ -82,7 +82,8 @@ UI_ACTIONS = frozenset({
     "open_compare",     # open the compare view for 2-4 handles
     "open_profile",     # open the user's profile (optionally a section)
     "open_mind_map",    # open the AI memory mind-map (3D globe)
-    "open_cv_upload",   # open the interactive 3D CV upload portal
+    "open_cv_upload",   # open the CV import on the profile page (/profil#cv)
+    "open_my_cv",       # open the printable Futurematch-generated CV (/profil/cv)
     "open_learning_path",  # open the saved learning-path view
     "open_catalog",     # open the catalog, optionally pre-filtered
     "start_order",      # begin enrolment for a product (does NOT place an order)

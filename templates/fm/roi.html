@@ -260,8 +260,9 @@
         <p class="muted" style="font-size:12px;color:var(--fm-ink-3);margin:0 0 8px">De hyppigste kursussøgninger i AI-assistenten de seneste 14 dage — et tidligt signal om efterspørgsel.</p>
         <div class="fm-chart-wrap" style="height:{{ [trending|length * 30 + 48, 160]|max }}px"><canvas id="roiTrendChart" role="img" aria-label="Liggende søjlediagram: antal søgninger pr. søgeord de seneste 14 dage"></canvas></div>
         {% else %}
-        {{ ui.empty('Ingen trender endnu', 'Populære kursussøgninger samles her, når medarbejdere begynder at søge.', 'fa-magnifying-glass') }}
+        {{ ui.empty('Ingen trender endnu', 'Populære kursussøgninger samles her, når flere medarbejdere søger efter det samme i AI-assistenten.', 'fa-magnifying-glass') }}
         {% endif %}
+        {% if trend_anon_note %}<p style="font-size:11px;color:var(--fm-ink-3);margin:10px 0 0"><i class="fa-solid fa-user-shield"></i> {{ trend_anon_note }}</p>{% endif %}
       </div>
     </div>
 

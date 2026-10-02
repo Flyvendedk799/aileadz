@@ -137,6 +137,20 @@ class RoiTests(unittest.TestCase):
         q = fake.queries("select month(created_at) as m")
         self.assertTrue(q and q[0][1][0] == 7)
 
+    def test_rare_search_terms_are_k_floored(self):
+        preds = {"trending_courses": [{"query_text": "excel kursus", "cnt": 9},
+                                      {"query_text": "min helt private søgning", "cnt": 1}]}
+        resp, _ = _get("/hr/roi", None, patches=[
+            (("insights_engine.get_roi_metrics",), {"return_value": {"has_data": False}}),
+            (("insights_engine.get_predictive_data",), {"return_value": preds}),
+            (("insights_engine.get_uplift_roi",), {"return_value": None}),
+        ])
+        html = resp.get_data(as_text=True)
+        self.assertEqual(resp.status_code, 200, html[:300])
+        self.assertIn("excel kursus", html)
+        self.assertNotIn("min helt private søgning", html)
+        self.assertIn("Grupper under k=", html)
+
 
 if __name__ == "__main__":
     unittest.main()

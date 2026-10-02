@@ -1631,6 +1631,18 @@ def create_hr_dashboard_blueprint():
             # Canonical ROI engine — single source of truth, real headline data.
             roi = get_roi_metrics(current_app._get_current_object(), company['id'], fiscal_year)
             predictions = get_predictive_data(current_app._get_current_object(), company['id'])
+            # Search terms are verbatim employee wording: keep only terms searched
+            # at least k times (same floor as aggregate_workforce_risk) so one
+            # person's exact query never shows up on the chart. Fail closed.
+            trend_anon_note = None
+            if isinstance(predictions, dict) and predictions.get('trending_courses'):
+                raw_terms = list(predictions.get('trending_courses') or [])
+                safe_terms = [t for t in raw_terms if isinstance(t, dict) and _kanon is not None
+                              and _kanon.is_cohort_safe(t.get('cnt'))]
+                if len(safe_terms) < len(raw_terms):
+                    trend_anon_note = (_kanon.anon_note() if _kanon is not None
+                                       else 'Sjældne søgninger er skjult af hensyn til anonymitet')
+                predictions = dict(predictions, trending_courses=safe_terms)
 
             # Skill-uplift loop (plan #19): MEASURED aggregate skill lift vs
             # spend for the year — upgrades ROI from cost/throughput to measured
@@ -1689,6 +1701,7 @@ def create_hr_dashboard_blueprint():
                                    company=company, roi=roi, predictions=predictions,
                                    ai_revenue=ai_revenue, uplift=uplift,
                                    monthly_spend=monthly_spend,
+                                   trend_anon_note=trend_anon_note,
                                    fiscal_year=fiscal_year)
         except Exception as e:
             current_app.logger.error(f"ROI dashboard error: {e}")

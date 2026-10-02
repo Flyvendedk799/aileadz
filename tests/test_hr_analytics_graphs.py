@@ -237,5 +237,55 @@ class LearningAnalyticsGraphTests(unittest.TestCase):
         self.assertIn("Pr. måned", html)
 
 
+class SkillEngagementBenchmarkTests(unittest.TestCase):
+    def test_engagement_histogram_gets_real_days(self):
+        # The histogram used a variable scoped to the content block, so it always
+        # received [] and rendered its empty state.
+        inactive = {"inactive_days_threshold": 30, "total": 2, "employees": [
+            {"user_id": 1, "full_name": "Anna", "department": "Salg", "days_inactive": 45},
+            {"user_id": 2, "full_name": "Bo", "department": "Salg", "days_inactive": None}]}
+        resp, _ = _get("/hr/engagement", None, patches=[
+            (("hr_ext._tool",), {"side_effect": lambda name, args=None: inactive if "inactive" in name else {}}),
+        ])
+        html = resp.get_data(as_text=True)
+        self.assertEqual(resp.status_code, 200, html[:300])
+        self.assertIn("days: [45, null]", html)
+        self.assertIn("Aldrig aktiv", html)
+
+    def test_skill_gap_chart_and_top_skills_ranked(self):
+        app = get_app()
+        heat = {"Salg": {"Python": {"target_level": 4, "priority": "high", "employees": 6,
+                                    "avg_current": 2.0, "gap": 2.0, "status": "red"}}}
+
+        with patch_mysql(app, _responder())[1], \
+                mock.patch("insights_engine.get_skill_gap_analysis", return_value=heat), \
+                mock.patch("insights_engine.get_skill_growth_trend",
+                           return_value={"labels": [], "avg_levels": [], "has_data": False}):
+            html = client_as(app, "hr_manager").get("/hr/skill-gaps").get_data(as_text=True)
+        self.assertIn('id="skillGapBars"', html)
+        self.assertNotIn("FMChart.radar", html)
+        # "Top" skills are ranked by holders, not alphabetically.
+        html = _render("fm/skill_gaps.html", heatmap={}, skill_list=[
+            {"skill_name": "Aaa", "avg_level": 2, "count": 1},
+            {"skill_name": "Zeta", "avg_level": 3, "count": 9}])
+        self.assertLess(html.index("Zeta"), html.index("Aaa"))
+
+    def test_benchmark_chart_is_ranked_with_median_split(self):
+        data = {"industry": "IT", "cohort_size": 8, "k": 5, "safe": True, "overall_note": "",
+                "metrics": [{"key": "completion_rate", "label": "Gennemførelse", "unit": "%",
+                             "your_value": 70, "cohort_avg": 60, "cohort_median": 58,
+                             "your_percentile": 72, "safe": True},
+                            {"key": "spend_per_employee", "label": "Forbrug", "unit": "kr",
+                             "your_value": 900, "cohort_avg": 1200, "cohort_median": 1100,
+                             "your_percentile": 30, "safe": True}]}
+        resp, _ = _get("/hr/benchmarking", None, patches=[
+            (("benchmarking.benchmark",), {"return_value": data}),
+        ])
+        html = resp.get_data(as_text=True)
+        self.assertEqual(resp.status_code, 200, html[:300])
+        self.assertIn("Under branchens median", html)
+        self.assertIn("50 er branchens median", html)
+
+
 if __name__ == "__main__":
     unittest.main()

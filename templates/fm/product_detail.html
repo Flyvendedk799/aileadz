@@ -559,7 +559,7 @@
         {% if existing_order %}<a class="pd-cta" href="{{ url_for('futurematch.my_order', order_id=existing_order.order_id) }}"><i class="fa-solid fa-circle-check"></i>Se din bestilling</a>
       {% else %}<a class="pd-cta" href="#pd-request" data-pd-open {% if blocked %}aria-disabled="true"{% endif %}><i class="fa-solid fa-circle-check"></i>{{ 'Tilmeld' if request_flow == 'direct' else 'Anmod om tilmelding' }}</a>{% endif %}
         {% endif %}
-        <a class="pd-cta ghost" href="{{ url_for('app1.index', product_handle=product.handle, product_title=product.title) }}"><i class="fa-solid fa-comments"></i>Spørg AI om kurset</a>
+        <a class="pd-cta ghost" href="{{ url_for('futurematch.chat', intent='Fortæl mig mere om kurset "' ~ (product.title or product.handle) ~ '"') }}"><i class="fa-solid fa-comments"></i>Spørg AI om kurset</a>
 
         <div class="pd-assure">
           <div><i class="fa-solid fa-check"></i><span>{% if anon %}Log ind med din arbejdskonto for at anmode{% elif request_flow == 'approval' %}Ingen betaling i appen. HR godkender først{% elif request_flow == 'direct' %}Som leder godkendes din tilmelding med det samme{% else %}Ingen betaling i appen. Du modtager en faktura{% endif %}</span></div>

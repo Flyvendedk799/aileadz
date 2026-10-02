@@ -42,7 +42,12 @@ def _render_panel(session=None, active_hr_page="compliance"):
     src = open(f"{TEMPLATES}/fm/_ai_panel.html", encoding="utf-8").read()
     ctx = {"active_hr_page": active_hr_page}
     if session is not None:
-        ctx["session"] = session
+        # The panel asks the role matrix (can('company.assistant')), exactly like
+        # the app's context processor provides it for the signed-in session.
+        import capabilities
+        sess = {"user": "u", "user_id": 1, "company_id": 7, **session}
+        ctx["session"] = sess
+        ctx["can"] = lambda cap: capabilities.can(cap, sess)
     return _env().from_string(src).render(**ctx)
 
 

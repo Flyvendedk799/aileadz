@@ -1,6 +1,6 @@
 """CV parse-job store — durable across gunicorn workers.
 
-The CV portal's parse flow is two HTTP requests: POST /api/cv/parse spawns the
+The CV import's parse flow (profile page) is two HTTP requests: POST /api/cv/parse spawns the
 (slow) extract+LLM parse in a background thread, then GET /api/cv/parse-stream
 opens an SSE connection that polls for the result. Under gunicorn those two
 requests can land on DIFFERENT worker processes. The old implementation kept the

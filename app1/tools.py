@@ -1188,8 +1188,8 @@ OPENAI_TOOLS.extend([
             "name": "show_cv_summary",
             "description": (
                 "Vis et øjebliksbillede af brugerens CV-data direkte i chatten: kompetencer, erfaring, "
-                "uddannelse, certificeringer og sprog — med et 'Opdater CV'-link til den 3D-interaktive "
-                "CV-portal. Brug dette når brugeren spørger om sin profil/CV, vil uploade nyt CV, eller "
+                "uddannelse, certificeringer og sprog — med et 'Opdater CV'-link til CV-importen på "
+                "profilsiden. Brug dette når brugeren spørger om sin profil/CV, vil uploade nyt CV, eller "
                 "du vil opsummere hvad systemet ved om dem fagligt."
             ),
             "parameters": {
@@ -6163,7 +6163,7 @@ def _execute_open_in_app(args, username=None):
         out["label"] = label or "Åbn 3D Mind-Map"
 
     elif action == "open_cv_upload":
-        out["target"] = "/profil-upload"
+        out["target"] = "/profil#cv"
         out["label"] = label or "Upload / opdater CV"
 
     elif action == "open_learning_path":

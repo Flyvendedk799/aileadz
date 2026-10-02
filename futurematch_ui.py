@@ -143,7 +143,7 @@ SIDEBAR_BY_ENDPOINT = {
     'futurematch.chat': 'chat',
     'futurematch.ai_profiler': 'chat',
     'futurematch.mind_map': 'mindmap',
-    'futurematch.cv_upload': 'cvupload',
+    'futurematch.my_cv': 'profile',
     'catalog.catalog_index': 'catalog',
     'catalog.product_detail': 'catalog',
     'catalog.category_index': 'catalog',
@@ -705,287 +705,40 @@ def timeline():
     )
 
 
-# ── CV / job-ad ingestion (Theme C: empty-profile cold-start) ──
+# ── CV on the profile page ──
 #
-# Three steps, all strictly scoped to the logged-in user (session['user']):
-#   GET  /profil-upload         -> upload + paste form
-#   POST /profil-upload         -> extract + parse -> render proposal for review
-#   POST /profil-upload/apply   -> write *approved* items via app1.user_profile_db
-#
-# The parsed profile is always a PROPOSAL — nothing is written until the user
-# confirms specific items on the review step. cv_ingest is fully guarded and
-# never raises, so the route degrades to a Danish error/empty state.
+# The CV portal (/profil-upload, a separate 3D page with a no-JS form fallback) was merged
+# into the profile page: upload/paste, review and apply happen inline there
+# (static/futurematch/assets/profile-cv.js, templates/fm/_cv_import.html) on the same
+# /api/cv/* pipeline. The parsed profile is always a PROPOSAL; nothing is written until the
+# person confirms items. Only the legacy URL and the generated-CV view live here.
 
-# How many of each item type we ever surface for review (defensive cap).
-_CV_MAX_ITEMS = 60
-
-
-def _cv_proposal_to_form_lists(proposal):
-    """Shape a cv_ingest proposal into review-ready, index-tagged lists."""
-    proposal = proposal or {}
-    skills, experience, education, courses, certifications, languages = [], [], [], [], [], []
-    for i, s in enumerate((proposal.get('skills') or [])[:_CV_MAX_ITEMS]):
-        name = (s.get('name') or '').strip()
-        if not name:
-            continue
-        skills.append({'idx': i, 'name': name, 'level': (s.get('level') or 'mellem')})
-    for i, e in enumerate((proposal.get('experience') or [])[:_CV_MAX_ITEMS]):
-        title = (e.get('title') or '').strip()
-        company = (e.get('company') or '').strip()
-        if not (title or company):
-            continue
-        experience.append({
-            'idx': i,
-            'title': title,
-            'company': company,
-            'years': (e.get('years') or '').strip(),
-            'start_year': e.get('start_year'),
-            'end_year': e.get('end_year'),
-            'is_current': bool(e.get('is_current')),
-            'description': (e.get('description') or '').strip(),
-        })
-    for i, ed in enumerate((proposal.get('education') or [])[:_CV_MAX_ITEMS]):
-        degree = (ed.get('degree') or '').strip()
-        institution = (ed.get('institution') or '').strip()
-        if not (degree or institution):
-            continue
-        education.append({'idx': i, 'degree': degree, 'institution': institution,
-                         'year': (ed.get('year') or '').strip()})
-    for i, c in enumerate((proposal.get('courses') or [])[:_CV_MAX_ITEMS]):
-        title = (c.get('title') or '').strip()
-        if not title:
-            continue
-        courses.append({'idx': i, 'title': title, 'vendor': (c.get('vendor') or '').strip(),
-                        'completed_date': (c.get('completed_date') or '').strip()})
-    for i, c in enumerate((proposal.get('certifications') or [])[:_CV_MAX_ITEMS]):
-        name = (c.get('name') or '').strip()
-        if not name:
-            continue
-        certifications.append({'idx': i, 'name': name, 'issuer': (c.get('issuer') or '').strip(),
-                               'issue_date': (c.get('issue_date') or '').strip(),
-                               'expiry_date': (c.get('expiry_date') or '').strip()})
-    for i, lg in enumerate((proposal.get('languages') or [])[:_CV_MAX_ITEMS]):
-        language = (lg.get('language') or '').strip()
-        if not language:
-            continue
-        languages.append({'idx': i, 'language': language,
-                          'proficiency': (lg.get('proficiency') or 'mellem')})
-    return skills, experience, education, courses, certifications, languages
-
-
-def _parse_years_to_int(value):
-    """Best-effort: pull a 4-digit year (or plain int) from a free-text string."""
-    import re
-    if value is None:
-        return None
-    s = str(value).strip()
-    if not s:
-        return None
-    # Prefer an explicit 4-digit year; else any standalone integer.
-    m = re.search(r'(19|20)\d{2}', s)
-    if m:
-        try:
-            return int(m.group(0))
-        except Exception:
-            return None
-    m = re.search(r'\d{1,4}', s)
-    if m:
-        try:
-            return int(m.group(0))
-        except Exception:
-            return None
-    return None
-
-
-@futurematch_bp.route('/profil-upload', methods=['GET'])
+@futurematch_bp.route('/profil-upload')
 def cv_upload():
-    """Step 1: upload/paste form for CV-based profile cold-start."""
+    """Legacy URL (bookmarks, old links, the AI's open_cv_upload action): the CV
+    import now lives on the profile page."""
+    return redirect(url_for('pages.profile') + '#cv', code=301)
+
+
+@futurematch_bp.route('/profil/cv')
+def my_cv():
+    """The Futurematch-generated CV: the person's own profile laid out as a
+    printable CV (browser print -> PDF). Read-only, strictly the logged-in user's data."""
     if not session.get('user'):
-        flash('Log ind for at uploade dit CV.', 'danger')
+        flash('Log ind for at se dit CV.', 'danger')
         return redirect(url_for('auth.login'))
-    return render_template('fm/cv_upload.html', step='upload')
-
-
-@futurematch_bp.route('/profil-upload', methods=['POST'])
-def cv_upload_parse():
-    """Step 2: extract text + parse into a reviewable profile PROPOSAL."""
-    if not session.get('user'):
-        flash('Log ind for at uploade dit CV.', 'danger')
-        return redirect(url_for('auth.login'))
-
-    text = ''
-    hint = ''
-    pasted = (request.form.get('cv_text') or '').strip()
-
-    # File upload takes precedence; fall back to pasted text.
-    try:
-        import cv_ingest
-    except Exception as e:  # pragma: no cover - import guard
-        current_app.logger.warning("cv_ingest import: %s", e)
-        cv_ingest = None
-
-    upload = request.files.get('cv_file') if request.files else None
-    if cv_ingest is not None and upload is not None and getattr(upload, 'filename', ''):
-        try:
-            text, hint = cv_ingest.extract_text(upload)
-        except Exception as e:
-            current_app.logger.warning("cv extract: %s", e)
-            text, hint = '', ''
-        # If the file yielded nothing but the user also pasted text, use that.
-        if not (text or '').strip() and pasted:
-            text, hint = pasted, ''
-    elif pasted:
-        text = pasted
-    else:
-        flash('Vælg en CV-fil eller indsæt teksten fra dit CV.', 'danger')
-        return render_template('fm/cv_upload.html', step='upload')
-
-    if not (text or '').strip():
-        # Extraction failed — show the Danish hint and keep the user on step 1.
-        flash(hint or 'Vi kunne ikke læse noget tekst. Prøv at indsætte teksten fra dit CV.',
-              'danger')
-        return render_template('fm/cv_upload.html', step='upload',
-                               raw_text=pasted)
-
-    proposal = {}
-    if cv_ingest is not None:
-        try:
-            proposal = cv_ingest.parse_profile_from_text(text) or {}
-        except Exception as e:
-            current_app.logger.warning("cv parse: %s", e)
-            proposal = {}
-
-    skills, experience, education, courses, certifications, languages = _cv_proposal_to_form_lists(proposal)
-    has_any = bool(skills or experience or education or courses or certifications or languages
-                   or (proposal.get('summary') or '').strip())
-
-    if not has_any:
-        flash('Vi kunne ikke udlede en profil fra teksten. '
-              'Du kan justere teksten og prøve igen.', 'danger')
-        return render_template('fm/cv_upload.html', step='upload', raw_text=text)
-
-    return render_template(
-        'fm/cv_upload.html',
-        step='review',
-        summary=(proposal.get('summary') or '').strip(),
-        skills=skills,
-        experience=experience,
-        education=education,
-        courses=courses,
-        certifications=certifications,
-        languages=languages,
-    )
-
-
-@futurematch_bp.route('/profil-upload/apply', methods=['POST'])
-def cv_upload_apply():
-    """Step 3: write the user-APPROVED items into the profile.
-
-    Only items whose checkbox was ticked are written. Everything is scoped to
-    session['user']; no other user's profile can be touched. Guarded end-to-end.
-    """
-    if not session.get('user'):
-        flash('Log ind for at gemme din profil.', 'danger')
-        return redirect(url_for('auth.login'))
-
     username = session['user']
-    added_summary = added_skills = added_exp = added_edu = added_course = added_cert = added_lang = 0
-
-    form = request.form
-    accepted = []
-    for idx in form.getlist('accept_skill'):
-        name = (form.get(f'skill_name_{idx}') or '').strip()
-        if name:
-            accepted.append({'type': 'skill', 'name': name,
-                             'level': (form.get(f'skill_level_{idx}') or 'mellem').strip()})
-    for idx in form.getlist('accept_experience'):
-        title = (form.get(f'exp_title_{idx}') or '').strip()
-        company = (form.get(f'exp_company_{idx}') or '').strip()
-        if title or company:
-            accepted.append({
-                'type': 'experience', 'title': title, 'company': company,
-                'years': form.get(f'exp_years_{idx}') or '',
-                'start_year': form.get(f'exp_start_{idx}') or _parse_years_to_int(form.get(f'exp_years_{idx}') or ''),
-                'end_year': form.get(f'exp_end_{idx}') or None,
-                'is_current': bool(form.get(f'exp_current_{idx}')),
-                'description': (form.get(f'exp_description_{idx}') or '').strip()})
-    for idx in form.getlist('accept_education'):
-        degree = (form.get(f'edu_degree_{idx}') or '').strip()
-        institution = (form.get(f'edu_institution_{idx}') or '').strip()
-        if degree or institution:
-            accepted.append({'type': 'education', 'degree': degree, 'institution': institution,
-                             'year': _parse_years_to_int(form.get(f'edu_year_{idx}') or '')})
-    for idx in form.getlist('accept_course'):
-        title = (form.get(f'crs_title_{idx}') or '').strip()
-        if title:
-            accepted.append({'type': 'courses', 'title': title,
-                             'vendor': (form.get(f'crs_vendor_{idx}') or '').strip(),
-                             'completed_date': (form.get(f'crs_date_{idx}') or '').strip()})
-    for idx in form.getlist('accept_certification'):
-        name = (form.get(f'crt_name_{idx}') or '').strip()
-        if name:
-            accepted.append({'type': 'certifications', 'name': name,
-                             'issuer': (form.get(f'crt_issuer_{idx}') or '').strip(),
-                             'issue_date': (form.get(f'crt_issued_{idx}') or '').strip() or None,
-                             'expiry_date': (form.get(f'crt_expiry_{idx}') or '').strip() or None})
-    for idx in form.getlist('accept_language'):
-        language = (form.get(f'lang_name_{idx}') or '').strip()
-        if language:
-            accepted.append({'type': 'languages', 'language': language,
-                             'proficiency': (form.get(f'lang_level_{idx}') or 'mellem').strip()})
-    summary = ''
-    if form.get('accept_summary'):
-        summary = (form.get('summary') or '').strip()
-
+    profile = {}
     try:
-        from api import apply_cv_items
-        payload, _status = apply_cv_items(username, {
-            'accepted': accepted, 'summary': summary, 'conflict_mode': 'merge'})
-        if not payload.get('saved') and not payload.get('success'):
-            raise RuntimeError(payload.get('error') or 'cv apply failed')
-        saved = payload.get('saved') or {}
-        added_skills = saved.get('skills', 0)
-        added_exp = saved.get('experience', 0)
-        added_edu = saved.get('education', 0)
-        added_course = saved.get('courses', 0)
-        added_cert = saved.get('certifications', 0)
-        added_lang = saved.get('languages', 0)
-        added_summary = 1 if summary else 0
+        from app1.user_profile_db import ensure_tables, get_full_profile
+        ensure_tables()
+        profile = get_full_profile(username) or {}
     except Exception as e:
-        current_app.logger.warning("cv apply: %s", e)
-        flash('Kunne ikke gemme profilen. Prøv igen.', 'danger')
-        return redirect(url_for('futurematch.cv_upload'))
-
-    total = (added_summary + added_skills + added_exp + added_edu
-             + added_course + added_cert + added_lang)
-    if total:
-        parts = []
-        if added_summary:
-            parts.append('profiltekst')
-        if added_skills:
-            parts.append(f'{added_skills} kompetence' + ('r' if added_skills != 1 else ''))
-        if added_exp:
-            parts.append(f'{added_exp} erfaring' + ('er' if added_exp != 1 else ''))
-        if added_edu:
-            parts.append(f'{added_edu} uddannelse' + ('r' if added_edu != 1 else ''))
-        if added_course:
-            parts.append(f'{added_course} kursus' + ('er' if added_course != 1 else ''))
-        if added_cert:
-            parts.append(f'{added_cert} certificering' + ('er' if added_cert != 1 else ''))
-        if added_lang:
-            parts.append(f'{added_lang} sprog')
-        flash('Tilføjet til din profil: ' + ', '.join(parts) + '.', 'success')
-    else:
-        flash('Ingen elementer blev valgt. Din profil er uændret.', 'danger')
-
-    # Land on the profile if that route exists; otherwise back to the uploader.
-    try:
-        return redirect(url_for('pages.profile'))
-    except Exception:
-        try:
-            return redirect(url_for('futurematch.employee_home'))
-        except Exception:
-            return redirect(url_for('futurematch.cv_upload'))
+        current_app.logger.warning("my_cv profile: %s", e)
+    has_content = any(profile.get(k) for k in (
+        'bio', 'skills', 'experience', 'education', 'certifications',
+        'completed_courses', 'languages', 'portfolio_links'))
+    return render_template('fm/my_cv.html', p=profile, name=username, has_content=has_content)
 
 
 def _require_showcase_admin():

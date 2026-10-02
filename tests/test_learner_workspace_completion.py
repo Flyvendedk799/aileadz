@@ -126,15 +126,28 @@ def test_cv_coach_is_non_destructive_and_returns_diff_data(client):
     improve.assert_called_once()
 
 
-def test_cv_template_has_honest_accessible_fallback_and_no_sample_profile():
-    source = open("templates/fm/cv_upload.html", encoding="utf-8").read()
-    assert "runMock" not in source
-    assert "const SAMPLE" not in source
-    assert "cv-server-review" in source
-    assert 'id="reviewList"' in source
-    assert 'aria-live="polite"' in source
-    assert "prefers-reduced-motion" in source
-    assert "/api/cv/improve" in source
+def test_cv_import_is_honest_and_accessible_and_has_no_sample_profile():
+    markup = open("templates/fm/_cv_import.html", encoding="utf-8").read()
+    js = open("static/futurematch/assets/profile-cv.js", encoding="utf-8").read()
+    css = open("static/futurematch/assets/profile-cv.css", encoding="utf-8").read()
+    assert "runMock" not in js
+    assert "SAMPLE" not in js
+    assert 'aria-live="polite"' in markup
+    assert 'role="progressbar"' in markup
+    assert "Gem dette forslag" in js
+    assert "prefers-reduced-motion" in css
+    assert "/api/cv/improve" in js
+    # the review is non-destructive: nothing is written without the explicit save click
+    assert "/api/cv/apply" in js and "Intet gemmes, før du har gennemgået forslagene" in markup
+
+
+def test_cv_portal_page_is_gone_and_profile_hosts_the_import():
+    import os
+    assert not os.path.exists("templates/fm/cv_upload.html")
+    profile = open("templates/fm/my_profile.html", encoding="utf-8").read()
+    assert "fm/_cv_import.html" in profile
+    assert "data-cv-open" in profile
+    assert "futurematch.my_cv" in profile
 
 
 def test_cross_surface_contract_is_intent_preserving():
@@ -260,18 +273,14 @@ def test_skill_history_valid_sources_and_snapshot_pipeline():
 
 def test_navigation_shell_unification_and_modebar():
     modebar = open("templates/fm/_ai_modebar.html", encoding="utf-8").read()
-    assert "futurematch.cv_upload" in modebar
-    assert "CV-portal" in modebar
+    assert "futurematch.cv_upload" not in modebar  # CV import lives on the profile page
+    assert "CV-portal" not in modebar
     assert "futurematch.chat" in modebar
     assert "futurematch.ai_profiler" not in modebar  # the profiler is part of the assistant
     assert "futurematch.mind_map" in modebar
 
-    cv_upload = open("templates/fm/cv_upload.html", encoding="utf-8").read()
-    assert "fm/_ai_modebar.html" in cv_upload
-    assert ".ai-modebar" in cv_upload
-
     fm_base = open("templates/fm_base.html", encoding="utf-8").read()
-    assert "'cvupload'" in fm_base
+    assert "'cvupload'" not in fm_base
     assert "fm/_ai_sidebar.html" in fm_base
 
 

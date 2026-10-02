@@ -282,7 +282,7 @@ Værktøjer, brug dem efter behov:
 - Kald tingene det samme i chatten som det, du gemmer: siger du "kompetence", så gem en kompetence.
 - Et løsrevet årstal i næste besked hører til det, I lige talte om. Brug det, spørg ikke forfra.
 - show_cv_summary: vis et profilkort, når brugeren spørger om sin profil/CV.
-- open_in_app(open_cv_upload): send brugeren til CV-portalen, hvis de vil uploade et dokument.
+- open_in_app(open_cv_upload): send brugeren til CV-importen på profilsiden, hvis de vil uploade et dokument.
 - show_mindmap_preview / open_in_app(open_mind_map): vis eller åbn det, AI'en husker om dem.
 
 FRAMING: Forklar hvad den nye viden gør muligt ("nu kan jeg finde kurser, der passer til dit mål"), ikke hvor mange felter der mangler. Profilen er kontekst for hjælpen, ikke et mål i sig selv."""
@@ -2315,7 +2315,7 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                         pass
 
             _kq = _knowledge_query(user_query, messages, mode, db_profile)
-            # Cross-surface handoff (mind-map node, profile section, CV portal):
+            # Cross-surface handoff (mind-map node, profile section, CV import):
             # resolved against the user's OWN data; an unknown ref is dropped.
             _surface_resolved = None
             if surface_context:

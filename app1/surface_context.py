@@ -2,7 +2,7 @@
 
 The learner moves between five surfaces that share one profile and one memory:
 the Kursusrådgiver (`/chat`), the AI Profiler (`/ai-profiler`), the Mind-Map,
-the profile page and the CV portal. When one surface hands the user to an AI
+the profile page and its CV import. When one surface hands the user to an AI
 surface ("Spørg AI om dette" on a mind-map node, "Uddyb med AI" on a profile
 section, "Gennemgå med AI" after a CV upload), the target surface should know
 *where the user came from and what they were looking at*, the way the HR panel
@@ -39,7 +39,7 @@ SURFACES = {
     "profiler": "AI Profiler",
     "mind_map": "Mind-Map (overblikket over det, AI'en ved om brugeren)",
     "profile": "profilsiden",
-    "cv_upload": "CV-portalen",
+    "cv_upload": "CV-importen på profilsiden",
     "my_learning": "Min læring",
     "goals": "Mine mål",
     "timeline": "tidslinjen med frister",

@@ -17,7 +17,7 @@ AI-assistenten (/chat) kender din profil og bruger den i alle svar. Den kan båd
 ## Godt at vide
 - Kender assistenten din retning, kan den vise kurser, der peger den vej. Du behøver ikke have en færdig profil først.
 - AI-assistenten kan tage fejl, så bekræft vigtige detaljer. I Mind-Map kan du se og rette det gemte.
-- Har du et CV, kan det være hurtigere at uploade det på din profil (/profil-upload) og bagefter bruge assistenten til resten.
+- Har du et CV, kan det være hurtigere at uploade det på din profil (Profil & CV) og bagefter bruge assistenten til resten.
 - Knappen "Uddyb med AI" på profilsiden og "Spørg AI om dette" i Mind-Map åbner assistenten med den sektion eller det punkt, du kiggede på, i fokus.
 - Din profil kan også rettes manuelt på profilsiden (Profil & CV).
 - Det gamle link /ai-profiler sender dig videre til AI-assistenten.

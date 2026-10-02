@@ -5,6 +5,7 @@
 {% block topbar_title %}Profil &amp; CV{% endblock %}
 {% block topbar_sub %}Din kompetenceprofil — jo mere udfyldt, jo bedre anbefalinger.{% endblock %}
 {% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/profile-cv.css') }}?v={{ asset_version('futurematch/assets/profile-cv.css') }}" />
 <style>
   /* level palette (progression heat) */
   :root { --lv-begynder: var(--fm-info); --lv-mellem: var(--fm-primary); --lv-avanceret: var(--fm-gold); --lv-ekspert: var(--fm-clay); }
@@ -240,7 +241,8 @@
               </div>
               <div class="cv-actions">
                 <button class="btn btn-soft btn-sm" onclick="openAdd()"><i class="fa-solid fa-plus"></i> Tilføj kompetence</button>
-                <a href="{{ url_for('futurematch.cv_upload') }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-file-arrow-up"></i> Upload CV</a>
+                <a href="#cv" data-cv-open aria-controls="cvImport" aria-expanded="false" class="btn btn-primary btn-sm"><i class="fa-solid fa-file-arrow-up"></i> Upload CV</a>
+                <a href="{{ url_for('futurematch.my_cv') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-file-lines"></i> Se dit CV</a>
                 <a href="{{ url_for('futurematch.mind_map') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-brain"></i> 3D Mind-Map</a>
                 <a href="{{ url_for('futurematch.chat') }}?from=profile" class="btn btn-ghost btn-sm"><i class="fa-solid fa-pen"></i> Opdater via AI</a>
               </div>
@@ -269,7 +271,8 @@
           <a href="{{ url_for('futurematch.chat') }}?from=profile&amp;intent={{ 'Hjælp mig med at finde kurser der matcher min profil og mine mål'|urlencode }}" class="btn btn-primary btn-sm">Lad AI hjælpe <i class="fa-solid fa-arrow-right"></i></a>
         </div>
 
-        <!-- CV Summary Widget (Phase 3) -->
+        <!-- CV Summary Widget + inline CV import (the former /profil-upload portal) -->
+        <span id="cv"></span>
         <div class="fm-card cv-widget-card" data-reveal id="cvWidgetCard">
           <div class="fm-card-head">
             <span class="fm-ch-icon"><i class="fa-solid fa-file-lines"></i></span>
@@ -278,6 +281,9 @@
           </div>
           <div class="fm-card-body" id="cvWidgetContent">
             <div class="muted" style="font-size:13px">Indlæser CV-oplysninger…</div>
+          </div>
+          <div class="fm-card-body" style="padding-top:0">
+            {% include 'fm/_cv_import.html' %}
           </div>
         </div>
 
@@ -396,6 +402,7 @@
 {% endblock %}
 {% block extra_scripts %}
 <script src="{{ url_for('static', filename='futurematch/assets/profile-strength.js') }}?v={{ asset_version('futurematch/assets/profile-strength.js') }}"></script>
+<script src="{{ url_for('static', filename='futurematch/assets/profile-cv.js') }}?v={{ asset_version('futurematch/assets/profile-cv.js') }}"></script>
 <script>
   (function () {
     const LEVEL_LABELS = { begynder: 'Begynder', mellem: 'Mellem', avanceret: 'Avanceret', ekspert: 'Ekspert' };
@@ -405,7 +412,7 @@
     const LANG_ORDER = { begynder: 1, mellem: 2, flydende: 3, modersmaal: 4 };
 
     const URLS = {
-      cvUpload: "{{ url_for('futurematch.cv_upload') }}",
+      myCv: "{{ url_for('futurematch.my_cv') }}",
       aiProfiler: "{{ url_for('futurematch.chat') }}",
       mindMap: "{{ url_for('futurematch.mind_map') }}",
       chat: "{{ url_for('futurematch.chat') }}"
@@ -836,7 +843,7 @@
               '<h4 style="margin:0 0 6px;font-size:15px;font-weight:700">Genskab dit CV som en interaktiv profil</h4>' +
               '<p>Upload dit eksisterende CV — vi analyserer det automatisk og trækker dine kompetencer, erfaringer og uddannelser direkte ind på din profil og i AI-assistenten.</p>' +
               '<div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap">' +
-                '<a href="' + URLS.cvUpload + '" class="btn btn-primary btn-sm"><i class="fa-solid fa-file-arrow-up"></i> Upload dit CV nu</a>' +
+                '<button type="button" data-cv-open aria-controls="cvImport" aria-expanded="false" class="btn btn-primary btn-sm"><i class="fa-solid fa-file-arrow-up"></i> Upload dit CV nu</button>' +
                 '<a href="' + URLS.aiProfiler + '?from=profile&intent=' + encodeURIComponent('Hjælp mig med at opbygge min profil fra bunden') + '" class="btn btn-soft btn-sm"><i class="fa-solid fa-wand-magic-sparkles"></i> Byg profil via AI</a>' +
               '</div>' +
             '</div>';
@@ -863,7 +870,8 @@
             (expItems ? '<div class="cv-widget-preview"><div class="cv-widget-preview-title"><i class="fa-solid fa-briefcase"></i> Seneste erfaring</div>' + expItems + '</div>' : '') +
             (chips ? '<div style="margin-bottom:14px"><div class="cv-widget-preview-title" style="margin-bottom:8px"><i class="fa-solid fa-layer-group"></i> Nøglekompetencer</div><div class="cv-widget-chips">' + chips + '</div></div>' : '') +
             '<div class="cv-widget-actions">' +
-              '<a href="' + URLS.cvUpload + '" class="btn btn-primary btn-sm"><i class="fa-solid fa-file-arrow-up"></i> Upload / Opdater CV</a>' +
+              '<button type="button" data-cv-open aria-controls="cvImport" aria-expanded="false" class="btn btn-primary btn-sm"><i class="fa-solid fa-file-arrow-up"></i> Upload / Opdater CV</button>' +
+              '<a href="' + URLS.myCv + '" class="btn btn-soft btn-sm"><i class="fa-solid fa-file-lines"></i> Se dit Futurematch-CV</a>' +
               '<a href="' + URLS.aiProfiler + '?from=profile&intent=' + encodeURIComponent('Jeg vil gerne gennemgå og forbedre mit CV med AI') + '" class="btn btn-soft btn-sm"><i class="fa-solid fa-wand-magic-sparkles"></i> Finpuds med AI</a>' +
               '<a href="' + URLS.mindMap + '" class="btn btn-ghost btn-sm"><i class="fa-solid fa-brain"></i> Se i 3D Mind-Map</a>' +
             '</div>';
@@ -1101,6 +1109,8 @@
     loadLearningPaths();
     loadSkillGaps();
     loadCvSummary();
+    // A CV applied from the inline import: reload everything it touches.
+    document.addEventListener('fm:cv-applied', function () { load(); loadSkillGaps(); loadCvSummary(); });
   })();
 </script>
 {% endblock %}

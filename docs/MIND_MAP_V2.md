@@ -6,7 +6,7 @@
 - Runtime: `static/futurematch/assets/mind-map-support.js`.
 - Data: `GET /api/profile/mindmap` (`get_mindmap_api` in `api.py`).
 - Tests: `tests/test_mind_map_v2.py` (structural, jinja2 only, no Flask or DB).
-- Open items: ROADMAP R-3 (page loads three.js r128 while the CV portal loads 0.160).
+- The page loads three.js r128 (the CV portal's 0.160 copy is gone, so there is one version left).
 
 ## 1. Navigation
 

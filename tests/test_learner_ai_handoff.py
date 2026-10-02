@@ -344,12 +344,12 @@ class SurfaceTemplateTests(unittest.TestCase):
             self.assertIn(f"from=profile&amp;focus=section:{section}", src)
 
     def test_every_handoff_focus_in_templates_is_one_the_server_accepts(self):
-        for rel in ("templates/fm/my_profile.html", "templates/fm/cv_upload.html"):
+        for rel in ("templates/fm/my_profile.html", "templates/fm/_cv_import.html"):
             for focus in re.findall(r"focus=(section:[a-z\-]+)", _read(rel)):
                 self.assertEqual(sc.normalize_context({"focus": focus}).get("focus"), focus, (rel, focus))
 
-    def test_cv_portal_hands_off_with_context(self):
-        src = _read("templates/fm/cv_upload.html")
+    def test_cv_import_hands_off_with_context(self):
+        src = _read("templates/fm/_cv_import.html")
         self.assertIn("?from=cv_upload", src)
         self.assertNotIn("source=cv", src)
 

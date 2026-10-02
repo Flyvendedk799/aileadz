@@ -678,7 +678,7 @@ TRIGGER_HOW_TOKENS: Tuple[str, ...] = (
 
 TRIGGER_PLATFORM_NOUNS: Tuple[str, ...] = (
     # CV / profile
-    "upload", "cv-portal", "cv portal", "profilsiden", "min profil", "profil & cv", "profiler",
+    "upload", "cv-portal", "cv portal", "cv-import", "profilsiden", "min profil", "profil & cv", "profiler",
     # orders / approval / budget
     "godkend", "godkendelse", "bestilling", "bestille", "bestiller", "bestilt", "tilmelding",
     "tilmelde", "anmodning", "ordre", "budget",

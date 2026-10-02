@@ -333,5 +333,57 @@ class OperationsPagesTests(unittest.TestCase):
         self.assertIn("største gab øverst", html)
 
 
+class PeopleAndUsagePagesTests(unittest.TestCase):
+    def test_team_cockpit_drops_fake_sparkline(self):
+        html = _render("fm/team_cockpit.html", scope="reports", summary={}, pending_for_me=[],
+                       reports=[{"user_id": 3, "name": "Anna", "courses_enrolled": 4,
+                                 "courses_completed": 1, "avg_progress": 40}])
+        self.assertNotIn("team-spark", html)
+        self.assertIn("FMChart.stackedBar('teamCompletion'", html)
+        self.assertIn("· 25%", html)
+
+    def test_my_department_budget_is_a_meter_not_a_pie(self):
+        html = _render("fm/my_department.html", department="Salg", fiscal_year=2026,
+                       employees=[], orders=[], pending_count=0,
+                       budget={"annual_budget": 10000, "spent": 12000, "remaining": -2000,
+                               "utilization": 120})
+        self.assertNotIn("FMChart.doughnut", html)
+        self.assertIn("2.000 kr over budget", html)
+
+    def test_employee_progress_histogram(self):
+        html = _render("fm/employee_progress.html", departments=[], current_filters={},
+                       summary_stats={}, employees=[
+                           {"user_id": 1, "username": "a", "avg_progress": 80, "courses_enrolled": 2,
+                            "learning_paths_enrolled": 0},
+                           {"user_id": 2, "username": "b", "avg_progress": 0, "courses_enrolled": 0,
+                            "learning_paths_enrolled": 0}])
+        self.assertIn("'Ingen kurser'", html)
+        self.assertNotIn("FMChart.doughnut", html)
+
+    def test_personal_usage_last7_is_calendar_days(self):
+        app = get_app()
+        old = datetime.datetime.now() - datetime.timedelta(days=20)
+
+        def extra(s, params):
+            if s.startswith("select timestamp, credits_used"):
+                return [{"timestamp": old, "credits_used": 5, "description": "x"}]
+            return None
+        with patch_mysql(app, _responder(extra))[1]:
+            html = client_as(app, "employee").get("/reports/").get_data(as_text=True)
+        today = datetime.date.today()
+        self.assertIn('[0, 0, 0, 0, 0, 0, 0]', html)  # no usage in the last 7 calendar days
+        self.assertIn(today.isoformat(), html)
+        self.assertNotIn("Social exposure", html)
+
+    def test_company_reports_kpis_are_danish(self):
+        html = _render("fm/company_reports.html", company_stats={}, total_chatbot_queries=1200,
+                       total_conversations=40, conversion_rate=2.5, completed_orders_count=3,
+                       pending_orders_count=1, employee_engagement_rate=60.0, total_revenue=45000,
+                       daily_chatbot_query_labels=["2026-10-01"], daily_chatbot_query_data=[4])
+        self.assertIn("45.000", html)
+        self.assertIn("3 gennemførte · 1 afventer", html)
+        self.assertIn("FMChart.line('dailyChart'", html)
+
+
 if __name__ == "__main__":
     unittest.main()

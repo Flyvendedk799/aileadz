@@ -6,7 +6,7 @@
 {% from 'fm/_macros.html' import empty %}
 {% block extra_head %}
 <style>
-  .dep-charts { display: grid; grid-template-columns: 1fr 1.6fr; gap: 16px; margin: 0 0 18px; align-items: start; }
+  .dep-charts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 16px; margin: 0 0 18px; align-items: start; }
   .dep-chart-card { padding: 18px; }
   .dep-chart-card .ch-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
   .dep-chart-card .ch-head h3 { font-size: 14.5px; font-weight: 700; }
@@ -22,7 +22,7 @@
   {% set barcol = 'var(--fm-danger)' if util > 90 else ('var(--fm-warning)' if util > 80 else 'var(--fm-success)') %}
   <div class="kpi-row k4">
     <div class="kpi-tile"><div class="kl">Medarbejdere</div><div class="kv tnum">{{ employees|length }}</div><div class="kd">i {{ department }}</div></div>
-    <div class="kpi-tile"><div class="kl">Ordrer i alt</div><div class="kv tnum">{{ orders|length }}</div><div class="kd">seneste 20</div></div>
+    <div class="kpi-tile"><div class="kl">Seneste ordrer</div><div class="kv tnum">{{ orders|length }}</div><div class="kd">vist nedenfor (op til 20)</div></div>
     <div class="kpi-tile"><div class="kl">Afventer godkendelse</div><div class="kv tnum">{{ pending_count }}</div><div class="kd">ordrer</div></div>
     <div class="kpi-tile"><div class="kl">Budget {{ fiscal_year }}</div><div class="kv tnum">{{ '{:,.0f}'.format(budget.annual_budget).replace(',','.') }}</div><div class="kd">{{ util }}% brugt · {{ '{:,.0f}'.format(budget.remaining).replace(',','.') }} kr tilbage</div></div>
   </div>
@@ -34,13 +34,25 @@
   <section class="dep-charts">
     <div class="fm-card dep-chart-card" data-reveal data-d="1">
       <div class="ch-head"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-wallet"></i></span><h3>Budgetudnyttelse {{ fiscal_year }}</h3></div>
-      <p>Forbrugt vs. resterende af afdelingens årsbudget.</p>
-      <div class="fm-chart-wrap"><canvas id="depBudgetChart" aria-label="Cirkeldiagram: forbrugt mod resterende del af afdelingens årsbudget" role="img"></canvas></div>
+      {# One ratio against a limit is a meter, not a two-slice pie. #}
+      {% if (budget.annual_budget|default(0)|float) > 0 %}
+      <div style="font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1.1;margin-top:6px">{{ util|dknum }}% <span style="font-size:13px;font-weight:600;color:var(--fm-ink-2)">brugt</span></div>
+      <div class="fm-prog" style="margin:12px 0 8px"><span style="width:{{ [util,100]|min }}%;background:{{ barcol }}"></span></div>
+      <p style="margin:0">{{ budget.spent|default(0)|dknum(0) }} kr af {{ budget.annual_budget|default(0)|dknum(0) }} kr ·
+        {% if (budget.remaining|default(0)|float) < 0 %}<strong style="color:var(--fm-danger)">{{ (0 - budget.remaining|float)|dknum(0) }} kr over budget</strong>{% else %}{{ budget.remaining|default(0)|dknum(0) }} kr tilbage{% endif %}</p>
+      {% else %}
+      <p style="margin-top:6px">Der er ikke sat et budget for afdelingen i {{ fiscal_year }}. <a href="{{ url_for('hr_dashboard.department_budgets') }}">Sæt budget</a></p>
+      {% endif %}
     </div>
     <div class="fm-card dep-chart-card" data-reveal data-d="2">
       <div class="ch-head"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--fm-indigo) 13%,transparent);color:var(--fm-indigo)"><i class="fa-solid fa-chart-simple"></i></span><h3>Aktivitet pr. medarbejder</h3></div>
-      <p>Gennemførte kurser pr. medarbejder i afdelingen.</p>
-      <div class="fm-chart-wrap"><canvas id="depActivityChart" aria-label="Søjlediagram: antal gennemførte kurser pr. medarbejder" role="img"></canvas></div>
+      <p>Gennemførte kurser pr. medarbejder i afdelingen, flest øverst (op til 12).</p>
+      {% set _act = (employees or [])|selectattr('total_courses_completed')|list %}
+      {% if _act %}
+      <div class="fm-chart-wrap" style="height:{{ [([_act|length, 12]|min) * 30 + 48, 160]|max }}px"><canvas id="depActivityChart" aria-label="Liggende søjlediagram: antal gennemførte kurser pr. medarbejder, flest øverst" role="img"></canvas></div>
+      {% else %}
+      <p class="muted" style="color:var(--fm-ink-3)">Ingen i afdelingen har gennemført kurser endnu.</p>
+      {% endif %}
     </div>
   </section>
 
@@ -93,16 +105,6 @@
 (function () {
   if (typeof FMChart === 'undefined') return;
 
-  // --- Doughnut: budget utilisation (spent vs remaining) ---
-  var spent = {{ budget.spent|default(0)|float }};
-  var remaining = {{ budget.remaining|default(0)|float }};
-  if (remaining < 0) remaining = 0; // over budget -> nothing left to show as available
-  FMChart.doughnut('depBudgetChart', {
-    labels: ['Forbrugt', 'Resterende'],
-    values: [spent, remaining],
-    empty: 'Intet budget registreret for året'
-  });
-
   // --- Bar: completed courses per employee ---
   var emps = {{ (employees or [])|list|tojson|safe }};
   var withActivity = emps
@@ -112,8 +114,8 @@
     .slice(0, 12);
   FMChart.bar('depActivityChart', {
     labels: withActivity.map(function (e) { return e.name; }),
-    series: [{ label: 'Gennemførte kurser', data: withActivity.map(function (e) { return e.completed; }), color: FMChart.cssVar('--fm-indigo', '#4f46e5') }],
-    horizontal: withActivity.length > 6,
+    series: [{ label: 'Gennemførte kurser', data: withActivity.map(function (e) { return e.completed; }), color: FMChart.cssVar('--fm-primary', '#0f766e') }],
+    horizontal: true,
     empty: 'Ingen gennemførte kurser endnu'
   });
 })();

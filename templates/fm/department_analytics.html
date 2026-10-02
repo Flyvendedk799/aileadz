@@ -10,8 +10,8 @@
 <div class="kpi-row">
   <div class="kpi-tile"><div class="kl">Medarbejdere</div><div class="kv tnum">{{ dept_stats.total_employees or 0 }}</div><div class="kd">{{ dept_stats.active_employees or 0 }} aktive</div></div>
   <div class="kpi-tile"><div class="kl">Kursusordrer</div><div class="kv tnum">{{ dept_stats.total_course_orders or 0 }}</div><div class="kd">{{ dept_stats.completed_courses or 0 }} gennemført</div></div>
-  <div class="kpi-tile"><div class="kl">Investering</div><div class="kv tnum">{{ "%.0f"|format(dept_stats.total_investment or 0) }}</div><div class="kd">kr i alt</div></div>
-  <div class="kpi-tile"><div class="kl">Chatbot</div><div class="kv tnum">{{ dept_stats.total_chatbot_interactions or 0 }}</div><div class="kd">interaktioner</div></div>
+  <div class="kpi-tile"><div class="kl">Investering</div><div class="kv tnum">{{ (dept_stats.total_investment or 0)|dknum(0) }}</div><div class="kd">kr i alt</div></div>
+  <div class="kpi-tile"><div class="kl">AI-assistenten</div><div class="kv tnum">{{ dept_stats.total_chatbot_interactions or 0 }}</div><div class="kd">beskeder</div></div>
 </div>
 
 <div class="fm-table-wrap">

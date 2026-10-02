@@ -1659,9 +1659,36 @@ def create_hr_dashboard_blueprint():
                 current_app.logger.warning(f"attributed_revenue (HR) failed: {_e}")
                 ai_revenue = None
 
+            # Monthly spend for the fiscal year (company-wide total, same filter
+            # as the ROI headline) so the page shows WHEN the money went out,
+            # not just how much. Future months of the current year are omitted.
+            monthly_spend = {'labels': [], 'spend': []}
+            try:
+                mcur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+                mcur.execute("""
+                    SELECT MONTH(created_at) AS m, COALESCE(SUM(price), 0) AS spend
+                    FROM course_orders
+                    WHERE company_id = %s
+                      AND status NOT IN ('cancelled', 'rejected')
+                      AND YEAR(created_at) = %s
+                    GROUP BY MONTH(created_at)
+                """, (company['id'], fiscal_year))
+                by_month = {int(r['m']): float(r['spend'] or 0) for r in (mcur.fetchall() or []) if r.get('m')}
+                mcur.close()
+                now = _dt.datetime.now()
+                last_month = 12 if fiscal_year < now.year else (now.month if fiscal_year == now.year else 0)
+                month_names = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec']
+                for m in range(1, last_month + 1):
+                    monthly_spend['labels'].append(month_names[m - 1])
+                    monthly_spend['spend'].append(round(by_month.get(m, 0)))
+            except Exception as _e:
+                current_app.logger.warning(f"ROI monthly spend failed: {_e}")
+                monthly_spend = {'labels': [], 'spend': []}
+
             return render_template('fm/roi.html',
                                    company=company, roi=roi, predictions=predictions,
                                    ai_revenue=ai_revenue, uplift=uplift,
+                                   monthly_spend=monthly_spend,
                                    fiscal_year=fiscal_year)
         except Exception as e:
             current_app.logger.error(f"ROI dashboard error: {e}")

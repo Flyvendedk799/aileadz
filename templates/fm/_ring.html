@@ -1,0 +1,18 @@
+{# One completeness ring (R-4). Styles: `.fm-ring*` in futurematch/assets/fm.css,
+   built on --fm-* tokens; shell.js draws `.fm-ring` in from 0 on page load.
+
+   Usage:
+     {% from 'fm/_ring.html' import ring %}
+     {{ ring(0, size='lg', id='ringBig', pct_id='ringPct', label='Profilstyrke') }}
+
+   Pages update a ring live with `el.style.setProperty('--p', n)` on the ring and
+   `textContent = n + '%'` on the pct element, so keep both ids stable.
+   size: 'sm' (56px, banner) or 'lg' (130px, profile hero). #}
+{% macro ring(pct=0, size='sm', id=none, pct_id=none, label=none) -%}
+<div class="fm-ring fm-ring--{{ size }}"{% if id %} id="{{ id }}"{% endif %} style="--p:{{ pct|int }}">
+  <div class="fm-ring-hole"><div>
+    <span class="fm-ring-pct"{% if pct_id %} id="{{ pct_id }}"{% endif %}>{{ pct|int }}%</span>
+    {%- if label %}<div class="fm-ring-lab">{{ label }}</div>{% endif %}
+  </div></div>
+</div>
+{%- endmacro %}

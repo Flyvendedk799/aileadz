@@ -26,7 +26,7 @@
       <p class="detail-sub">{{ employee.job_title or 'Ingen jobtitel' }}{% if employee.email %} · {{ employee.email }}{% endif %}</p>
       <div class="detail-tags">
         {% if employee.role == 'company_admin' %}<span class="fm-badge red dot">Admin</span>
-        {% elif employee.role == 'hr_manager' %}<span class="fm-badge amber dot">HR Manager</span>
+        {% elif employee.role == 'hr_manager' %}<span class="fm-badge amber dot">HR-leder</span>
         {% elif employee.role == 'department_head' %}<span class="fm-badge dot">Afdelingsleder</span>
         {% else %}<span class="fm-badge dot">Medarbejder</span>{% endif %}
         {% if employee.status == 'active' %}<span class="fm-badge green dot">Aktiv</span>
@@ -59,7 +59,7 @@
         {% if employee.employee_id %}<div class="kv"><span class="k">Medarbejder-ID</span><span class="v">{{ employee.employee_id }}</span></div>{% endif %}
         <div class="kv"><span class="k">Ansættelse</span><span class="v">{{ {'full_time':'Fuldtid','part_time':'Deltid','contract':'Kontrakt','intern':'Praktikant'}.get(employee.employment_type, 'Fuldtid') }}</span></div>
         {% if employee.hire_date %}<div class="kv"><span class="k">Ansat</span><span class="v">{{ dt(employee.hire_date) }}</span></div>{% endif %}
-        {% if employee.manager_name %}<div class="kv"><span class="k">Manager</span><span class="v">{{ employee.manager_name }}</span></div>{% endif %}
+        {% if employee.manager_name %}<div class="kv"><span class="k">Nærmeste leder</span><span class="v">{{ employee.manager_name }}</span></div>{% endif %}
         {% if employee.total_learning_time %}<div class="kv"><span class="k">Total læringstid</span><span class="v">{{ (employee.total_learning_time / 60)|round(1) }} timer</span></div>{% endif %}
       </div></div></div>
 
@@ -135,7 +135,7 @@
         {% set _spark = course_history|map(attribute='time_spent_minutes')|map('default', 0)|list %}
         {% if _spark|select|list %}
         <div style="padding:14px 18px 4px;border-bottom:1px solid var(--fm-line)">
-          <div class="fm-eyebrow" style="margin:0 0 6px"><i class="fa-solid fa-chart-line"></i> Læringsaktivitet over tid</div>
+          <div class="fm-eyebrow" style="margin:0 0 6px"><i class="fa-solid fa-chart-line"></i> Læringstid pr. kursus (minutter, ældste først)</div>
           <div style="position:relative;height:56px"><canvas id="empCourseSpark" aria-label="Sparkline: læringstid (minutter) pr. kursus i kronologisk rækkefølge for {{ employee.username|e }}" role="img"></canvas></div>
         </div>
         {% endif %}
@@ -165,7 +165,7 @@
         <table class="fm-table"><thead><tr><th>Dato/Tid</th><th>Beskeder</th><th style="text-align:right"></th></tr></thead><tbody>
         {% for s in chatbot_sessions[:10] %}
           <tr>
-            <td class="muted">{{ s.last_activity.strftime('%d. %b %H:%M') if s.last_activity else 'N/A' }}</td>
+            <td class="muted">{{ s.last_activity|dkdate(true) if s.last_activity else "Ukendt" }}</td>
             <td><span class="fm-badge">{{ s.query_count }}</span></td>
             <td style="text-align:right"><a href="{{ url_for('hr_dashboard.chatbot_session_detail', session_id=s.session_id) }}" class="btn btn-ghost btn-sm">Se samtale</a></td>
           </tr>
@@ -185,20 +185,21 @@
 (function () {
   if (typeof FMChart === 'undefined') return;
 
-  // ── Skill radar — actual vs. target, token-bound & dark-aware (was raw new Chart()) ──
+  // ── Skill radar — actual vs. target; the target is a dashed outline, not a second fill ──
   var skillLabels  = {{ employee_skills|map(attribute='skill_name')|list|tojson|safe }};
   var skillCurrent = {{ employee_skills|map(attribute='current_level')|map('default', 0)|list|tojson|safe }};
   var skillTarget  = {{ employee_skills|map(attribute='target_level')|map('default', 0)|list|tojson|safe }};
   if (skillLabels.length) {
     var radarSeries = [
       { label: 'Nuværende niveau', data: skillCurrent.map(function (v) { return Number(v) || 0; }),
-        color: FMChart.cssVar('--fm-primary', '#0f766e') }
+        color: '--fm-chart-1' }
     ];
     if (skillTarget.some(function (v) { return Number(v) > 0; })) {
       radarSeries.push({ label: 'Mål', data: skillTarget.map(function (v) { return Number(v) || 0; }),
-        color: FMChart.cssVar('--fm-success', '#16a34a') });
+        color: '--fm-ink-2', dashed: true });
     }
     FMChart.radar('skillRadar', {
+      title: 'Nuværende kompetenceniveau og mål',
       labels: skillLabels, series: radarSeries, max: 5, step: 1,
       empty: 'Ingen kompetencer registreret endnu'
     });
@@ -209,7 +210,8 @@
   var spark = {{ course_history|map(attribute='time_spent_minutes')|map('default', 0)|list|tojson|safe }};
   spark = spark.map(function (v) { return Number(v) || 0; }).reverse();
   FMChart.sparkline('empCourseSpark', {
-    data: spark, color: FMChart.cssVar('--fm-indigo', '#4f46e5'),
+    title: 'Læringstid pr. kursus i kronologisk rækkefølge',
+    data: spark, color: '--fm-chart-3', valueSuffix: ' min',
     empty: 'Ingen læringsaktivitet endnu'
   });
 })();

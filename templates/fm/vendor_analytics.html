@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Analyser · Leverandorportal · Futurematch</title>
+  <title>Analyser · Leverandørportal · Futurematch</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -51,19 +51,7 @@
   </style>
 </head>
 <body data-page="vendor-analytics">
-  <header class="vp-top">
-    <span class="vp-mark">F</span>
-    <span class="name">Leverandorportal</span>
-    <span class="who">{{ vendor_name }}</span>
-  </header>
-  <nav class="vp-nav">
-    <a href="{{ url_for('vendor.vendor_dashboard') }}">Oversigt</a>
-    <a href="{{ url_for('vendor.vendor_orders') }}">Bestillinger{% if vendor_awaiting_count %} <span class="badge pending">{{ vendor_awaiting_count }}</span>{% endif %}</a>
-    <a href="{{ url_for('vendor.vendor_analytics') }}" class="active">Analyser</a>
-    <a href="{{ url_for('vendor.vendor_submit') }}">Indsend katalog</a>
-    <a href="{{ url_for('vendor.vendor_profile') }}">Profil</a>
-    <form method="post" action="{{ url_for('vendor.vendor_logout') }}" style="margin:0 0 0 auto"><button type="submit" class="logout" style="background:none;border:0;padding:0;font:inherit;color:var(--fm-ink-3);cursor:pointer">Log ud</button></form>
-  </nav>
+  {% set vendor_tab = 'analytics' %}{% include 'fm/_vendor_nav.html' %}
 
   <main class="vp-wrap">
     <h1 class="vp-h1">Analyser</h1>
@@ -143,16 +131,15 @@
             { label: 'Ordrer', data: ordersSeries },
             { label: 'Gennemført', data: completedSeries }
           ],
+          xFormat: 'month', title: 'Ordrer og gennemførelser pr. måned',
           empty: 'Ingen ordrer endnu'
         });
 
-        FMChart.bar('vpTopCoursesChart', {
-          labels: topCourses.map(function (c) {
-            var t = c.title || c.handle || '';
-            return t.length > 26 ? t.slice(0, 24) + '…' : t;
-          }),
-          series: [{ label: 'Ordrer', data: topCourses.map(function (c) { return c.orders || 0; }) }],
-          horizontal: true,
+        // Ranked by orders; long titles are shortened on the axis and shown in full on hover.
+        FMChart.hbarRanked('vpTopCoursesChart', {
+          labels: topCourses.map(function (c) { return c.title || c.handle || ''; }),
+          values: topCourses.map(function (c) { return c.orders || 0; }),
+          label: 'Ordrer', other: false, labelMax: 24, title: 'Topkurser efter ordrer',
           empty: 'Ingen kurser endnu'
         });
       }

@@ -118,9 +118,10 @@ class OrderHandler:
                 'duplicate': bool(stored.get('duplicate')),
                 'next_steps': self._generate_payment_instructions(order),
             }
-        except Exception as e:
-            logger.error(f"Error creating order: {e}")
-            return {'success': False, 'error': str(e)}
+        except Exception:
+            logger.exception("Error creating order")
+            return {'success': False, 'error': 'order_failed',
+                    'message': 'Der opstod en fejl ved oprettelse af ordren.'}
 
     def _parse_price(self, price_str) -> float:
         """Parse price string to float (handles ``1.995,00`` and ``1,995.00``)."""
@@ -171,9 +172,9 @@ class OrderHandler:
                 if result.get('budget_warning'):
                     order['budget_warning'] = result['budget_warning']
             return result
-        except Exception as e:
-            logger.error(f"Error storing order in database: {e}")
-            return {'success': False, 'error': str(e),
+        except Exception:
+            logger.exception("Error storing order in database")
+            return {'success': False, 'error': 'order_store_failed',
                     'message': 'Der opstod en fejl ved oprettelse af ordren.'}
 
     def _generate_payment_instructions(self, order: Dict) -> Dict:

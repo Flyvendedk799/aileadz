@@ -1,4 +1,5 @@
 {% extends "fm_base.html" %}
+{% from 'fm/_ring.html' import ring %}
 {% block page_id %}profiler{% endblock %}
 {% block title %}AI Profiler · Futurematch{% endblock %}
 {% block topbar_title %}AI Profiler{% endblock %}
@@ -36,8 +37,6 @@
 
   /* Profiler progress banner */
   .prof-banner { display: flex; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--fm-line); background: linear-gradient(100deg, var(--fm-primary-tint), transparent 60%), var(--fm-surface); }
-  .prof-ring { width: 56px; height: 56px; flex: 0 0 56px; border-radius: 999px; display: grid; place-items: center; background: conic-gradient(var(--fm-primary) calc(var(--p,0)*1%), var(--fm-surface-3) 0); transition: background .8s var(--ease); }
-  .prof-ring > span { width: 44px; height: 44px; border-radius: 999px; background: var(--fm-surface); display: grid; place-items: center; font-family: var(--ff-display); font-weight: 700; font-size: 14px; color: var(--fm-primary); }
   .prof-info { flex: 1; min-width: 0; }
   .prof-kicker { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; margin-bottom: 6px; border-radius: 999px; background: var(--fm-primary); color: #fff; font-size: 10.5px; font-family: var(--ff-mono); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
   [data-theme="dark"] .prof-kicker { color: #06201d; }
@@ -65,7 +64,7 @@
 {% block content %}
 {% include 'fm/_ai_modebar.html' %}
 <div class="prof-banner">
-  <div class="prof-ring" id="profRing" style="--p:0"><span id="profPct">0%</span></div>
+  {{ ring(0, id='profRing', pct_id='profPct') }}
   <div class="prof-info">
     <div class="prof-kicker"><i class="fa-solid fa-user-check"></i> Profilmode</div>
     <div class="prof-title">AI Profiler — profil, erfaring og mål</div>

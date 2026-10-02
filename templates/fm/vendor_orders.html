@@ -43,19 +43,7 @@
   </style>
 </head>
 <body data-page="vendor-orders">
-  <header class="vp-top">
-    <span class="vp-mark">F</span>
-    <span class="name">Leverandørportal</span>
-    <span class="who">{{ vendor_name }}</span>
-  </header>
-  <nav class="vp-nav">
-    <a href="{{ url_for('vendor.vendor_dashboard') }}">Oversigt</a>
-    <a href="{{ url_for('vendor.vendor_orders') }}" class="active">Bestillinger{% if vendor_awaiting_count %} <span class="badge pending">{{ vendor_awaiting_count }}</span>{% endif %}</a>
-    <a href="{{ url_for('vendor.vendor_analytics') }}">Analyser</a>
-    <a href="{{ url_for('vendor.vendor_submit') }}">Indsend katalog</a>
-    <a href="{{ url_for('vendor.vendor_profile') }}">Profil</a>
-    <a href="{{ url_for('vendor.vendor_logout') }}" class="logout">Log ud</a>
-  </nav>
+  {% set vendor_tab = 'orders' %}{% include 'fm/_vendor_nav.html' %}
 
   <main class="vp-wrap">
     {% with messages = get_flashed_messages(with_categories=true) %}

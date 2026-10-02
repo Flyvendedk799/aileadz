@@ -1158,7 +1158,12 @@ def build_product_url(handle):
 
 
 def build_ask_ai_url(product):
-    return f"/app1?product_handle={product['handle']}&product_title={product['title']}"
+    """Deep link into the learner chat that opens a fresh conversation about this
+    course (chat.js sends ``?intent=`` as the first message). The legacy
+    ``/app1?product_handle=`` link redirected to /chat and lost the course."""
+    from urllib.parse import urlencode
+    title = (product.get("title") or product.get("handle") or "").strip()
+    return "/chat?" + urlencode({"intent": 'Fortæl mig mere om kurset "%s"' % title[:120]})
 
 
 def _header_value(row, *names):

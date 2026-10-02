@@ -83,6 +83,54 @@ class HubAccessTests(HubBase):
         self.assertIn("Teambestilling fra chatten", html)
 
 
+class TeamOrderPolicyTabTests(HubBase):
+    """The Bestillingspolitik tab is the real team-order policy form, not a stub."""
+
+    def setUp(self):
+        super().setUp()
+        self.db.raw.executescript(
+            "CREATE TABLE company_team_order_policy (id INTEGER PRIMARY KEY AUTOINCREMENT, company_id INTEGER, "
+            "vendor_id INTEGER, mode TEXT, updated_by INTEGER, updated_at TEXT DEFAULT CURRENT_TIMESTAMP);")
+        self.db.execute("INSERT INTO vendors (id, vendor_name) VALUES (11, 'Kursus ApS')")
+
+    def _tab(self):
+        return self.hr_c.get("/virksomhed/indstillinger/bestilling").get_data(as_text=True)
+
+    def test_tab_shows_the_mode_choices_and_no_placeholder(self):
+        html = self._tab()
+        self.assertNotIn("kommer snart", html)
+        self.assertIn('action="/hr/team-order-policy/save"', html)
+        for value in ("linked_orders", "hr_bulk_assign", "not_allowed"):
+            self.assertIn('value="%s"' % value, html)
+        self.assertIn("Kursus ApS", html)  # vendor override picker
+
+    def test_saved_default_and_override_show_up_on_the_tab(self):
+        r = self.hr_c.post("/hr/team-order-policy/save", data={"mode": "hr_bulk_assign"},
+                           headers={"Referer": "/virksomhed/indstillinger/bestilling"})
+        self.assertIn(r.status_code, (302, 303))
+        self.assertTrue(r.headers["Location"].endswith("/virksomhed/indstillinger/bestilling"))
+        self.hr_c.post("/hr/team-order-policy/save", data={"mode": "not_allowed", "vendor_id": "11"})
+        rows = self.db.raw.execute("SELECT company_id, vendor_id, mode FROM company_team_order_policy "
+                                   "ORDER BY id").fetchall()
+        self.assertEqual([tuple(r) for r in rows], [(7, None, "hr_bulk_assign"), (7, 11, "not_allowed")])
+        html = self._tab()
+        self.assertIn('value="hr_bulk_assign" selected', html)
+        self.assertIn("Ikke tilladt, hver person anmoder selv", html)  # the override row
+
+    def test_employee_cannot_open_the_tab_or_save(self):
+        self.assertEqual(self.emp_c.get("/virksomhed/indstillinger/bestilling").status_code, 302)
+        self.assertEqual(self.emp_c.post("/hr/team-order-policy/save", data={"mode": "not_allowed"}).status_code, 403)
+        self.assertEqual(self.db.raw.execute("SELECT COUNT(*) FROM company_team_order_policy").fetchone()[0], 0)
+
+    def test_page_explains_instead_of_stub_without_a_policy_state(self):
+        from flask import render_template
+        with self.app.test_request_context("/"):
+            html = render_template("fm/settings_policy.html", tab="bestilling",
+                                   team_policy={"allowed": False})
+        self.assertIn("Teambestilling styres af HR", html)
+        self.assertNotIn("kommer snart", html)
+
+
 class OldUrlsRedirectIntoTheHubTests(HubBase):
     def test_get_redirects(self):
         cases = {

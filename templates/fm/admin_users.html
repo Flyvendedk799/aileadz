@@ -1,9 +1,12 @@
 {% extends "fm_base.html" %}
-{% block page_id %}admin{% endblock %}
+{% block page_id %}ausers{% endblock %}
 {% block title %}Brugere{% endblock %}
 {% block topbar_title %}Brugeradministration{% endblock %}
 {% block topbar_sub %}Skift rolle og tildel kreditter uden at forlade admin-workspacet.{% endblock %}
 {% block content %}
+{# Display labels for the stored role values (data about OTHER users; not an access check). #}
+{% set _platform_roles = {'admin': 'Platformadmin', 'user': 'Bruger'} %}
+{% set _company_roles = {'company_admin': 'Virksomhedsadmin', 'hr_manager': 'HR-manager', 'department_head': 'Afdelingsleder', 'team_lead': 'Teamleder', 'employee': 'Medarbejder'} %}
 <div class="fm-wrap">
 {% set active_admin_page = 'users' %}{% include 'fm/_admin_subnav.html' %}
 
@@ -32,9 +35,9 @@
               <td class="muted">{{ u.id }}</td>
               <td style="font-weight:650">{{ u.username }}</td>
               <td class="muted">{{ u.email or '-' }}</td>
-              <td><span class="fm-badge {{ 'indigo' if u.role == 'admin' else '' }}">{{ u.role or 'user' }}</span>{% if u.status == 'deactivated' %} <span class="fm-badge red">Deaktiveret</span>{% endif %}</td>
-              <td>{{ u.company_name or '-' }}</td>
-              <td class="muted">{{ u.company_role or '-' }}</td>
+              <td><span class="fm-badge {{ 'indigo' if u.role == 'admin' else '' }}">{{ _platform_roles.get(u.role or 'user', u.role) }}</span>{% if u.status == 'deactivated' %} <span class="fm-badge red">Deaktiveret</span>{% endif %}</td>
+              <td>{% if u.company_id %}<a href="{{ url_for('companies.admin_company_detail', company_id=u.company_id) }}">{{ u.company_name or ('#' ~ u.company_id) }}</a>{% else %}<span class="muted">Ingen (solo)</span>{% endif %}</td>
+              <td class="muted">{{ _company_roles.get(u.company_role, u.company_role) if u.company_role else '-' }}</td>
               <td style="text-align:right;font-weight:650">{{ u.credits or 0 }}</td>
               <td class="muted">{{ u.created_at.strftime('%d/%m/%Y') if u.created_at else '-' }}</td>
               <td style="text-align:right;white-space:nowrap">

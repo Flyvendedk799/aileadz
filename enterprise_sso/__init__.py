@@ -25,6 +25,7 @@ import base64
 import hashlib
 import secrets
 import logging
+from auth_decorators import can
 
 logger = logging.getLogger(__name__)
 
@@ -816,7 +817,7 @@ def generate_oauth2_request(sso_config):
 def sso_config(company_id):
     """SSO configuration page for company admins"""
     # Check if user is company admin
-    if session.get('company_role') != 'company_admin':
+    if not can('company.sso'):
         flash('Du har ikke adgang til denne side.', 'error')
         return redirect(url_for('dashboard.dashboard'))
     # Tenant isolation: admins may only view their own company's SSO config.
@@ -830,7 +831,7 @@ def sso_config(company_id):
 @sso_bp.route('/admin/sso/config/<int:company_id>', methods=['POST'])
 def save_sso_config(company_id):
     """Save SSO configuration"""
-    if session.get('company_role') != 'company_admin':
+    if not can('company.sso'):
         flash('Du har ikke adgang til denne side.', 'error')
         return redirect(url_for('dashboard.dashboard'))
     # Tenant isolation: admins may only modify their own company's SSO config.

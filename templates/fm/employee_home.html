@@ -1,6 +1,6 @@
 {% extends "fm_base.html" %}
 {% block page_id %}emphome{% endblock %}
-{% block title %}Futurematch{% endblock %}
+{% block title %}Min læring{% endblock %}
 {% block topbar_title %}Min læring{% endblock %}
 {% block topbar_sub %}Dine kurser, anbefalinger og udvikling — samlet ét sted.{% endblock %}
 {% block extra_head %}
@@ -122,7 +122,7 @@
               <div class="fm-card"><div class="fm-card-body">
                 <div style="font-weight:700;margin-bottom:8px">Mine udviklingsmål</div>
                 {% if goals %}
-                  {% for g in goals %}<div style="padding:7px 0;border-bottom:1px solid var(--fm-line);font-size:13.5px">{{ g.title }}{% if g.target_date %}<span class="muted" style="float:right;font-size:12px">{{ g.target_date }}</span>{% endif %}</div>{% endfor %}
+                  {% for g in goals %}<a href="{{ url_for('futurematch.learning_goals') }}{% if g.id %}#goal-{{ g.id }}{% endif %}" style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--fm-line);font-size:13.5px;text-decoration:none;color:inherit"><span>{{ g.title }}</span>{% if g.target_date %}<span class="muted" style="font-size:12px;white-space:nowrap">{{ g.target_date }}</span>{% endif %}</a>{% endfor %}
                 {% else %}
                   <p class="muted" style="margin:0;font-size:13.5px">Du har ikke sat et mål endnu. <a href="{{ url_for('futurematch.learning_goals') }}">Sæt dit første mål</a>, så kan AI'en pege på kurser, der fører derhen.</p>
                 {% endif %}
@@ -132,7 +132,7 @@
                 {% if deadlines %}
                   {% for d in deadlines %}<a href="{{ d.url }}" style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--fm-line);font-size:13.5px;text-decoration:none;color:inherit"><span>{{ d.title }}</span><span class="fm-badge {{ 'red' if d.overdue else ('amber' if d.soon else '') }}">{{ d.date.strftime('%d.%m.%Y') }}{% if d.overdue %} · overskredet{% endif %}</span></a>{% endfor %}
                 {% else %}
-                  <p class="muted" style="margin:0;font-size:13.5px">Ingen frister lige nu. Når du bestiller et kursus med dato, dukker fristen op her.</p>
+                  <p class="muted" style="margin:0;font-size:13.5px">Ingen frister lige nu. Når du bestiller et kursus med dato, dukker fristen op her. <a href="{{ url_for('futurematch.timeline') }}">Se dine bestillinger</a>.</p>
                 {% endif %}
               </div></div>
             </div>
@@ -153,11 +153,11 @@
             </div></div>
             {% endif %}
 
-            <div class="fm-section-head"><div><span class="fm-eyebrow"><i class="fa-solid fa-receipt"></i> Mine bestillinger</span><h2 class="fm-section-title">Status</h2></div></div>
+            <div class="fm-section-head"><div><span class="fm-eyebrow"><i class="fa-solid fa-receipt"></i> Mine bestillinger</span><h2 class="fm-section-title">Status</h2></div>{% if orders %}<a href="{{ url_for('futurematch.timeline') }}" class="fm-badge teal">Alle bestillinger</a>{% endif %}</div>
             <div class="fm-card"><div class="fm-card-body" style="padding-top:8px">
               {% if orders %}
                 {% for o in orders %}
-                <div class="order-row">
+                <a class="order-row" href="{{ o.url }}" style="text-decoration:none;color:inherit" aria-label="Åbn bestilling: {{ o.title }}">
                   <span class="order-ic" style="background:var(--fm-primary-tint);color:var(--fm-primary)">
                     {% if o.state == 'gennemfoert' %}<i class="fa-solid fa-circle-check"></i>
                     {% elif o.state == 'godkendt' %}<i class="fa-solid fa-play"></i>
@@ -169,11 +169,14 @@
                     <div style="font-size:12px;color:var(--fm-ink-3)">{{ o.created_at.strftime('%d.%m.%Y') if o.created_at else '' }}</div>
                   </div>
                   <span class="fm-badge {{ 'green' if o.state == 'gennemfoert' else ('indigo' if o.state == 'booket' else ('teal' if o.state == 'godkendt' else ('red' if o.state in ('annulleret','afvist') else 'amber'))) }}" style="white-space:nowrap">{{ o.status_label }}</span>
-                </div>
+                  <i class="fa-solid fa-chevron-right" style="font-size:11px;color:var(--fm-ink-3)" aria-hidden="true"></i>
+                </a>
                 {% endfor %}
                 <div style="text-align:center;padding-top:12px"><a href="{{ url_for('futurematch.timeline') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-timeline"></i> Se alle på tidslinjen</a></div>
               {% else %}
-              <div class="muted" style="text-align:center;font-size:13.5px;padding:24px 16px;color:var(--fm-ink-3)">Ingen bestillinger endnu. <a href="{{ url_for('catalog.catalog_index') }}" style="color:var(--fm-primary)">Udforsk kataloget</a>.</div>
+              <div class="muted" style="text-align:center;font-size:13.5px;padding:24px 16px;color:var(--fm-ink-3)">Ingen bestillinger endnu. Find et kursus i kataloget, eller spørg AI-assistenten, hvad der passer til dig.
+                <div style="margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><a class="btn btn-primary btn-sm" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-graduation-cap"></i> Udforsk kataloget</a><a class="btn btn-ghost btn-sm" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comment-dots"></i> Spørg AI-assistenten</a></div>
+              </div>
               {% endif %}
             </div></div>
           </div>

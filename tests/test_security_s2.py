@@ -308,6 +308,13 @@ class S23_RoleMatrix(unittest.TestCase):
         ("GET", "/hr/suppliers"): {"dept_head", "hr_manager", "company_admin", "admin_acting"},
         ("POST", "/hr/suppliers/toggle"): {"hr_manager", "company_admin", "admin_acting"},
         ("GET", "/companies/employees"): {"hr_manager", "company_admin", "admin_acting"},
+        ("GET", "/companies/employees/add"): {"hr_manager", "company_admin", "admin_acting"},
+        # company-wide engagement / AI-quality data: analytics capability, not the workspace
+        ("GET", "/hr/engagement"): {"hr_manager", "company_admin", "admin_acting"},
+        ("POST", "/hr/engagement/nudge"): {"hr_manager", "company_admin", "admin_acting"},
+        ("GET", "/hr/ai-quality"): {"hr_manager", "company_admin", "admin_acting"},
+        ("GET", "/hr/training-plan"): {"dept_head", "hr_manager", "company_admin", "admin_acting"},
+        ("GET", "/hr/approval-policies"): {"hr_manager", "company_admin", "admin_acting"},
         ("GET", "/multitenant-reports/"): {"hr_manager", "company_admin", "admin", "admin_acting"},
         ("GET", "/multitenant-reports/analytics/export"): {"hr_manager", "company_admin", "admin", "admin_acting"},
         ("GET", "/admin/"): {"admin", "admin_acting"},

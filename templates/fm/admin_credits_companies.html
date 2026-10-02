@@ -1,14 +1,13 @@
 {% extends "fm_base.html" %}
+{% import 'fm/_macros.html' as ui %}
 {% block page_id %}ausers{% endblock %}
 {% block title %}Kreditter pr. virksomhed{% endblock %}
 {% block topbar_title %}Kreditter pr. virksomhed{% endblock %}
 {% block topbar_sub %}Saldo, forbrug og hvor længe kreditterne rækker.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-  <div class="pg-subnav">
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i> Brugerkreditter</a>
-    <a class="pg-tab active" href="{{ url_for('credits.admin_company_credits') }}"><i class="fa-solid fa-building"></i> Virksomheder</a>
-  </div>
+{% set active_admin_page = 'credits' %}{% include 'fm/_admin_subnav.html' %}
+{{ ui.crumbs([('Kreditter', url_for('admin_dashboard.credits')), ('Pr. virksomhed', None)]) }}
   <div class="fm-card">
     <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-circle-plus"></i></span><h3>Tilføj kreditter til en virksomhed</h3></div>
     <div class="fm-card-body">

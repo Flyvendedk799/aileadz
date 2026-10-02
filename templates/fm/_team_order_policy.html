@@ -1,8 +1,10 @@
 {# Team-order policy (N-5.2). Self-contained: loads its own state via the
-   team_order_policy_state() template global, posts to /hr/team-order-policy/save.
+   team_order_policy_state() template global (or uses ``team_policy`` when the
+   including page already resolved it), posts to /hr/team-order-policy/save.
    Included by the company settings hub (tab "Bestillingspolitik") and by the
    approval-policies page. Renders nothing for roles without company.policies. #}
-{% set _tp = team_order_policy_state() if team_order_policy_state is defined else none %}
+{% set _tp = team_policy if (team_policy is defined and team_policy is not none)
+   else (team_order_policy_state() if team_order_policy_state is defined else none) %}
 {% if _tp and _tp.allowed %}
 <div class="fm-card" id="teamOrderPolicy" style="margin-top:16px">
   <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-people-group"></i></span><h3>Teambestilling fra chatten</h3></div>

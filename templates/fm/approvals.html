@@ -17,8 +17,9 @@
   </div>
 
   <div class="fm-card" style="padding:18px 18px 14px">
-    <div class="fm-card-head" style="margin-bottom:8px"><span class="fm-ch-icon"><i class="fa-solid fa-chart-line"></i></span><h3>Godkendelsesaktivitet (30 dage)</h3><span class="fm-badge teal" style="margin-left:auto">dagligt</span></div>
-    <div class="fm-chart-wrap" style="min-height:220px"><canvas id="approvalTrendChart" role="img" aria-label="Linjediagram: daglige godkendelsesanmodninger fordelt på afventer, godkendt og afvist over de seneste 30 dage"></canvas></div>
+    <div class="fm-card-head" style="margin-bottom:8px"><span class="fm-ch-icon"><i class="fa-solid fa-chart-line"></i></span><h3>Godkendelsesaktivitet (30 dage)</h3><span class="fm-badge teal" style="margin-left:auto">anmodninger pr. dag</span></div>
+    <p style="font-size:12px;color:var(--fm-ink-2);margin:0 0 10px">Afgjorte anmodninger står på beslutningsdagen, afventende på den dag de blev sendt.</p>
+    <div class="fm-chart-wrap sm"><canvas id="approvalTrendChart" role="img" aria-label="Stablet søjlediagram: godkendelsesanmodninger pr. dag de seneste 30 dage fordelt på godkendt, afvist og afventer"></canvas></div>
   </div>
 
   <div class="fm-section-head" style="margin-top:0"><div><span class="fm-eyebrow clay"><i class="fa-solid fa-clipboard-check"></i> Afventer handling</span><h2 class="fm-section-title">Godkendelsesanmodninger</h2></div>
@@ -68,12 +69,17 @@
 (function () {
   if (typeof FMChart === 'undefined') return;
   var trend = {{ (approval_trend or {})|tojson }};
-  FMChart.line('approvalTrendChart', {
+  // Small daily counts of discrete decisions: stacked columns, not lines
+  // (a line between 0 and 1 request implies a trend that isn't there).
+  // Gap-free ISO days (30-day calendar filled server-side).
+  FMChart.stackedBar('approvalTrendChart', {
+    title: 'Godkendelsesanmodninger pr. dag de seneste 30 dage',
+    xFormat: 'day',
     labels: trend.labels || [],
     series: [
-      { label: 'Afventer',  data: trend.pending  || [], color: FMChart.cssVar('--fm-clay', '#c9603a') },
-      { label: 'Godkendt',  data: trend.approved || [], color: FMChart.cssVar('--fm-success', '#16a34a') },
-      { label: 'Afvist',    data: trend.rejected || [], color: FMChart.cssVar('--fm-primary', '#0f766e') }
+      { label: 'Godkendt',  data: trend.approved || [], color: '--fm-primary' },
+      { label: 'Afvist',    data: trend.rejected || [], color: '--fm-clay' },
+      { label: 'Afventer',  data: trend.pending  || [], color: '--fm-gold' }
     ],
     empty: 'Ingen godkendelsesaktivitet i de seneste 30 dage'
   });

@@ -37,6 +37,7 @@ Alembic is optional at runtime; to adopt it, follow "Schema lifecycle" in DEPLOY
 ## 5. Privacy decisions
 
 - **Retention:** review the defaults in `retention_service.POLICIES` against your DPA and change any with `RETENTION_<NAME>_DAYS` (`0` or `off` disables a rule). Dry run: `python -c "from run import create_app; import retention_service as r; a=create_app(); a.app_context().push(); print(r.run_retention(dry_run=True))"`. The job runs in the worker.
+- **Advanced analytics (optional):** `ADVANCED_ANALYTICS_ENABLED=1` adds an "Avanceret" button on Læringsanalyse for HR managers (ML engagement clusters, anomalies, skill gaps; aggregates only, k-anonymity floors). It stays off until you decide the ML view fits your customers' works-council and DPA expectations. Performance reviews have no writer yet, so the prediction KPI shows "—".
 - **Erasure promise:** the settings page and privacy policy promise erasure within 30 days. Someone must watch `/admin/gdpr` (overdue tickets are marked); optionally set `DSR_NOTIFY_EMAIL` (falls back to `SUPPORT_EMAIL`). Have your DPO or lawyer read `templates/fm/privacy.html` and the confirmation text in `templates/fm/settings.html`.
 
 ## 6. Customers

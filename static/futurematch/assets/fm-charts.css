@@ -1,0 +1,63 @@
+/* fm-charts.css — chart tokens + chart helpers for FMChart (loaded by templates/fm/_charts.html).
+ *
+ * Categorical palette: the brand hues (teal, clay, indigo, gold) plus rose and sky, stepped
+ * so every slot passes the dataviz checks on the card surface — OKLCH lightness band,
+ * chroma >= 0.10, adjacent-pair CVD dE >= 8 (protan/deutan), normal-vision dE >= 15,
+ * contrast >= 3:1. Light: worst CVD 11.9 / normal 20.1 on #ffffff. Dark: worst CVD 10.4 /
+ * normal 18.1 on #151a18. Fixed order, never cycled; a white-label tenant's primary/accent
+ * replace slots 1-2 at runtime (fm-charts.js). Re-run the validator before changing a slot.
+ * Status colours (--fm-success/-warning/-danger) are not series colours.
+ */
+:root {
+  --fm-chart-1: #069488;   /* teal  (brand primary, chart step) */
+  --fm-chart-2: #c65d37;   /* clay  */
+  --fm-chart-3: #4d5bcd;   /* indigo */
+  --fm-chart-4: #b28324;   /* gold  */
+  --fm-chart-5: #c04679;   /* rose  */
+  --fm-chart-6: #297dc2;   /* sky   */
+  --fm-chart-muted: #cfd2ca;  /* de-emphasis / "Andre" */
+  --fm-chart-grid: #ecebe4;   /* hairline gridlines, one step off the surface */
+}
+[data-theme="dark"] {
+  --fm-chart-1: #00a696;
+  --fm-chart-2: #cf7345;
+  --fm-chart-3: #7983ea;
+  --fm-chart-4: #b18826;
+  --fm-chart-5: #cd6994;
+  --fm-chart-6: #4796d2;
+  --fm-chart-muted: #3d4541;
+  --fm-chart-grid: rgba(255, 255, 255, 0.07);
+}
+
+/* Visually hidden, still read by screen readers (FMChart data-table fallback). */
+.fm-sr-only {
+  position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
+/* Chart box: the canvas fills it (FMChart charts default to maintainAspectRatio:false),
+   so the box owns the height — including the axis-label band. */
+.fm-chart-box { position: relative; height: var(--fm-chart-h, 260px); min-width: 0; }
+.fm-chart-box.sm { --fm-chart-h: 200px; }
+.fm-chart-box.lg { --fm-chart-h: 320px; }
+@media (max-width: 600px) { .fm-chart-box { height: min(var(--fm-chart-h, 260px), 240px); } }
+.fm-chart-box > canvas { display: block; max-width: 100%; }
+.fm-chart-box > .fm-chart-empty { height: 100%; min-height: 0; }
+
+/* Two-part share bar (a 2-value comparison is a meter, not a chart). */
+.fm-share { display: flex; flex-direction: column; gap: 12px; }
+.fm-share-bar { display: flex; gap: 2px; height: 14px; border-radius: 999px; overflow: hidden;
+  background: var(--fm-surface-3); }
+.fm-share-bar > span { display: block; height: 100%; min-width: 0; }
+.fm-share-bar > span:first-child { background: var(--fm-chart-1); }
+.fm-share-bar > span + span { background: var(--fm-chart-muted); }
+.fm-share-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.fm-share-legend .k { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--fm-ink-2); }
+.fm-share-legend .k::before { content: ""; width: 9px; height: 9px; border-radius: 999px; background: var(--fm-chart-1); flex: 0 0 9px; }
+.fm-share-legend > div + div .k::before { background: var(--fm-chart-muted); }
+.fm-share-legend .v { font-size: 22px; font-weight: 700; color: var(--fm-ink); margin-top: 2px; }
+.fm-share-legend .s { font-size: 12px; color: var(--fm-ink-3); }
+
+@media print {
+  .fm-chart-box { break-inside: avoid; }
+}

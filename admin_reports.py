@@ -154,8 +154,6 @@ def chatbot_dashboard():
             query_type_distribution[r['qtype']] = r['cnt']
     except Exception:
         pass
-    if not query_type_distribution:
-        query_type_distribution = {"Generelt": 1}
 
     # --- Category distribution ---
     category_distribution = {}
@@ -171,8 +169,6 @@ def chatbot_dashboard():
             category_distribution[r['cat']] = r['cnt']
     except Exception:
         pass
-    if not category_distribution:
-        category_distribution = {"Andet": 1}
 
     # --- User locations ---
     user_locations = {}
@@ -189,8 +185,6 @@ def chatbot_dashboard():
             user_locations[r['loc']] = r['cnt']
     except Exception:
         pass
-    if not user_locations:
-        user_locations = {"Ukendt": 1}
 
     # --- Tool usage breakdown ---
     tool_usage = {}
@@ -209,8 +203,6 @@ def chatbot_dashboard():
         tool_usage = dict(sorted(tool_usage.items(), key=lambda x: x[1], reverse=True)[:10])
     except Exception:
         pass
-    if not tool_usage:
-        tool_usage = {"Ingen data": 1}
 
     # --- Feedback ratings ---
     avg_feedback = 0

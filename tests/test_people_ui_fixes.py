@@ -56,6 +56,21 @@ class EditEmployeeRoleTests(unittest.TestCase):
         html = hr.get("/companies/employees/add").get_data(as_text=True)
         self.assertNotIn("generatePassword();\n", re.sub(r"function generatePassword\(\) \{.*?\n\}", "", html, flags=re.S))
 
+    def test_only_company_admins_may_create_company_admins(self):
+        # The form only offers "Admin" to holders of company.admins, and the route
+        # enforces the same rule (a hand-crafted POST is downgraded to employee).
+        hr = client_as(self.app, user="hr", user_id=2, role="user", company_id=7, company_role="hr_manager")
+        self.assertNotIn('value="company_admin"', hr.get("/companies/employees/add").get_data(as_text=True))
+        ca = client_as(self.app, user="boss", user_id=3, role="user", company_id=7, company_role="company_admin")
+        self.assertIn('value="company_admin"', ca.get("/companies/employees/add").get_data(as_text=True))
+        hr.post("/companies/employees/add", data={
+            "full_name": "Bo Ny", "username": "bo", "email": "bo@x.dk", "role": "company_admin",
+            "department": "Salg", "job_title": "Sælger"})
+        row = self.db.one("SELECT cu.role FROM company_users cu JOIN users u ON u.id = cu.user_id "
+                          "WHERE cu.company_id = 7 AND u.username = 'bo'")
+        self.assertIsNotNone(row, "the employee should have been created")
+        self.assertEqual(row["role"], "employee")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -18,6 +18,10 @@
   table.rt-matrix tbody th small { display: block; font-weight: 500; font-size: 11px; color: var(--fm-ink-3); margin-top: 2px; }
   .rt-cell { border-radius: 8px; padding: 9px 8px; min-width: 58px; color: var(--fm-ink-1); font-weight: 700; }
   .rt-cell small { display: block; font-weight: 500; font-size: 10.5px; opacity: .85; margin-top: 1px; }
+  .rt-cell.future { background: transparent; border: 1px dashed var(--fm-line); min-height: 38px; }
+  .rt-legend { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11px; color: var(--fm-ink-3); margin: 12px 0 0; }
+  .rt-legend-bar { width: 120px; height: 8px; border-radius: 999px; background: linear-gradient(90deg, var(--fm-surface-2), var(--fm-primary)); }
+  .rt-legend-future { width: 16px; height: 10px; border-radius: 3px; border: 1px dashed var(--fm-line); margin-left: 8px; }
   .rt-cell.empty { background: var(--fm-surface-3); color: var(--fm-ink-3); font-weight: 500; }
 
   .bi-empty { padding: 44px 16px; text-align: center; color: var(--fm-ink-3); font-size: 13px; }
@@ -30,6 +34,7 @@
 </style>
 {% endblock %}
 {% block content %}
+{% set _months_da = ['januar','februar','marts','april','maj','juni','juli','august','september','oktober','november','december'] %}
 <div class="fm-wrap">
 {% set active_admin_page = '' %}{% include 'fm/_admin_subnav.html' %}
 
@@ -70,8 +75,8 @@
   <div class="fm-card" style="margin-top:16px;padding:18px">
     <h3 style="font-size:15px;font-weight:700;margin:0"><i class="fa-solid fa-table-cells"></i> Fastholdelsestrekant</h3>
     <p style="font-size:12.5px;color:var(--fm-ink-2);margin:3px 0 14px">
-      Hver række er en kohorte (måned for første ordre). Kolonnerne viser måned-offset 0..{{ retention.max_offset }} —
-      andelen af kohorten der gennemførte mindst ét kursus i den måned. Beregnet i databasen.
+      Hver række er en kohorte (måned for første ordre). Kolonnerne M0–M{{ retention.max_offset }} viser antal måneder efter første ordre —
+      andelen af kohorten der gennemførte mindst ét kursus i den måned. Stiplede felter er måneder, kohorten endnu ikke har nået.
     </p>
     <div class="rt-matrix-wrap">
       <table class="rt-matrix">
@@ -84,16 +89,18 @@
         <tbody>
           {% for c in retention.cohorts %}
           <tr>
-            <th>{{ c.cohort }}<small>{{ c.size }} læringskunder</small></th>
+            <th>{% set _cp = (c.cohort or '').split('-') %}{{ (_months_da[_cp[1]|int - 1] ~ ' ' ~ _cp[0]) if _cp|length == 2 and _cp[1].isdigit() and 1 <= _cp[1]|int <= 12 else c.cohort }}<small>{{ c.size }} lærende</small></th>
             {% for r in c.retention %}
             {% set pct = r.pct %}
             <td>
-              {% if r.count > 0 %}
+              {% if r.future %}
+              <div class="rt-cell future" title="Måneden er ikke nået endnu"></div>
+              {% elif r.count > 0 %}
               <div class="rt-cell" style="background:color-mix(in srgb, var(--fm-primary) {{ [pct, 100]|min }}%, var(--fm-surface-2)); color:{{ '#fff' if pct >= 45 else 'var(--fm-ink-1)' }}">
-                {{ pct }}%<small>{{ r.count }}</small>
+                {{ pct|dknum }}%<small>{{ r.count }}</small>
               </div>
               {% else %}
-              <div class="rt-cell empty">–</div>
+              <div class="rt-cell empty">0%</div>
               {% endif %}
             </td>
             {% endfor %}
@@ -102,11 +109,51 @@
         </tbody>
       </table>
     </div>
+    <div class="rt-legend" aria-hidden="true"><span>0%</span><span class="rt-legend-bar"></span><span>100%</span><span class="rt-legend-future"></span><span>Ikke nået endnu</span></div>
     {% if retention.anon_note %}
     <p style="font-size:11.5px;color:var(--fm-ink-3);margin:14px 0 0"><i class="fa-solid fa-user-shield"></i> {{ retention.anon_note }}</p>
     {% endif %}
   </div>
 
+
+  <div class="fm-card" style="margin-top:16px;padding:18px">
+    <h3 style="font-size:15px;font-weight:700;margin:0"><i class="fa-solid fa-chart-line"></i> Gennemsnitlig fastholdelseskurve</h3>
+    <p style="font-size:12.5px;color:var(--fm-ink-2);margin:3px 0 12px">Andel af alle viste kohorter der gennemførte et kursus i måned M0, M1, … efter første ordre — vægtet efter kohortestørrelse og kun med måneder, kohorterne faktisk har nået.</p>
+    <div class="fm-chart-wrap sm"><canvas id="rtCurveChart" role="img" aria-label="Linjediagram: gennemsnitlig andel af kohorterne der gennemfører et kursus pr. måned efter første ordre, i procent"></canvas></div>
+  </div>
+
   {% endif %}
 </div>
+{% endblock %}
+{% block extra_scripts %}{% include 'fm/_charts.html' %}
+<script>
+(function () {
+  if (typeof FMChart === 'undefined' || !document.getElementById('rtCurveChart')) return;
+  // Size-weighted share per month offset, using only cells a cohort has reached
+  // (future months are excluded rather than counted as 0%).
+  var cohorts = {{ (retention.cohorts if retention else [])|tojson }};
+  var offsets = {{ (offsets or [])|tojson }};
+  var reached = [];  // cohorts behind each point, shown in the tooltip
+  var data = offsets.map(function (off) {
+    var hit = 0, base = 0, n = 0;
+    cohorts.forEach(function (c) {
+      var cell = (c.retention || [])[off];
+      if (!cell || cell.future) return;
+      hit += Number(cell.count) || 0;
+      base += Number(c.size) || 0;
+      n += 1;
+    });
+    reached.push(n);
+    return base ? Math.round(hit / base * 1000) / 10 : null;  // not reached by any cohort yet
+  });
+  FMChart.line('rtCurveChart', {
+    title: 'Gennemsnitlig fastholdelseskurve',
+    labels: offsets.map(function (o) { return 'M' + o; }),
+    series: [{ label: 'Andel der gennemfører', data: data, color: '--fm-primary' }],
+    format: 'percent', max: 100, fill: false,
+    footer: function (i) { return reached[i] ? 'Baseret på ' + reached[i] + (reached[i] === 1 ? ' kohorte' : ' kohorter') : ''; },
+    empty: 'For lidt historik til en kurve endnu'
+  });
+})();
+</script>
 {% endblock %}

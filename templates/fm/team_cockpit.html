@@ -40,8 +40,14 @@
       <span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-chart-simple"></i></span>
       <h3 style="font-size:14.5px;font-weight:700">Kursusgennemførsel pr. medarbejder</h3>
     </div>
-    <p style="font-size:12px;color:var(--fm-ink-2);margin:0 0 12px">Fuldførte vs. tilmeldte kurser for hver direkte reference.</p>
-    <div style="position:relative;height:300px"><canvas id="teamCompletion" aria-label="Søjlediagram: fuldførte og tilmeldte kurser pr. medarbejder i teamet" role="img"></canvas></div>
+    {% set _with = reports|selectattr('courses_enrolled')|list %}
+    {% set _shown = [_with|length, 15]|min %}
+    <p style="font-size:12px;color:var(--fm-ink-2);margin:0 0 12px">Fuldførte og ikke-fuldførte kurser for {{ 'hver medarbejder i afdelingen' if scope == 'department' else 'hver direkte reference' }}, flest tilmeldinger øverst.{% if _with|length > 15 %} Viser de 15 med flest kurser.{% endif %}</p>
+    {% if _with %}
+    <div style="position:relative;height:{{ [_shown * 32 + 60, 160]|max }}px"><canvas id="teamCompletion" aria-label="Liggende stablet søjlediagram: fuldførte og ikke-fuldførte kurser pr. medarbejder" role="img"></canvas></div>
+    {% else %}
+    <p class="muted" style="font-size:13px;color:var(--fm-ink-3);margin:0">Ingen i teamet er tilmeldt kurser endnu. <a href="{{ url_for('hr_dashboard.bulk_assign_form') }}">Tildel et læringsforløb</a></p>
+    {% endif %}
   </div>
 
   <!-- Direct reports -->
@@ -54,7 +60,7 @@
       <a href="{{ url_for('hr_dashboard.bulk_assign_form') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-route"></i> Tildel forløb</a>
     </div>
     <table class="fm-table">
-      <thead><tr><th>Medarbejder</th><th>Afdeling</th><th>Fuldførte kurser</th><th>Fremdrift</th><th>Forløb</th><th>Kompetencegab</th><th>Afventer godk.</th></tr></thead>
+      <thead><tr><th>Medarbejder</th><th>Afdeling</th><th>Fuldførte kurser</th><th>Fremdrift</th><th>Kompetencegab</th><th>Afventer godk.</th></tr></thead>
       <tbody>
         {% for r in reports %}
         {% set prog = (r.avg_progress or 0)|float|round(0)|int %}
@@ -64,9 +70,8 @@
         <tr>
           <td style="font-weight:650"><a href="{{ url_for('hr_dashboard.employee_details', user_id=r.user_id) }}" style="color:inherit;text-decoration:none">{{ r.name }}</a>{% if r.job_title %}<div style="font-size:11px;color:var(--fm-ink-3);font-weight:400">{{ r.job_title }}</div>{% endif %}</td>
           <td><span class="fm-badge">{{ r.department or '—' }}</span></td>
-          <td class="tnum">{{ r.courses_completed or 0 }} / {{ r.courses_enrolled or 0 }}</td>
+          <td class="tnum">{{ r.courses_completed or 0 }} / {{ r.courses_enrolled or 0 }}{% if _enr > 0 %} <span style="font-size:11px;color:var(--fm-ink-3)">· {{ _cpct }}%</span>{% endif %}</td>
           <td style="min-width:140px"><div class="fm-prog thin" style="margin-bottom:4px"><span style="width:{{ [prog,100]|min }}%;background:var(--fm-primary)"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">{{ prog }}%</span></td>
-          <td style="width:90px"><div style="position:relative;width:80px;height:42px"><canvas class="team-spark" data-spark="[0,{{ prog }},{{ _cpct }}]" aria-label="Forløbskurve for {{ r.name|e }}: fremdrift {{ prog }}%, gennemførsel {{ _cpct }}%" role="img"></canvas></div></td>
           <td>{% if (r.skill_gaps or 0) > 0 %}<span class="fm-badge amber">{{ r.skill_gaps }} gab</span>{% else %}<span class="fm-badge green">Ingen</span>{% endif %}</td>
           <td>{% if (r.orders_pending_approval or 0) > 0 %}<span class="fm-badge amber">{{ r.orders_pending_approval }}</span>{% else %}<span style="color:var(--fm-ink-3)">—</span>{% endif %}</td>
         </tr>
@@ -129,39 +134,25 @@
 (function () {
   if (typeof FMChart === 'undefined') return;
   var reports = {{ (reports or [])|list|tojson|safe }};
-
-  // Team completion overview — completed vs enrolled per direct report.
-  if (reports.length) {
-    var labels = reports.map(function (r) { return r.name || '—'; });
-    var completed = reports.map(function (r) { return Number(r.courses_completed) || 0; });
-    var enrolled = reports.map(function (r) { return Number(r.courses_enrolled) || 0; });
-    FMChart.bar('teamCompletion', {
-      labels: labels,
-      series: [
-        { label: 'Tilmeldt', data: enrolled, color: FMChart.cssVar('--fm-line-2', '#cbd5e1') },
-        { label: 'Fuldført', data: completed, color: FMChart.cssVar('--fm-primary', '#0f766e') }
-      ],
-      empty: 'Ingen kursusdata for teamet endnu'
-    });
-  }
-
-  // Per-row sparklines — momentum profile [start, fremdrift%, gennemførsel%].
-  // For a flat/zero profile we render a compact inline dash instead of the
-  // standard full-size empty-state node, which would blow out the table cell.
-  var sparkColor = FMChart.cssVar('--fm-primary', '#0f766e');
-  document.querySelectorAll('canvas.team-spark').forEach(function (cv, i) {
-    if (!cv.id) cv.id = 'team-spark-' + i;
-    var data = [];
-    try { data = JSON.parse(cv.dataset.spark || '[]'); } catch (e) { data = []; }
-    var hasTrend = data.some(function (v) { return Number(v) > 0; });
-    if (!hasTrend) {
-      var dash = document.createElement('span');
-      dash.textContent = '—';
-      dash.style.cssText = 'color:var(--fm-ink-3);font-size:12px';
-      if (cv.parentNode) cv.parentNode.replaceChild(dash, cv);
-      return;
-    }
-    FMChart.sparkline(cv.id, { data: data, color: sparkColor });
+  var rows = reports
+    .map(function (r) { return { name: r.name || '—', done: Number(r.courses_completed) || 0, enrolled: Number(r.courses_enrolled) || 0 }; })
+    .filter(function (r) { return r.enrolled > 0; })
+    .sort(function (a, b) { return b.enrolled - a.enrolled || b.done - a.done; })
+    .slice(0, 15);
+  if (!rows.length || !document.getElementById('teamCompletion')) return;
+  FMChart.stackedBar('teamCompletion', {
+    title: 'Fuldførte og ikke-fuldførte kurser pr. medarbejder',
+    horizontal: true,
+    labels: rows.map(function (r) { return r.name; }),
+    series: [
+      { label: 'Fuldført', data: rows.map(function (r) { return Math.min(r.done, r.enrolled); }), color: '--fm-primary' },
+      { label: 'Ikke fuldført', data: rows.map(function (r) { return Math.max(r.enrolled - r.done, 0); }), color: '--fm-chart-muted' }
+    ],
+    footer: function (i) {
+      var r = rows[i];
+      return r ? FMChart.format(Math.min(r.done, r.enrolled) / r.enrolled * 100, { format: 'percent', decimals: 0 }) + ' fuldført' : '';
+    },
+    empty: 'Ingen kursusdata for teamet endnu'
   });
 })();
 </script>

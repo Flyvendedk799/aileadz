@@ -168,7 +168,7 @@
   /* conic-ring draw-in: reset to 0 then animate to inline target via @property --p */
   function drawRings() {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    document.querySelectorAll(".ring-big, .learn-ring").forEach((r) => {
+    document.querySelectorAll(".fm-ring, .learn-ring").forEach((r) => {
       const target = (r.getAttribute("style") || "").match(/--p:\s*([\d.]+)/);
       if (!target) return;
       r.style.setProperty("--p", "0");

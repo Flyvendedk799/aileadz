@@ -23,6 +23,10 @@ def _env():
     # Stub url_for so endpoints don't need an app/url map; return a marker that
     # encodes the endpoint name for assertions.
     env.globals["url_for"] = lambda ep, **kw: "/" + ep
+    # Tabs are capability-gated; render as a company admin (holds every HR capability).
+    import capabilities
+    env.globals["can"] = lambda cap: capabilities.can(
+        cap, {"user": "ca", "user_id": 1, "company_id": 7, "company_role": "company_admin"})
     from tests.jinja_globals import add_app_globals
     add_app_globals(env)
     return env

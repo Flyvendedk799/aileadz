@@ -216,6 +216,9 @@ def create_app():
         'SESSION_COOKIE_HTTPONLY': True,
         'SESSION_COOKIE_SAMESITE': 'Lax',
         'SESSION_COOKIE_SECURE': (os.environ.get('SANDBOX') != '1'),
+        # "Husk mig" on the login form marks the session permanent (auth._finish_login);
+        # otherwise the cookie ends with the browser session.
+        'PERMANENT_SESSION_LIFETIME': 60 * 60 * 24 * 30,
     })
 
     # Long-lived caching for worker-served static assets. Safe because every
@@ -292,6 +295,11 @@ def create_app():
     app.register_blueprint(companies_bp, url_prefix='/companies')
     app.register_blueprint(hr_dashboard_bp, url_prefix='/hr')
     app.register_blueprint(analytics_bp)
+    try:  # "Avanceret" link on Læringsanalyse (R-5); optional
+        import enterprise_analytics
+        enterprise_analytics.register_jinja(app)
+    except Exception as e:
+        logging.warning("Advanced analytics link skipped: %s", e)
     app.register_blueprint(api_enterprise_bp)
     app.register_blueprint(sso_bp)
     # Company settings hub + SSO email-domain discovery (N-4.6, N-7.1)

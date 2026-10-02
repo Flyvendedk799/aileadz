@@ -13,7 +13,7 @@ import csv
 import io
 
 from perf_cache import ttl_cache
-from auth_decorators import require_company_role, can, department_scope
+from auth_decorators import require_capability, can, department_scope
 
 # k-anon helpers for small-cohort suppression on per-requirement breakdowns.
 # Guarded import: a missing k-anon module must NEVER crash an HR dashboard render
@@ -40,6 +40,59 @@ def _parse_when(value):
         except ValueError:
             continue
     return None
+
+
+NO_DEPARTMENT_LABEL = 'Uden afdeling'
+
+
+def _kanon_department_rows(rows, count_key):
+    """Drop per-department rows whose cohort (``count_key``) is below k.
+
+    Used for the department breakdowns that feed charts and tables on the HR
+    analytics pages, so a one- or two-person department can never be read off
+    an "aggregate" bar. Rows get a display label under ``department_label``
+    (NULL/empty department -> 'Uden afdeling'). Fails closed: without the
+    k-anon helper nothing is shown. Returns ``(rows, note_da_or_None)``.
+    """
+    rows = [dict(r) for r in (rows or []) if isinstance(r, dict)]
+    for r in rows:
+        r['department_label'] = (str(r.get('department') or '').strip() or NO_DEPARTMENT_LABEL)
+    if not rows:
+        return [], None
+    if _kanon is None:
+        return [], 'Afdelinger er skjult af hensyn til anonymitet'
+    try:
+        kept, note = _kanon.suppress_small_groups(rows, count_key)
+        kept = [r for r in kept if isinstance(r, dict) and count_key in r]
+        return kept, (note.get('note_da') if note and note.get('suppressed') else None)
+    except Exception:
+        return [], 'Afdelinger er skjult af hensyn til anonymitet'
+
+
+def _dense_daily_series(counts_by_day, days, end=None):
+    """Fill a {date: value} map into a gap-free daily series ending today.
+
+    A day without activity is a real zero, not a missing point: plotting only
+    the days that have rows squeezes quiet weeks out of the time axis and makes
+    a trend look steadier than it is. Returns ``(iso_dates, values)``.
+    """
+    end = end or date.today()
+    norm = {}
+    for k, v in (counts_by_day or {}).items():
+        d = k.date() if isinstance(k, datetime) else k
+        if isinstance(d, str):
+            try:
+                d = datetime.strptime(d[:10], '%Y-%m-%d').date()
+            except ValueError:
+                continue
+        if isinstance(d, date):
+            norm[d] = norm.get(d, 0) + (v or 0)
+    out_days, out_vals = [], []
+    for i in range(int(days) - 1, -1, -1):
+        d = end - timedelta(days=i)
+        out_days.append(d.isoformat())
+        out_vals.append(norm.get(d, 0))
+    return out_days, out_vals
 
 
 def create_hr_dashboard_blueprint():
@@ -104,7 +157,7 @@ def create_hr_dashboard_blueprint():
         A department head with no department resolves to '' so they match
         nothing rather than everything (fail closed).
         """
-        if session.get('role') == 'admin' or session.get('company_role') != 'department_head':
+        if department_scope() is None:  # the role matrix decides who is scoped
             return None
         return (company or {}).get('department') or ''
 
@@ -682,6 +735,11 @@ def create_hr_dashboard_blueprint():
 
             cur.close()
 
+            # Department breakdown for the overview charts and list: k-floored on
+            # head-count so a tiny department's completion can't be read off it.
+            department_chart, department_anon_note = _kanon_department_rows(
+                department_performance, 'employee_count')
+
             # Calculate additional metrics
             if total_employees > 0:
                 engagement_rate = round((engagement_metrics['employees_using_chatbot'] / total_employees) * 100, 1) if engagement_metrics['employees_using_chatbot'] else 0
@@ -706,6 +764,8 @@ def create_hr_dashboard_blueprint():
                                  learning_metrics=learning_metrics,
                                  engagement_metrics=engagement_metrics,
                                  department_performance=department_performance,
+                                 department_chart=department_chart,
+                                 department_anon_note=department_anon_note,
                                  recent_alerts=recent_alerts,
                                  top_performers=top_performers,
                                  learning_paths_progress=learning_paths_progress,
@@ -837,8 +897,6 @@ def create_hr_dashboard_blueprint():
             history = order_service.get_history(_ctx, order_id)
             _status = _lc.normalize_status(order.get('status'))
             _bill = _lc.normalize_billing(order.get('billing_status'))
-            _is_admin = session.get('role') == 'admin'
-            _role = session.get('company_role')
             return render_template('fm/order_details.html',
                                    order=order,
                                    company=company,
@@ -852,8 +910,9 @@ def create_hr_dashboard_blueprint():
                                    billing_tone=_lc.BILLING_TONES[_bill],
                                    billing_transitions=sorted(_lc.BILLING_TRANSITIONS[_bill]),
                                    billing_labels=_lc.BILLING_LABELS,
-                                   can_bill=_is_admin or _role in ('company_admin', 'hr_manager'),
-                                   can_manage=_is_admin or _role in ('company_admin', 'hr_manager', 'department_head'),
+                                   # Same capabilities as update_billing / update_company_order_status.
+                                   can_bill=can('company.billing'),
+                                   can_manage=can('hr.manage'),
                                    next_statuses=_lc.allowed_targets(_status, actors={'manager'}))
 
         except Exception as e:
@@ -938,7 +997,7 @@ def create_hr_dashboard_blueprint():
                 for i in range(29, -1, -1):
                     day = today - timedelta(days=i)
                     row = by_day.get(day)
-                    approval_trend['labels'].append(day.strftime('%d/%m'))
+                    approval_trend['labels'].append(day.isoformat())  # chart formats via xFormat
                     approval_trend['pending'].append(int(row['pending']) if row and row['pending'] else 0)
                     approval_trend['approved'].append(int(row['approved']) if row and row['approved'] else 0)
                     approval_trend['rejected'].append(int(row['rejected']) if row and row['rejected'] else 0)
@@ -1466,10 +1525,8 @@ def create_hr_dashboard_blueprint():
             return jsonify({'success': False, 'message': 'Ingen adgang.'}), 401
         # Narrow to a company manager: confirming a NAMED employee's level is
         # people-level, so department_head (allowed for the read pages) is not
-        # enough. A platform admin impersonating a tenant is allowed through.
-        is_impersonating_admin = (session.get('role') == 'admin'
-                                  and session.get('admin_acting_company_id'))
-        if not is_impersonating_admin and session.get('company_role') not in ('company_admin', 'hr_manager'):
+        # enough. The role matrix decides (platform admins hold everything).
+        if not can('company.employees'):
             return jsonify({'success': False, 'message': 'Kun virksomhedsadministrator eller HR-leder kan bekræfte kompetenceløft.'}), 403
 
         company = get_company_context()
@@ -1571,6 +1628,18 @@ def create_hr_dashboard_blueprint():
             # Canonical ROI engine — single source of truth, real headline data.
             roi = get_roi_metrics(current_app._get_current_object(), company['id'], fiscal_year)
             predictions = get_predictive_data(current_app._get_current_object(), company['id'])
+            # Search terms are verbatim employee wording: keep only terms searched
+            # at least k times (same floor as aggregate_workforce_risk) so one
+            # person's exact query never shows up on the chart. Fail closed.
+            trend_anon_note = None
+            if isinstance(predictions, dict) and predictions.get('trending_courses'):
+                raw_terms = list(predictions.get('trending_courses') or [])
+                safe_terms = [t for t in raw_terms if isinstance(t, dict) and _kanon is not None
+                              and _kanon.is_cohort_safe(t.get('cnt'))]
+                if len(safe_terms) < len(raw_terms):
+                    trend_anon_note = (_kanon.anon_note() if _kanon is not None
+                                       else 'Sjældne søgninger er skjult af hensyn til anonymitet')
+                predictions = dict(predictions, trending_courses=safe_terms)
 
             # Skill-uplift loop (plan #19): MEASURED aggregate skill lift vs
             # spend for the year — upgrades ROI from cost/throughput to measured
@@ -1599,9 +1668,37 @@ def create_hr_dashboard_blueprint():
                 current_app.logger.warning(f"attributed_revenue (HR) failed: {_e}")
                 ai_revenue = None
 
+            # Monthly spend for the fiscal year (company-wide total, same filter
+            # as the ROI headline) so the page shows WHEN the money went out,
+            # not just how much. Future months of the current year are omitted.
+            monthly_spend = {'labels': [], 'spend': []}
+            try:
+                mcur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+                mcur.execute("""
+                    SELECT MONTH(created_at) AS m, COALESCE(SUM(price), 0) AS spend
+                    FROM course_orders
+                    WHERE company_id = %s
+                      AND status NOT IN ('cancelled', 'rejected')
+                      AND YEAR(created_at) = %s
+                    GROUP BY MONTH(created_at)
+                """, (company['id'], fiscal_year))
+                by_month = {int(r['m']): float(r['spend'] or 0) for r in (mcur.fetchall() or []) if r.get('m')}
+                mcur.close()
+                now = _dt.datetime.now()
+                last_month = 12 if fiscal_year < now.year else (now.month if fiscal_year == now.year else 0)
+                month_names = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec']
+                for m in range(1, last_month + 1):
+                    monthly_spend['labels'].append(month_names[m - 1])
+                    monthly_spend['spend'].append(round(by_month.get(m, 0)))
+            except Exception as _e:
+                current_app.logger.warning(f"ROI monthly spend failed: {_e}")
+                monthly_spend = {'labels': [], 'spend': []}
+
             return render_template('fm/roi.html',
                                    company=company, roi=roi, predictions=predictions,
                                    ai_revenue=ai_revenue, uplift=uplift,
+                                   monthly_spend=monthly_spend,
+                                   trend_anon_note=trend_anon_note,
                                    fiscal_year=fiscal_year)
         except Exception as e:
             current_app.logger.error(f"ROI dashboard error: {e}")
@@ -1649,11 +1746,14 @@ def create_hr_dashboard_blueprint():
             current_app.logger.warning(f"HR funnel report failed: {e}")
 
         has_data = bool(funnel.get('sessions'))
+        # Gap-free daily axis: a day without conversations is a zero.
+        daily_labels, daily_data = _dense_daily_series(
+            dict(zip(daily.get('labels', []), daily.get('data', []))), days)
         return render_template('fm/hr_funnel.html',
                                company=company,
                                funnel=funnel,
-                               daily_labels=daily.get('labels', []),
-                               daily_data=daily.get('data', []),
+                               daily_labels=daily_labels,
+                               daily_data=daily_data,
                                days=days,
                                has_data=has_data,
                                active_hr_page='funnel')
@@ -1956,12 +2056,41 @@ def create_hr_dashboard_blueprint():
             
             cur.close()
 
-            # Prepare chart data
+            # Prepare chart data. The trend is gap-free: a day without orders is
+            # a zero, not a missing point. A year is bucketed by month so the
+            # line stays readable (365 daily points are noise). Labels stay ISO
+            # (YYYY-MM-DD / YYYY-MM); the chart formats them via xFormat.
+            enr_by_day = {t['date']: int(t.get('enrollments') or 0) for t in learning_trends if t.get('date')}
+            comp_by_day = {t['date']: int(t.get('completions') or 0) for t in learning_trends if t.get('date')}
+            trend_days, trend_enr = _dense_daily_series(enr_by_day, period_days)
+            _, trend_comp = _dense_daily_series(comp_by_day, period_days)
+            if period_days > 90:
+                buckets = {}
+                for d, e, c in zip(trend_days, trend_enr, trend_comp):
+                    b = buckets.setdefault(d[:7], [0, 0])
+                    b[0] += e
+                    b[1] += c
+                trend_labels = sorted(buckets)
+                trend_enr = [buckets[k][0] for k in trend_labels]
+                trend_comp = [buckets[k][1] for k in trend_labels]
+            else:
+                trend_labels = trend_days
+
+            # Course-title keyword buckets come out of SQL as English keys.
+            _category_da = {'Leadership': 'Ledelse', 'Project Management': 'Projektledelse',
+                            'Communication': 'Kommunikation', 'Technology': 'IT og teknologi',
+                            'Sales': 'Salg', 'Other': 'Andet'}
+
+            # Department comparison: k-floored on head-count before charting.
+            department_chart, department_anon = _kanon_department_rows(
+                department_comparison, 'total_employees')
+
             chart_data = {
                 'learning_trends': {
-                    'dates': [trend['date'].strftime('%Y-%m-%d') for trend in learning_trends],
-                    'enrollments': [trend['enrollments'] for trend in learning_trends],
-                    'completions': [trend['completions'] for trend in learning_trends]
+                    'dates': trend_labels,
+                    'enrollments': trend_enr,
+                    'completions': trend_comp,
+                    'granularity': 'month' if period_days > 90 else 'day',
                 },
                 'hourly_engagement': {
                     'hours': [f"{hour:02d}:00" for hour in range(24)],
@@ -2051,7 +2180,7 @@ def create_hr_dashboard_blueprint():
                         continue
                     completed = int(row.get('supply') or 0)
                     candidates.append({
-                        'skill_category': row.get('skill_category') or 'Andet',
+                        'skill_category': _category_da.get(row.get('skill_category'), row.get('skill_category') or 'Andet'),
                         'ordered': ordered,
                         'completed': completed,
                         'interested_employees': int(row.get('interested_employees') or 0),
@@ -2092,7 +2221,9 @@ def create_hr_dashboard_blueprint():
                     WHERE company_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
                     GROUP BY DATE(created_at) ORDER BY day
                 """, (company['id'], period_days))
-                ai_daily = [{'day': str(r['day']), 'interactions': int(r['interactions'] or 0)} for r in cur.fetchall()]
+                _ai_days, _ai_vals = _dense_daily_series(
+                    {r['day']: int(r['interactions'] or 0) for r in cur.fetchall() if r.get('day')}, period_days)
+                ai_daily = [{'day': d, 'interactions': v} for d, v in zip(_ai_days, _ai_vals)]
                 cur.execute("""
                     SELECT COUNT(*) AS total,
                            COUNT(CASE WHEN status = 'active' THEN 1 END) AS active,
@@ -2111,6 +2242,8 @@ def create_hr_dashboard_blueprint():
                                  learning_trends=learning_trends,
                                  popular_courses=popular_courses,
                                  department_comparison=department_comparison,
+                                 department_chart=department_chart,
+                                 department_anon=department_anon,
                                  learning_path_effectiveness=learning_path_effectiveness,
                                  hourly_engagement=hourly_engagement,
                                  skills_gap_analysis=skills_gap_analysis,
@@ -2200,6 +2333,8 @@ def create_hr_dashboard_blueprint():
             cur.close()
         except Exception as e:
             current_app.logger.warning(f"HR reports summary error: {e}")
+        # Per-department completion/spend is a people-level breakdown: k-floor it.
+        department_rows, department_anon = _kanon_department_rows(department_rows, 'employees')
 
         import report_exports
         report_cards = [
@@ -2227,9 +2362,10 @@ def create_hr_dashboard_blueprint():
                                company=company,
                                report_summary=report_summary,
                                department_rows=department_rows,
+                               department_anon=department_anon,
                                report_cards=report_cards,
                                schedules=schedules, departments=departments,
-                               can_schedule=(session.get('role') == 'admin' or session.get('company_role') in ('company_admin', 'hr_manager')),
+                               can_schedule=can('company.reports'),
                                filt_department=request.args.get('department', ''),
                                filt_from=request.args.get('from', ''), filt_to=request.args.get('to', ''),
                                active_hr_page='reports')
@@ -2294,7 +2430,7 @@ def create_hr_dashboard_blueprint():
         if action not in ('pause', 'resume', 'cancel'):
             flash("Ukendt handling.", "danger")
             return redirect(url_for('hr_dashboard.reports'))
-        if not (session.get('role') == 'admin' or session.get('company_role') in ('company_admin', 'hr_manager')):
+        if not can('company.reports'):
             flash("Kun HR-ledere kan ændre planlagte rapporter.", "danger")
             return redirect(url_for('hr_dashboard.reports'))
         conn = current_app.mysql.connection
@@ -2321,7 +2457,7 @@ def create_hr_dashboard_blueprint():
         company = get_company_context()
         if not company:
             return redirect(url_for('auth.login'))
-        if not (session.get('role') == 'admin' or session.get('company_role') in ('company_admin', 'hr_manager')):
+        if not can('company.reports'):
             flash("Kun HR-ledere kan planlægge rapporter.", "danger")
             return redirect(url_for('hr_dashboard.reports'))
         import report_exports
@@ -2785,8 +2921,7 @@ def create_hr_dashboard_blueprint():
             """, (company['id'],))
             departments = [r['department'] for r in cur.fetchall()]
             cur.close()
-            can_edit = (session.get('role') == 'admin'
-                        or session.get('company_role') in ('company_admin', 'hr_manager'))
+            can_edit = can('company.billing')
             return render_template('fm/billing.html',
                                    company=company, orders=orders, summary=summary,
                                    departments=departments, can_edit=can_edit,
@@ -3190,26 +3325,6 @@ def create_hr_dashboard_blueprint():
             current_app.logger.error(f"Error loading proactive notifications: {e}")
             return jsonify({"alerts": []})
 
-    @hr_dashboard_bp.route('/notifications/dismiss', methods=['POST'])
-    def dismiss_notification():
-        """Dismiss/mark notification as read"""
-        auth_check = require_hr_access()
-        if auth_check:
-            return jsonify({"error": "Ikke logget ind"}), 401
-
-        data = request.json or {}
-        notif_id = data.get('notification_id')
-        if notif_id:
-            try:
-                from notification_service import mark_read as _mark_read
-                cur = current_app.mysql.connection.cursor()
-                _mark_read(cur, session.get('user'), notif_id)
-                current_app.mysql.connection.commit()
-                cur.close()
-            except Exception:
-                pass
-        return jsonify({"success": True})
-
     # ── Department Management ──
 
     @hr_dashboard_bp.route('/departments')
@@ -3510,8 +3625,7 @@ def create_hr_dashboard_blueprint():
         if 'company_id' not in session:
             return jsonify({'error': 'Ikke logget ind'}), 401
         company_id = session['company_id']
-        role = session.get('company_role', '')
-        if role not in ('company_admin', 'hr_manager', 'department_head'):
+        if not can('company.workspace'):
             flash("Du har ikke rettigheder til at oprette læringsforløb.", "danger")
             return redirect(url_for('hr_dashboard.learning_paths'))
 
@@ -3542,8 +3656,7 @@ def create_hr_dashboard_blueprint():
         if 'company_id' not in session:
             return jsonify({'error': 'Ikke logget ind'}), 401
         company_id = session['company_id']
-        role = session.get('company_role', '')
-        if role not in ('company_admin', 'hr_manager', 'department_head'):
+        if not can('company.workspace'):
             flash("Du har ikke rettigheder til at tildele læringsforløb.", "danger")
             return redirect(url_for('hr_dashboard.learning_paths'))
 
@@ -3598,7 +3711,7 @@ def create_hr_dashboard_blueprint():
         ordered on assignment) or free text (guidance). Every save is versioned."""
         if 'company_id' not in session:
             return jsonify({'error': 'Ikke logget ind'}), 401
-        if session.get('company_role') not in ('company_admin', 'hr_manager'):
+        if not can('company.learning_paths'):
             flash("Kun HR-ledere kan redigere forløbets trin.", "danger")
             return redirect(url_for('hr_dashboard.learning_paths'))
         import learning_path_service
@@ -3631,8 +3744,7 @@ def create_hr_dashboard_blueprint():
         if 'company_id' not in session:
             return jsonify({'error': 'Ikke logget ind'}), 401
         company_id = session['company_id']
-        role = session.get('company_role', '')
-        if role not in ('company_admin', 'hr_manager'):
+        if not can('company.learning_paths'):
             flash("Du har ikke rettigheder.", "danger")
             return redirect(url_for('hr_dashboard.learning_paths'))
         try:
@@ -3654,8 +3766,7 @@ def create_hr_dashboard_blueprint():
         if 'company_id' not in session:
             return jsonify({'error': 'Ikke logget ind'}), 401
         company_id = session['company_id']
-        role = session.get('company_role', '')
-        if role not in ('company_admin', 'hr_manager'):
+        if not can('company.learning_paths'):
             flash("Du har ikke rettigheder.", "danger")
             return redirect(url_for('hr_dashboard.learning_paths'))
         try:
@@ -4290,7 +4401,7 @@ def create_hr_dashboard_blueprint():
     # ══════════════════════════════════════════════════════════
 
     @hr_dashboard_bp.route('/approval-policies')
-    @require_company_role('company_admin', 'hr_manager')
+    @require_capability('company.policies')
     def approval_policies():
         """View and manage auto-approval policies for the company."""
         auth_check = require_hr_access()
@@ -4329,7 +4440,7 @@ def create_hr_dashboard_blueprint():
                                active_hr_page='approval_policies')
 
     @hr_dashboard_bp.route('/approval-policies/save', methods=['POST'])
-    @require_company_role('company_admin', 'hr_manager')
+    @require_capability('company.policies')
     def save_approval_policy():
         """Create or update an auto-approval policy (company-wide or per-dept)."""
         auth_check = require_hr_manager_access()
@@ -4391,7 +4502,7 @@ def create_hr_dashboard_blueprint():
         return redirect(url_for('hr_dashboard.approval_policies'))
 
     @hr_dashboard_bp.route('/approval-policies/<int:policy_id>/delete', methods=['POST'])
-    @require_company_role('company_admin', 'hr_manager')
+    @require_capability('company.policies')
     def delete_approval_policy(policy_id):
         """Delete an auto-approval policy (company-scoped)."""
         auth_check = require_hr_manager_access()
@@ -4420,7 +4531,7 @@ def create_hr_dashboard_blueprint():
     # ══════════════════════════════════════════════════════════
 
     @hr_dashboard_bp.route('/benchmarking')
-    @require_company_role('company_admin', 'hr_manager', 'department_head')
+    @require_capability('company.analytics')
     def benchmarking_view():
         """Anonymous industry benchmark for the company (k-anonymity enforced
         inside benchmarking.benchmark)."""
@@ -4654,8 +4765,7 @@ def create_hr_dashboard_blueprint():
         my_dept = (company.get('department') or '').strip()
         dept = my_dept
         req_dept = (request.args.get('department') or '').strip()
-        if req_dept and (session.get('role') == 'admin'
-                         or session.get('company_role') in ('company_admin', 'hr_manager')):
+        if req_dept and can('company.analytics'):
             dept, scope = req_dept, 'department'
         if scope == 'department' and not dept:
             scope = 'reports'

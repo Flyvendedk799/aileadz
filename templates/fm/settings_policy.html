@@ -14,12 +14,15 @@
   <a class="btn btn-soft btn-sm" href="{{ url_for('hr_dashboard.approval_policies') }}">Åbn godkendelsespolitikker</a>
 </div></div>
 
-{# Team-order policy (company default + per-vendor overrides). The form partial and its save route are provided by the AI work (N-5.2). #}
-{% if team_policy_partial %}
-{% include 'fm/_team_order_policy.html' %}
+{# Team-order policy: company default + per-vendor overrides (team_order_policy.py).
+   settings_hub passes team_policy; elsewhere (design gallery) it is looked up here. #}
+{% set _tp_state = team_policy if (team_policy is defined and team_policy is not none)
+   else (team_order_policy_state() if team_order_policy_state is defined else none) %}
+{% if _tp_state and _tp_state.allowed %}
+{% with team_policy = _tp_state %}{% include 'fm/_team_order_policy.html' %}{% endwith %}
 {% else %}
 <div class="fm-card"><div class="fm-card-body">
-  {{ ui.empty('Holdbestillinger kommer snart', 'Her vælger HR, om medarbejdere kan bestille til et helt hold, og om det sker som ét køb pr. person eller via HR. Indtil videre bestiller hver medarbejder selv sin plads.', 'fa-people-group') }}
+  {{ ui.empty('Teambestilling styres af HR', 'Her vælger HR i en virksomhedskonto, om medarbejdere kan bestille til et helt hold, og om det sker som én ordre pr. person eller via HR.', 'fa-people-group') }}
 </div></div>
 {% endif %}
 </div>

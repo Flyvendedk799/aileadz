@@ -12,7 +12,7 @@
       <p style="color:var(--fm-ink-2);margin-bottom:22px">Linket kan være forældet, eller siden er flyttet. Prøv en af genvejene herunder.</p>
       <div class="fm-flex fm-gap12" style="justify-content:center;flex-wrap:wrap">
         {% if session.get('user') %}
-        <a class="fm-btn primary" href="{{ url_for('futurematch.min_laering') }}">Til min forside</a>
+        <a class="fm-btn primary" href="{{ url_for('dashboard.dashboard') }}">Til min forside</a>
         {% else %}
         <a class="fm-btn primary" href="{{ url_for('auth.login') }}">Log ind</a>
         {% endif %}

@@ -410,14 +410,17 @@ def _tab_integrations():
                            company=_company_row())
 
 
-# ── Bestillingspolitik (team orders; the form partial is provided by the AI work) ──
+# ── Bestillingspolitik (auto-approval link + team-order policy) ──────────────
 def _tab_policy():
+    """The team-order policy form is ``fm/_team_order_policy.html`` (state and
+    save route in ``team_order_policy``); the state is resolved here once."""
     try:
-        current_app.jinja_env.get_template("fm/_team_order_policy.html")
-        partial = True
-    except Exception:
-        partial = False
-    return render_template("fm/settings_policy.html", tab="bestilling", team_policy_partial=partial)
+        import team_order_policy
+        state = team_order_policy.policy_state()
+    except Exception as e:  # the page still renders the auto-approval card
+        logger.warning("team order policy state failed: %s", e)
+        state = None
+    return render_template("fm/settings_policy.html", tab="bestilling", team_policy=state)
 
 
 # ── SSO discovery for the login page ────────────────────────────────────────

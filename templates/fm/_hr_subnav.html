@@ -1,45 +1,60 @@
 {# Canonical HR sub-navigation. Single source of truth — include at the top of the
-   content block on every HR page and set `active_hr_page` (string) in the view:
+   content block on every HR page:
        {% set active_hr_page = 'roi' %}{% include 'fm/_hr_subnav.html' %}
-   Replaces the per-page inlined .pg-subnav blocks so tabs never drift.
-   active_hr_page keys (one per destination): dashboard, team, employees, departments,
-   approvals, approval_policies, budgets, roi, funnel, retention, learning_analytics,
-   benchmarking, skill_gaps, training_plan, learning_paths, internal_courses,
-   compliance, suppliers, procurement, engagement, ai_quality, reports. #}
-{% set _hp = active_hr_page | default('') %}
+   The active tab is `active_hr_page` when the page sets one, otherwise the tab
+   futurematch_ui.nav_state() derives from the request endpoint, so a page that
+   forgets the key still lights up the right tab (and the sidebar agrees).
+
+   Sections (separated by .pg-sep) mirror the sidebar's "Virksomhed" entries in
+   fm_base.html: Oversigt · Mit team · Medarbejdere · Godkendelser · Læringsanalyse
+   · Træningsplan (+Compliance) · Indkøb · Rapporter & eksport. Labels match
+   app1/sse_events.HR_DESTINATIONS (the HR assistant's vocabulary).
+
+   Every tab is gated by the capability its route's guard checks
+   (tests/test_site_cohesion.py pins the mapping): company.workspace = any HR
+   role, company.analytics = company-wide data (HR managers and up).
+
+   active_hr_page keys (one per destination): dashboard, team, employees,
+   employee_progress, departments, approvals, approval_policies, budgets, billing,
+   learning_analytics, roi, funnel, retention, benchmarking, skill_gaps, engagement,
+   ai_quality, training_plan, learning_paths, internal_courses, compliance,
+   procurement, suppliers, reports. #}
+{% set _hp = (active_hr_page | default('')) or (nav_state().hr if nav_state is defined else '') %}
+{% set _ws = can('company.workspace') %}
+{% set _an = can('company.analytics') %}
 <div class="pg-subnav-wrap" id="hrSubnavWrap">
 <button type="button" class="pg-subnav-btn prev" aria-label="Rul tabs til venstre" title="Rul til venstre" hidden><i class="fa-solid fa-chevron-left"></i></button>
 <nav class="pg-subnav" aria-label="HR-navigation">
-  <a class="pg-tab {{ 'active' if _hp == 'dashboard' }}" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Oversigt</a>
-  <a class="pg-tab {{ 'active' if _hp == 'team' }}" href="{{ url_for('hr_dashboard.team_cockpit') }}"><i class="fa-solid fa-users-rectangle"></i> Mit team</a>
-  <span class="pg-sep" role="separator" aria-hidden="true"></span>
-  <a class="pg-tab {{ 'active' if _hp == 'employees' }}" href="{{ url_for('companies.employees') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a>
-  <a class="pg-tab {{ 'active' if _hp == 'employee_progress' }}" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-bars-progress"></i> Fremdrift</a>
-  <a class="pg-tab {{ 'active' if _hp == 'departments' }}" href="{{ url_for('hr_dashboard.departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a>
-  <span class="pg-sep" role="separator" aria-hidden="true"></span>
-  <a class="pg-tab {{ 'active' if _hp == 'approvals' }}" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-circle-check"></i> Godkendelser</a>
-  <a class="pg-tab {{ 'active' if _hp == 'approval_policies' }}" href="{{ url_for('hr_dashboard.approval_policies') }}"><i class="fa-solid fa-robot"></i> Auto-godkendelse</a>
-  <a class="pg-tab {{ 'active' if _hp == 'budgets' }}" href="{{ url_for('hr_dashboard.department_budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a>
-  <span class="pg-sep" role="separator" aria-hidden="true"></span>
-  <a class="pg-tab {{ 'active' if _hp == 'roi' }}" href="{{ url_for('hr_dashboard.roi_dashboard') }}"><i class="fa-solid fa-chart-pie"></i> ROI</a>
-  <a class="pg-tab {{ 'active' if _hp == 'funnel' }}" href="{{ url_for('hr_dashboard.funnel_dashboard') }}"><i class="fa-solid fa-filter-circle-dollar"></i> Funnel</a>
-  <a class="pg-tab {{ 'active' if _hp == 'retention' }}" href="{{ url_for('hr_dashboard.retention_dashboard') }}"><i class="fa-solid fa-people-group"></i> Fastholdelse</a>
-  <a class="pg-tab {{ 'active' if _hp == 'learning_analytics' }}" href="{{ url_for('hr_dashboard.learning_analytics') }}"><i class="fa-solid fa-chart-line"></i> Læringsanalyse</a>
-  <a class="pg-tab {{ 'active' if _hp == 'benchmarking' }}" href="{{ url_for('hr_dashboard.benchmarking_view') }}"><i class="fa-solid fa-ranking-star"></i> Benchmarking</a>
-  <a class="pg-tab {{ 'active' if _hp == 'skill_gaps' }}" href="{{ url_for('hr_dashboard.skill_gaps_view') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a>
-  <a class="pg-tab {{ 'active' if _hp == 'training_plan' }}" href="{{ url_for('hr_ext.training_plan') }}"><i class="fa-solid fa-list-check"></i> Træningsplan</a>
-  <span class="pg-sep" role="separator" aria-hidden="true"></span>
-  <a class="pg-tab {{ 'active' if _hp == 'learning_paths' }}" href="{{ url_for('hr_dashboard.learning_paths') }}"><i class="fa-solid fa-route"></i> Læringsforløb</a>
-  <a class="pg-tab {{ 'active' if _hp == 'internal_courses' }}" href="{{ url_for('hr_dashboard.internal_courses') }}"><i class="fa-solid fa-book-open"></i> Interne kurser</a>
-  <a class="pg-tab {{ 'active' if _hp == 'compliance' }}" href="{{ url_for('hr_dashboard.compliance_matrix') }}"><i class="fa-solid fa-clipboard-check"></i> Compliance</a>
-  <span class="pg-sep" role="separator" aria-hidden="true"></span>
-  <a class="pg-tab {{ 'active' if _hp == 'suppliers' }}" href="{{ url_for('hr_dashboard.supplier_management') }}"><i class="fa-solid fa-truck"></i> Leverandører</a>
-  <a class="pg-tab {{ 'active' if _hp == 'procurement' }}" href="{{ url_for('hr_ext.procurement') }}"><i class="fa-solid fa-store"></i> Indkøb</a>
-  <span class="pg-sep" role="separator" aria-hidden="true"></span>
-  <a class="pg-tab {{ 'active' if _hp == 'engagement' }}" href="{{ url_for('hr_ext.engagement') }}"><i class="fa-solid fa-hand-holding-heart"></i> Engagement</a>
-  <a class="pg-tab {{ 'active' if _hp == 'ai_quality' }}" href="{{ url_for('hr_ext.ai_quality') }}"><i class="fa-solid fa-wand-magic-sparkles"></i> AI-kvalitet</a>
-  <a class="pg-tab {{ 'active' if _hp == 'reports' }}" href="{{ url_for('hr_dashboard.reports') }}"><i class="fa-solid fa-file-arrow-down"></i> Rapporter &amp; eksport</a>
+  {% if _ws %}<a class="pg-tab {{ 'active' if _hp == 'dashboard' }}" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Oversigt</a>{% endif %}
+  {% if can('company.team') %}<a class="pg-tab {{ 'active' if _hp == 'team' }}" href="{{ url_for('hr_dashboard.team_cockpit') }}"><i class="fa-solid fa-users-rectangle"></i> Mit team</a>{% endif %}
+  {% if _ws %}<span class="pg-sep" role="separator" aria-hidden="true"></span>{% endif %}
+  {% if can('company.employees') %}<a class="pg-tab {{ 'active' if _hp == 'employees' }}" href="{{ url_for('companies.employees') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a>{% endif %}
+  {% if _an %}<a class="pg-tab {{ 'active' if _hp == 'employee_progress' }}" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-bars-progress"></i> Fremdrift</a>{% endif %}
+  {% if _ws %}<a class="pg-tab {{ 'active' if _hp == 'departments' }}" href="{{ url_for('hr_dashboard.departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a>{% endif %}
+  {% if _ws %}<span class="pg-sep" role="separator" aria-hidden="true"></span>{% endif %}
+  {% if can('company.approvals') %}<a class="pg-tab {{ 'active' if _hp == 'approvals' }}" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-circle-check"></i> Godkendelser</a>{% endif %}
+  {% if can('company.policies') %}<a class="pg-tab {{ 'active' if _hp == 'approval_policies' }}" href="{{ url_for('hr_dashboard.approval_policies') }}"><i class="fa-solid fa-bolt"></i> Auto-godkendelse</a>{% endif %}
+  {% if _ws %}<a class="pg-tab {{ 'active' if _hp == 'budgets' }}" href="{{ url_for('hr_dashboard.department_budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a>{% endif %}
   {% if can('company.billing') %}<a class="pg-tab {{ 'active' if _hp == 'billing' }}" href="{{ url_for('hr_dashboard.billing_overview') }}"><i class="fa-solid fa-file-invoice-dollar"></i> Fakturering</a>{% endif %}
+  {% if _ws %}<span class="pg-sep" role="separator" aria-hidden="true"></span>{% endif %}
+  {% if _an %}<a class="pg-tab {{ 'active' if _hp == 'learning_analytics' }}" href="{{ url_for('hr_dashboard.learning_analytics') }}"><i class="fa-solid fa-chart-line"></i> Læringsanalyse</a>{% endif %}
+  {% if _an %}<a class="pg-tab {{ 'active' if _hp == 'roi' }}" href="{{ url_for('hr_dashboard.roi_dashboard') }}"><i class="fa-solid fa-chart-pie"></i> ROI</a>{% endif %}
+  {% if _an %}<a class="pg-tab {{ 'active' if _hp == 'funnel' }}" href="{{ url_for('hr_dashboard.funnel_dashboard') }}"><i class="fa-solid fa-filter-circle-dollar"></i> Funnel</a>{% endif %}
+  {% if _an %}<a class="pg-tab {{ 'active' if _hp == 'retention' }}" href="{{ url_for('hr_dashboard.retention_dashboard') }}"><i class="fa-solid fa-people-group"></i> Fastholdelse</a>{% endif %}
+  {% if _an %}<a class="pg-tab {{ 'active' if _hp == 'benchmarking' }}" href="{{ url_for('hr_dashboard.benchmarking_view') }}"><i class="fa-solid fa-ranking-star"></i> Benchmarking</a>{% endif %}
+  {% if _an %}<a class="pg-tab {{ 'active' if _hp == 'skill_gaps' }}" href="{{ url_for('hr_dashboard.skill_gaps_view') }}"><i class="fa-solid fa-puzzle-piece"></i> Kompetencer</a>{% endif %}
+  {% if _an %}<a class="pg-tab {{ 'active' if _hp == 'engagement' }}" href="{{ url_for('hr_ext.engagement') }}"><i class="fa-solid fa-hand-holding-heart"></i> Engagement</a>{% endif %}
+  {% if _an %}<a class="pg-tab {{ 'active' if _hp == 'ai_quality' }}" href="{{ url_for('hr_ext.ai_quality') }}"><i class="fa-solid fa-wand-magic-sparkles"></i> AI-kvalitet</a>{% endif %}
+  {% if _ws %}<span class="pg-sep" role="separator" aria-hidden="true"></span>{% endif %}
+  {% if _ws %}<a class="pg-tab {{ 'active' if _hp == 'training_plan' }}" href="{{ url_for('hr_ext.training_plan') }}"><i class="fa-solid fa-list-check"></i> Træningsplan</a>{% endif %}
+  {% if _ws %}<a class="pg-tab {{ 'active' if _hp == 'learning_paths' }}" href="{{ url_for('hr_dashboard.learning_paths') }}"><i class="fa-solid fa-route"></i> Læringsforløb</a>{% endif %}
+  {% if _ws %}<a class="pg-tab {{ 'active' if _hp == 'internal_courses' }}" href="{{ url_for('hr_dashboard.internal_courses') }}"><i class="fa-solid fa-book-open"></i> Interne kurser</a>{% endif %}
+  {% if _an %}<a class="pg-tab {{ 'active' if _hp == 'compliance' }}" href="{{ url_for('hr_dashboard.compliance_matrix') }}"><i class="fa-solid fa-clipboard-check"></i> Compliance</a>{% endif %}
+  {% if _ws %}<span class="pg-sep" role="separator" aria-hidden="true"></span>{% endif %}
+  {% if _ws %}<a class="pg-tab {{ 'active' if _hp == 'procurement' }}" href="{{ url_for('hr_ext.procurement') }}"><i class="fa-solid fa-store"></i> Indkøb</a>{% endif %}
+  {% if _ws %}<a class="pg-tab {{ 'active' if _hp == 'suppliers' }}" href="{{ url_for('hr_dashboard.supplier_management') }}"><i class="fa-solid fa-truck"></i> Leverandører</a>{% endif %}
+  {% if _an %}<span class="pg-sep" role="separator" aria-hidden="true"></span>{% endif %}
+  {% if _an %}<a class="pg-tab {{ 'active' if _hp == 'reports' }}" href="{{ url_for('hr_dashboard.reports') }}"><i class="fa-solid fa-file-arrow-down"></i> Rapporter &amp; eksport</a>{% endif %}
 </nav>
 <button type="button" class="pg-subnav-btn next" aria-label="Rul tabs til højre" title="Rul til højre" hidden><i class="fa-solid fa-chevron-right"></i></button>
 </div>

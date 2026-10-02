@@ -348,6 +348,7 @@ CAPABILITY_MIN_ROLE = {
     "company.settings": "hr_manager",
     "company.branding": "hr_manager",
     "company.integrations": "company_admin",  # SSO, API keys, webhooks
+    "company.admins": "company_admin",        # grant or revoke the company_admin role
 }
 
 # Navigation / settings-hub names (Part B, N-2.3) -> the matrix capability that
@@ -361,6 +362,7 @@ CAPABILITY_ALIASES = {
     "company.employees": "hr.employees.manage",
     "company.budgets": "hr.budget.edit",
     "company.analytics": "hr.analytics",
+    "company.analytics_advanced": "hr.analytics",  # enterprise_analytics, also behind ADVANCED_ANALYTICS_ENABLED
     "company.reports": "hr.reports.export",
     "company.compliance": "hr.manage",
     "company.learning_paths": "hr.manage",

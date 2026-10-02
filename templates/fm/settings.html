@@ -36,8 +36,11 @@
           <a class="active" href="#konto"><i class="fa-solid fa-user"></i> Konto</a>
           <a href="#sikkerhed"><i class="fa-solid fa-lock"></i> Sikkerhed</a>
           <a href="#privatliv"><i class="fa-solid fa-user-shield"></i> Privatliv</a>
-          {% if session.get('role') == 'admin' %}
+          {% if can('platform.admin') %}
           <a href="#admin"><i class="fa-solid fa-shield-halved"></i> Admin</a>
+          {% endif %}
+          {% if session.get('company_id') and can('company.settings') %}
+          <a href="#virksomhed"><i class="fa-solid fa-gear"></i> Virksomhed</a>
           {% endif %}
           <a href="#udseende"><i class="fa-solid fa-palette"></i> Udseende</a>
         </nav>
@@ -105,14 +108,25 @@
             </div>
           </div>
 
-          {% if session.get('role') == 'admin' %}
+          {% if can('platform.admin') %}
           <div class="fm-card" id="admin" data-reveal data-d="3">
             <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-shield-halved"></i></span><h3>Admin</h3></div>
             <div class="fm-card-body">
               <div class="fm-flex fm-gap8" style="flex-wrap:wrap">
-                <a href="{{ url_for('admin_dashboard.credits') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-coins"></i> Tildel kreditter</a>
-                <a href="{{ url_for('admin_notifications.notifications_dashboard') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-bullhorn"></i> Admin notifikationer</a>
+                <a href="{{ url_for('admin_dashboard.admin_home') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-shield-halved"></i> Adminoversigt</a>
+                <a href="{{ url_for('admin_dashboard.credits') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-coins"></i> Kreditter</a>
+                <a href="{{ url_for('admin_notifications.notifications_dashboard') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-bullhorn"></i> Send notifikationer</a>
               </div>
+            </div>
+          </div>
+          {% endif %}
+
+          {% if session.get('company_id') and can('company.settings') %}
+          <div class="fm-card" id="virksomhed" data-reveal data-d="3">
+            <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-gear"></i></span><h3>Virksomhedens indstillinger</h3></div>
+            <div class="fm-card-body">
+              <p style="font-size:13px;color:var(--fm-ink-2);margin-top:0">Her styrer du kun din egen konto. Branding, SSO, bestillingspolitik og integrationer for {{ session.get('company_name') or 'virksomheden' }} ligger samlet i virksomhedsindstillingerne.</p>
+              <a href="{{ url_for('settings_hub.index') }}" class="btn btn-soft btn-sm"><i class="fa-solid fa-gear"></i> Åbn virksomhedsindstillinger</a>
             </div>
           </div>
           {% endif %}

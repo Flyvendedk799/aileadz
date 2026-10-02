@@ -1,4 +1,5 @@
 {% extends "fm_base.html" %}
+{% from 'fm/_macros.html' import related %}
 {% block page_id %}goals{% endblock %}
 {% block title %}Udviklingsmål{% endblock %}
 {% block topbar_title %}Udviklingsmål{% endblock %}
@@ -84,7 +85,7 @@
   {% if goals %}
   <section class="goal-grid">
     {% for g in goals %}
-    <article class="goal-card{{ ' done' if g.status == 'fuldfoert' }}">
+    <article class="goal-card{{ ' done' if g.status == 'fuldfoert' }}" id="goal-{{ g.id }}" style="scroll-margin-top:90px">
       <div class="goal-top">
         <span class="fm-badge {{ 'success' if g.status == 'fuldfoert' else ('amber' if g.status == 'paa_pause' else 'teal') }}">{{ labels.get(g.status, g.status) }}</span>
         {% if g.target_date %}<span class="goal-meta"><i class="fa-solid fa-calendar-day"></i> {{ g.target_date }}</span>{% endif %}
@@ -110,6 +111,20 @@
   <div class="fm-card" style="padding:42px;text-align:center;color:var(--fm-ink-3)">
     <i class="fa-solid fa-bullseye" style="font-size:26px;opacity:.5"></i>
     <p style="margin:12px 0 0">Du har ingen udviklingsmål endnu. Tilføj ét ovenfor — eller bed AI-assistenten: <em>"Sæt et mål om at blive bedre til ledelse inden Q3"</em>.</p>
+    <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+      <a class="btn btn-soft btn-sm" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comment-dots"></i> Spørg AI-assistenten</a>
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-graduation-cap"></i> Se kataloget for idéer</a>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if goals %}
+  <div style="margin-top:22px">
+  {{ related([
+      ('Mine bestillinger', url_for('futurematch.timeline'), 'fa-timeline'),
+      ('Kursuskatalog', url_for('catalog.catalog_index'), 'fa-graduation-cap'),
+      ('Min læring', url_for('futurematch.employee_home'), 'fa-house'),
+  ]) }}
   </div>
   {% endif %}
 </div>

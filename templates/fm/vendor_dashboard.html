@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Oversigt · Leverandorportal · Futurematch</title>
+  <title>Oversigt · Leverandørportal · Futurematch</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -99,19 +99,7 @@
   </style>
 </head>
 <body data-page="vendor-dashboard">
-  <header class="vp-top">
-    <span class="vp-mark">F</span>
-    <span class="name">Leverandorportal</span>
-    <span class="who">{{ vendor_name }}</span>
-  </header>
-  <nav class="vp-nav">
-    <a href="{{ url_for('vendor.vendor_dashboard') }}" class="active">Oversigt</a>
-    <a href="{{ url_for('vendor.vendor_orders') }}">Bestillinger{% if vendor_awaiting_count %} <span class="badge pending">{{ vendor_awaiting_count }}</span>{% endif %}</a>
-    <a href="{{ url_for('vendor.vendor_analytics') }}">Analyser</a>
-    <a href="{{ url_for('vendor.vendor_submit') }}">Indsend katalog</a>
-    <a href="{{ url_for('vendor.vendor_profile') }}">Profil</a>
-    <form method="post" action="{{ url_for('vendor.vendor_logout') }}" style="margin:0 0 0 auto"><button type="submit" class="logout" style="background:none;border:0;padding:0;font:inherit;color:var(--fm-ink-3);cursor:pointer">Log ud</button></form>
-  </nav>
+  {% set vendor_tab = 'dashboard' %}{% include 'fm/_vendor_nav.html' %}
 
   <main class="vp-wrap">
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -121,17 +109,17 @@
     {% endwith %}
 
     <h1 class="vp-h1">Velkommen, {{ vendor_name }}</h1>
-    <p class="vp-lead">Her kan du folge dit katalog og dine indsendelser.</p>
+    <p class="vp-lead">Her kan du følge dit katalog og dine indsendelser.</p>
 
     <div class="vp-kpis">
-      <div class="vp-kpi">
+      <a class="vp-kpi" href="{{ url_for('vendor.vendor_analytics') }}" style="text-decoration:none;color:inherit" title="Se ordrer og gennemførelse pr. kursus">
         <div class="num">{{ kpis.course_count }}</div>
-        <div class="lbl">Antal kurser i kataloget</div>
-      </div>
-      <div class="vp-kpi">
+        <div class="lbl">Antal kurser i kataloget &rarr; se analyser</div>
+      </a>
+      <a class="vp-kpi" href="#indsendelser" style="text-decoration:none;color:inherit">
         <div class="num">{{ kpis.submission_count }}</div>
         <div class="lbl">Indsendelser i alt</div>
-      </div>
+      </a>
       <div class="vp-kpi">
         <div class="num">{{ kpis.pending_count }}</div>
         <div class="lbl">Kataloger afventer godkendelse</div>
@@ -144,12 +132,12 @@
       {% endif %}
     </div>
 
-    <div class="vp-card">
+    <div class="vp-card" id="indsendelser">
       <h3>Seneste indsendelser</h3>
       {% if submissions %}
       <table>
         <thead>
-          <tr><th>Fil</th><th>Raekker</th><th>Status</th><th>Indsendt</th></tr>
+          <tr><th>Fil</th><th>Rækker</th><th>Status</th><th>Indsendt</th></tr>
         </thead>
         <tbody>
           {% for s in submissions %}
@@ -172,16 +160,18 @@
     </div>
 
     <div class="vp-card">
-      <h3>Dit katalog ({{ products|length }})</h3>
+      <h3 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">Dit katalog ({{ products|length }})
+        {% if products %}<a href="{{ url_for('vendor.vendor_analytics') }}" style="margin-left:auto;font-size:13px;font-weight:700;color:var(--fm-primary);text-decoration:none">Se ordrer pr. kursus &rarr;</a>{% endif %}
+      </h3>
       {% if products %}
       <table>
         <thead>
-          <tr><th>Kursus</th><th>Type</th><th>Pris</th><th>Bedommelse</th></tr>
+          <tr><th>Kursus</th><th>Type</th><th>Pris</th><th>Bedømmelse</th></tr>
         </thead>
         <tbody>
           {% for p in products[:100] %}
           <tr>
-            <td>{{ p.title }}</td>
+            <td>{% if p.handle %}<a href="{{ url_for('catalog.product_detail', handle=p.handle) }}" target="_blank" rel="noopener" title="Se kursussiden som kunderne ser den">{{ p.title }}</a>{% else %}{{ p.title }}{% endif %}</td>
             <td>{{ p.product_type or '—' }}</td>
             <td>{{ p.price_label or '—' }}</td>
             <td>
@@ -202,16 +192,18 @@
         </tbody>
       </table>
       {% else %}
-      <div class="vp-empty">Ingen kurser er knyttet til dig endnu. Indsend dit forste katalog for at komme i gang.</div>
+      <div class="vp-empty">Ingen kurser er knyttet til dig endnu. Indsend dit første katalog for at komme i gang.
+        <a class="vp-cta" href="{{ url_for('vendor.vendor_submit') }}" style="margin-left:8px;">Indsend katalog</a>
+      </div>
       {% endif %}
     </div>
   </main>
 
   <!-- AI-assistent: self-contained SSE-klient mod /vendor/ask (.vp-* styling) -->
-  <button type="button" class="vp-ai-fab" id="vpAiFab" aria-label="Aben leverandor-assistent">
+  <button type="button" class="vp-ai-fab" id="vpAiFab" aria-label="Åbn leverandør-assistent">
     <i class="fa-solid fa-robot"></i><span>Spørg AI</span>
   </button>
-  <section class="vp-ai-panel" id="vpAiPanel" hidden aria-live="polite" aria-label="Leverandor-assistent">
+  <section class="vp-ai-panel" id="vpAiPanel" hidden aria-live="polite" aria-label="Leverandør-assistent">
     <header class="vp-ai-head">
       <i class="fa-solid fa-robot" style="color:var(--fm-primary)"></i> Leverandør-assistent
       <button type="button" class="x" id="vpAiClose" aria-label="Luk"><i class="fa-solid fa-xmark"></i></button>

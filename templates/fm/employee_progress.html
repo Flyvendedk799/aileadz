@@ -20,8 +20,8 @@
     <div class="kpi-tile"><div class="kl">Medarbejdere</div><div class="kv tnum">{{ st.total_count|default(0) }}</div><div class="kd">{{ st.active_count|default(0) }} aktive</div></div>
   </div>
 
-  <div class="fm-card" style="margin-top:4px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-pie"></i></span><h3>Fordeling af fremdrift</h3></div>
-    <div class="fm-card-body"><div class="ep-dist-wrap"><canvas id="progressDistChart" role="img" aria-label="Cirkeldiagram: antal medarbejdere fordelt på fremdriftsintervaller 0-25, 25-50, 50-75 og 75-100 procent"></canvas></div></div>
+  <div class="fm-card" style="margin-top:4px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-pie"></i></span><h3>Fordeling af fremdrift</h3><span style="margin-left:auto;font-size:11px;color:var(--fm-ink-3)">antal medarbejdere{{ ' · filtreret' if (current_filters and (current_filters.department or current_filters.status)) }}</span></div>
+    <div class="fm-card-body"><p style="font-size:12px;color:var(--fm-ink-2);margin:0 0 10px">Hvor langt medarbejderne er nået i deres læringsforløb i gennemsnit. Medarbejdere uden kurser eller forløb tælles for sig.</p><div class="ep-dist-wrap"><canvas id="progressDistChart" role="img" aria-label="Søjlediagram: antal medarbejdere uden forløb og fordelt på fremdriftsintervaller 0-24, 25-49, 50-74 og 75-100 procent"></canvas></div></div>
   </div>
 
   <form method="GET" action="{{ url_for('hr_dashboard.employee_progress') }}" class="fm-flex fm-gap8" style="margin:14px 0;flex-wrap:wrap;align-items:flex-end">
@@ -62,19 +62,27 @@
 (function(){
   if (typeof FMChart === 'undefined') return;
 
-  var emps = {{ (employees or [])|list|tojson|safe }};
-  var buckets = [0, 0, 0, 0]; // 0-25, 25-50, 50-75, 75-100
-  emps.forEach(function (e) {
-    var p = Number(e.avg_progress) || 0;
-    if (p < 25) buckets[0]++;
-    else if (p < 50) buckets[1]++;
-    else if (p < 75) buckets[2]++;
-    else buckets[3]++;
+  // Only the fields the histogram needs are emitted (the table already shows
+  // the people); ordered bins -> a column histogram, not a pie.
+  var emps = {{ (employees or [])|map(attribute='avg_progress')|list|tojson }};
+  var started = {{ ((employees or [])|map(attribute='courses_enrolled')|list)|tojson }};
+  var paths = {{ ((employees or [])|map(attribute='learning_paths_enrolled')|list)|tojson }};
+  var buckets = [0, 0, 0, 0, 0]; // ikke startet, 0-24, 25-49, 50-74, 75-100
+  emps.forEach(function (p, i) {
+    if (!(Number(started[i]) > 0) && !(Number(paths[i]) > 0)) { buckets[0]++; return; }
+    p = Number(p) || 0;
+    if (p < 25) buckets[1]++;
+    else if (p < 50) buckets[2]++;
+    else if (p < 75) buckets[3]++;
+    else buckets[4]++;
   });
-
-  FMChart.doughnut('progressDistChart', {
-    labels: ['0–25 %', '25–50 %', '50–75 %', '75–100 %'],
-    values: buckets,
+  // "Ingen kurser" is counted for itself, so it steps back to the muted gray.
+  FMChart.bar('progressDistChart', {
+    title: 'Medarbejdere fordelt på gennemsnitlig fremdrift',
+    labels: ['Ingen kurser', '0–24 %', '25–49 %', '50–74 %', '75–100 %'],
+    valueLabels: true,
+    series: [{ label: 'Medarbejdere', data: buckets,
+               color: ['--fm-chart-muted', '--fm-primary', '--fm-primary', '--fm-primary', '--fm-primary'] }],
     empty: 'Ingen fremdriftsdata endnu'
   });
 })();

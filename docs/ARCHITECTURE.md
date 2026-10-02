@@ -47,7 +47,7 @@ For the AI internals see [ai-framework.md](ai-framework.md). For standing constr
 | `hr_dashboard/` (largest file), `hr_ext.py`, `hr_course_assign.py`, `compliance_*.py`, `deadline_service.py`, `cert_expiry_service.py`, `digest_service.py`, `department_service.py`, `team_order_policy.py`, `bulk_invite.py` | HR workspace, assignments, compliance, reminders, weekly digest |
 | `companies/`, `settings_hub.py`, `enterprise_company_settings.py`, `branding_service.py`, `seat_governance.py` | company admin, settings hub (`/virksomhed/indstillinger`), white-label, seats |
 | `enterprise_api/`, `enterprise_sso/`, `scim_api.py`, `scim_groups.py`, `api_keys_ui.py` | public API v1 + OpenAPI, OIDC SSO, SCIM 2.0, API keys |
-| `enterprise_analytics/`, `multitenant_reports.py`, `report_query.py`, `report_exports.py`, `scheduled_reports.py`, `reports.py`, `admin_reports.py`, `benchmarking.py`, `insights_engine.py`, `kanon.py` | analytics and reporting; `kanon.py` enforces k-anonymity floors |
+| `enterprise_analytics/`, `multitenant_reports.py`, `report_query.py`, `report_exports.py`, `scheduled_reports.py`, `reports.py`, `admin_reports.py`, `benchmarking.py`, `insights_engine.py`, `kanon.py` | analytics and reporting; `kanon.py` enforces k-anonymity floors; `enterprise_analytics` is the ML "Avanceret" view linked from Læringsanalyse (`company.analytics_advanced`, env `ADVANCED_ANALYTICS_ENABLED`, aggregates only) |
 | `order_service.py`, `order_lifecycle.py`, `billing_service.py`, `credit_service.py`, `credit_routes.py` | orders, billing view, AI-usage credits |
 | `gdpr_service.py`, `gdpr_routes.py`, `dsr_service.py`, `retention_service.py` | GDPR export/erasure, data-subject requests, retention |
 
@@ -80,7 +80,9 @@ Find a symbol with Grep, then read only that range. Module docstrings at the top
 ## Static assets and templates
 
 - `templates/fm/` — all current pages (extend `templates/fm_base.html`); `app1/templates/` — legacy chat shell, widget, admin log; `templates/*.html` — a few top-level pages.
+- Navigation: the sidebar in `fm_base.html` plus one sub-nav per section — `fm/_hr_subnav.html`, `fm/_admin_subnav.html`, `fm/_vendor_nav.html` (vendor portal), `fm/_settings_tabs.html` (company settings hub). Each sidebar entry under "Virksomhed"/"Admin" carries the same label and icon as its sub-nav tab and stays lit on every tab of its section. The current location comes from `futurematch_ui.nav_state()` (request endpoint → sidebar section and sub-nav tab; an explicit `active_hr_page`/`active_admin_page` wins, `page_id` is the fallback). Links are gated with `can(...)` on the capability the route's guard checks. `tests/test_site_cohesion.py` pins all of this, plus "no full page without a template link". Shared page helpers (`crumbs`, `related`, `empty` with a next-step action) live in `fm/_macros.html`.
 - `static/futurematch/assets/` — `fm.css`, `fm-pages.css`, `chat.css`, `shell.js`, `chat.js`, `ai-stream.js`, `ai-sidebar.js`, `fm-charts.js`, ... Reference with `?v={{ asset_version('futurematch/assets/x.js') }}`.
+- Charts: every chart goes through `window.FMChart` (`fm-charts.js`), loaded by including `templates/fm/_charts.html` in `extra_scripts` before the page script. The loader brings `fm-charts.css` (validated categorical palette `--fm-chart-1..6`, light and dark), Chart.js pinned to 4.4.0, and the helpers (`line`, `bar`, `stackedBar`, `hbarRanked`, `doughnut`, `radar`, `sparkline`). The helpers own Danish number/date formatting, live re-theming on dark-mode toggle, `role="img"` summaries plus a hidden data table, and the empty state. Options are documented in the header of `fm-charts.js`. Templates never call `new Chart(` directly (`tests/test_charts_layer.py`).
 
 ## Tooling
 

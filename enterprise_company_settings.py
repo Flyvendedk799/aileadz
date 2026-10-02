@@ -90,7 +90,7 @@ class EnterpriseSettingsManager:
     def validate_brand_asset(self, file) -> Tuple[bool, str]:
         """Advanced file validation for brand assets"""
         if not file or not file.filename:
-            return False, "No file provided"
+            return False, "Ingen fil valgt."
         
         # Check file size
         file.seek(0, os.SEEK_END)
@@ -98,12 +98,12 @@ class EnterpriseSettingsManager:
         file.seek(0)
         
         if file_size > ENTERPRISE_CONFIG['MAX_FILE_SIZE']:
-            return False, f"File size exceeds {ENTERPRISE_CONFIG['MAX_FILE_SIZE'] // (1024*1024)}MB limit"
+            return False, f"Filen er større end {ENTERPRISE_CONFIG['MAX_FILE_SIZE'] // (1024*1024)} MB."
         
         # Check file extension
         filename = secure_filename(file.filename.lower())
         if not any(filename.endswith(f'.{ext}') for ext in ENTERPRISE_CONFIG['ALLOWED_IMAGE_EXTENSIONS']):
-            return False, "Invalid file type. Allowed: " + ", ".join(ENTERPRISE_CONFIG['ALLOWED_IMAGE_EXTENSIONS'])
+            return False, "Filtypen understøttes ikke. Tilladt: " + ", ".join(ENTERPRISE_CONFIG['ALLOWED_IMAGE_EXTENSIONS'])
         
         # Check MIME type using python-magic when available
         if magic is not None:
@@ -114,7 +114,7 @@ class EnterpriseSettingsManager:
                 
                 allowed_mimes = ['image/jpeg', 'image/png', 'image/gif', 'image/svg+xml', 'image/webp', 'image/x-icon']
                 if mime_type not in allowed_mimes:
-                    return False, f"Invalid MIME type: {mime_type}"
+                    return False, f"Filen er ikke et understøttet billede ({mime_type})."
             except Exception as e:
                 current_app.logger.warning(f"MIME type check failed: {e}")
         
@@ -505,6 +505,16 @@ def get_company_context():
         current_app.logger.error(f"Error getting company context: {e}")
         return None
 
+# Danish names for the brand-asset upload fields (used in user-facing errors).
+_ASSET_LABELS_DA = {
+    'company_logo_primary': 'Primært logo',
+    'company_logo_secondary': 'Sekundært logo',
+    'company_logo_white': 'Hvidt logo',
+    'company_logo_dark': 'Mørkt logo',
+    'company_favicon': 'Favicon',
+}
+
+
 @enterprise_settings_bp.route('/company-settings')
 @require_company_role('company_admin', 'hr_manager')
 def company_settings():
@@ -517,7 +527,7 @@ def update_company_settings():
     """Update enterprise company settings"""
     company = get_company_context()
     if not company:
-        return jsonify({'success': False, 'message': 'Company not found'}), 404
+        return jsonify({'success': False, 'message': 'Virksomheden blev ikke fundet.'}), 404
     
     try:
         # Get form data
@@ -601,7 +611,7 @@ def update_company_settings():
                     # Validate file
                     is_valid, message = settings_manager.validate_brand_asset(file)
                     if not is_valid:
-                        return jsonify({'success': False, 'message': f'{field}: {message}'}), 400
+                        return jsonify({'success': False, 'message': f'{_ASSET_LABELS_DA.get(field, field)}: {message}'}), 400
                     
                     # Capture size before processing consumes the file stream.
                     try:
@@ -642,19 +652,19 @@ def update_company_settings():
 
                     except Exception as e:
                         current_app.logger.error(f"Failed to process {field}: {e}")
-                        return jsonify({'success': False, 'message': f'Failed to process {field}'}), 500
+                        return jsonify({'success': False, 'message': f'{_ASSET_LABELS_DA.get(field, field)} kunne ikke behandles.'}), 500
         
         # Update settings
         success = settings_manager.update_settings(company['id'], settings_data)
         
         if success:
-            return jsonify({'success': True, 'message': 'Settings updated successfully'})
+            return jsonify({'success': True, 'message': 'Indstillingerne er gemt.'})
         else:
-            return jsonify({'success': False, 'message': 'Failed to update settings'}), 500
+            return jsonify({'success': False, 'message': 'Indstillingerne kunne ikke gemmes.'}), 500
     
     except Exception as e:
         current_app.logger.error(f"Failed to update company settings: {e}")
-        return jsonify({'success': False, 'message': 'Internal server error'}), 500
+        return jsonify({'success': False, 'message': 'Der opstod en fejl. Prøv igen om lidt.'}), 500
 
 @enterprise_settings_bp.route('/apply-theme/<int:template_id>', methods=['POST'])
 @require_company_role('company_admin', 'hr_manager')
@@ -662,14 +672,14 @@ def apply_theme_template(template_id):
     """Apply a theme template"""
     company = get_company_context()
     if not company:
-        return jsonify({'success': False, 'message': 'Company not found'}), 404
+        return jsonify({'success': False, 'message': 'Virksomheden blev ikke fundet.'}), 404
     
     success = settings_manager.apply_theme_template(company['id'], template_id)
     
     if success:
-        return jsonify({'success': True, 'message': 'Theme applied successfully'})
+        return jsonify({'success': True, 'message': 'Temaet er anvendt.'})
     else:
-        return jsonify({'success': False, 'message': 'Failed to apply theme'}), 500
+        return jsonify({'success': False, 'message': 'Temaet kunne ikke anvendes.'}), 500
 
 @enterprise_settings_bp.route('/preview-theme', methods=['POST'])
 @require_company_role('company_admin', 'hr_manager')
@@ -695,7 +705,7 @@ def preview_theme():
         
     except Exception as e:
         current_app.logger.error(f"Failed to preview theme: {e}")
-        return jsonify({'success': False, 'message': 'Preview failed'}), 500
+        return jsonify({'success': False, 'message': 'Forhåndsvisningen kunne ikke vises.'}), 500
 
 @enterprise_settings_bp.route('/export-settings')
 @require_company_role('company_admin', 'hr_manager')
@@ -703,7 +713,7 @@ def export_settings():
     """Export company settings as JSON"""
     company = get_company_context()
     if not company:
-        return jsonify({'error': 'Company not found'}), 404
+        return jsonify({'error': 'Virksomheden blev ikke fundet.'}), 404
     
     settings = settings_manager.get_company_settings(company['id'])
     export_data = {

@@ -1,4 +1,5 @@
 {% extends "fm_base.html" %}
+{% import 'fm/_macros.html' as ui %}
 {% block page_id %}acatalog{% endblock %}
 {% block title %}Katalogadmin{% endblock %}
 {% block topbar_title %}Katalogadmin{% endblock %}
@@ -11,13 +12,14 @@
   .cat-log { font-size: 12.5px; color: var(--fm-ink-3); min-height: 20px; margin-top: 8px; }
   .cat-link-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--fm-line); text-decoration: none; color: inherit; }
   .cat-link-row:last-child { border-bottom: 0; }
-  .cat-chart-wrap { position: relative; height: 280px; margin-bottom: 14px; }
+  .cat-chart-wrap { position: relative; height: 300px; margin-bottom: 14px; }
   @media (max-width: 900px) { .cat-split { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
 {% block content %}
 <div class="fm-wrap">
 {% set active_admin_page = 'catalog' %}{% include 'fm/_admin_subnav.html' %}
+{{ ui.related([('Kursusoversigt', url_for('catalog_admin.products') if has_endpoint('catalog_admin.products') else '', 'fa-list')]) }}
 
   <div class="fm-card" style="margin-bottom:16px">
     <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-database"></i></span><h3>Søgeindeks</h3>
@@ -136,27 +138,22 @@
 <script>
   (function () {
     if (typeof FMChart === 'undefined') return;
-    // Top-10 distributions, derived from the same context the tables render.
+    // Ranked top-10 distributions from the same context the tables render. The long tail is
+    // dropped rather than folded: summed, it would dwarf the ranking the card is about.
     var cats = {{ (categories or [])|tojson }};
-    var topCats = cats.slice(0, 10);
-    if (topCats.length) {
-      FMChart.bar('catCategoryChart', {
-        labels: topCats.map(function (c) { return c.name || '—'; }),
-        series: [{ label: 'Produkter', data: topCats.map(function (c) { return Number(c.count) || 0; }) }],
-        horizontal: true,
-        empty: 'Ingen kategorier endnu'
-      });
-    }
+    FMChart.hbarRanked('catCategoryChart', {
+      labels: cats.map(function (c) { return c.name || '—'; }),
+      values: cats.map(function (c) { return Number(c.count) || 0; }),
+      label: 'Produkter', limit: 10, other: false, title: 'Produkter pr. kategori',
+      empty: 'Ingen kategorier endnu'
+    });
     var vendors = {{ (vendors or [])|tojson }};
-    var topVendors = vendors.slice(0, 10);
-    if (topVendors.length) {
-      FMChart.bar('catVendorChart', {
-        labels: topVendors.map(function (v) { return v.name || '—'; }),
-        series: [{ label: 'Kurser', data: topVendors.map(function (v) { return Number(v.course_count) || 0; }) }],
-        horizontal: true,
-        empty: 'Ingen leverandører endnu'
-      });
-    }
+    FMChart.hbarRanked('catVendorChart', {
+      labels: vendors.map(function (v) { return v.name || '—'; }),
+      values: vendors.map(function (v) { return Number(v.course_count) || 0; }),
+      label: 'Kurser', limit: 10, other: false, title: 'Kurser pr. leverandør',
+      empty: 'Ingen leverandører endnu'
+    });
   })();
 </script>
 <script>

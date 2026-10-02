@@ -15,6 +15,9 @@ except Exception:  # pragma: no cover - boot-safe: never crash blueprint import
 
 logger = logging.getLogger(__name__)
 
+# Danish labels for the learner-facing "missing field" message (shown in toasts).
+_FIELD_LABELS_DA = {'name': 'navn', 'email': 'e-mail', 'phone': 'telefon'}
+
 # Create blueprint
 order_routes_bp = Blueprint('order_routes', __name__)
 
@@ -31,7 +34,7 @@ def store_user_info():
         if missing_fields:
             return jsonify({
                 'success': False,
-                'error': f'Missing required fields: {", ".join(missing_fields)}'
+                'error': 'Udfyld venligst: ' + ', '.join(_FIELD_LABELS_DA.get(f, f) for f in missing_fields) + '.'
             }), 400
         
         # Store in session
@@ -44,7 +47,7 @@ def store_user_info():
             
     except Exception as e:
         logger.error(f"Error storing user info: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Oplysningerne kunne ikke gemmes.'}), 500
 
 @order_routes_bp.route('/create_order', methods=['POST'])
 @login_required
@@ -58,7 +61,7 @@ def create_order():
         if not product_handle:
             return jsonify({
                 'success': False,
-                'error': 'Product handle is required'
+                'error': 'Vælg et kursus først.'
             }), 400
         
         # Get product data from session or database
@@ -74,7 +77,7 @@ def create_order():
         if not product_data:
             return jsonify({
                 'success': False,
-                'error': 'Product not found'
+                'error': 'Kurset blev ikke fundet.'
             }), 404
         
         # Parse variant information if provided
@@ -94,7 +97,7 @@ def create_order():
         logger.error(f"Error creating order: {e}")
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': 'Bestillingen kunne ikke oprettes. Prøv igen om lidt.'
         }), 500
 
 @order_routes_bp.route('/order_status/<order_id>', methods=['GET'])
@@ -110,7 +113,7 @@ def get_order_status(order_id):
             from order_service import get_order, OrderContext
         except Exception as imp_err:
             logger.error(f"order_service import failed: {imp_err}")
-            return jsonify({'success': False, 'error': 'Service unavailable'}), 500
+            return jsonify({'success': False, 'error': 'Tjenesten er ikke tilgængelig lige nu. Prøv igen om lidt.'}), 500
 
         ctx = OrderContext.from_session(source='web')
         row = get_order(ctx, order_id)
@@ -155,7 +158,7 @@ def get_order_status(order_id):
         logger.error(f"Error getting order status: {e}")
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': 'Ordrestatus kunne ikke hentes. Prøv igen om lidt.'
         }), 500
 
 @order_routes_bp.route('/validate_order_info', methods=['POST'])
@@ -177,7 +180,7 @@ def validate_order_info():
         logger.error(f"Error validating order info: {e}")
         return jsonify({
             'success': False,
-            'errors': ['System error occurred']
+            'errors': ['Der opstod en systemfejl. Prøv igen om lidt.']
         }), 500
 
 @order_routes_bp.route('/process_order_query', methods=['POST'])
@@ -243,7 +246,7 @@ def cancel_order(order_id):
             from order_service import cancel_order as _svc_cancel_order, OrderContext
         except Exception as imp_err:
             logger.error(f"order_service import failed: {imp_err}")
-            return jsonify({'success': False, 'error': 'Service unavailable'}), 500
+            return jsonify({'success': False, 'error': 'Tjenesten er ikke tilgængelig lige nu. Prøv igen om lidt.'}), 500
 
         ctx = OrderContext.from_session(source='web')
         result = _svc_cancel_order(ctx, order_id)
@@ -251,24 +254,24 @@ def cancel_order(order_id):
         if result.get('success'):
             return jsonify({
                 'success': True,
-                'message': 'Order cancelled successfully'
+                'message': 'Bestillingen er annulleret.'
             })
 
         # Anti-enumeration: not-found / not-owned both surface as 404.
         if result.get('error') == 'not_found':
             return jsonify({
                 'success': False,
-                'error': 'Order not found'
+                'error': 'Bestillingen blev ikke fundet.'
             }), 404
 
         return jsonify({
             'success': False,
-            'error': 'Failed to cancel order'
+            'error': 'Bestillingen kunne ikke annulleres.'
         }), 500
 
     except Exception as e:
         logger.error(f"Error cancelling order: {e}")
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': 'Bestillingen kunne ikke annulleres. Prøv igen om lidt.'
         }), 500

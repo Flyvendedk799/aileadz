@@ -1,0 +1,22 @@
+{# Vendor portal header + tab bar: ONE copy for every signed-in vendor page (the five
+   pages used to carry drifting inline copies, two of them without "Analyser").
+   Vendors are an isolated session (session['vendor_id'] / ['vendor_name']); this
+   never reads session['user']. Set `vendor_tab` before including:
+       {% set vendor_tab = 'orders' %}{% include 'fm/_vendor_nav.html' %}
+   Keys: dashboard, orders, analytics, submit, profile. The page supplies the
+   .vp-top / .vp-nav styles. #}
+{% set _vt = vendor_tab | default('') %}
+{% set _vname = (vendor_name | default('')) or session.get('vendor_name') or '' %}
+<header class="vp-top">
+  <span class="vp-mark">F</span>
+  <span class="name">Leverandørportal</span>
+  {% if _vname %}<span class="who">{{ _vname }}</span>{% endif %}
+</header>
+<nav class="vp-nav" aria-label="Leverandørportal">
+  <a href="{{ url_for('vendor.vendor_dashboard') }}" class="{{ 'active' if _vt == 'dashboard' }}"{% if _vt == 'dashboard' %} aria-current="page"{% endif %}>Oversigt</a>
+  <a href="{{ url_for('vendor.vendor_orders') }}" class="{{ 'active' if _vt == 'orders' }}"{% if _vt == 'orders' %} aria-current="page"{% endif %}>Bestillinger{% if vendor_awaiting_count %} <span class="badge pending">{{ vendor_awaiting_count }}</span>{% endif %}</a>
+  <a href="{{ url_for('vendor.vendor_analytics') }}" class="{{ 'active' if _vt == 'analytics' }}"{% if _vt == 'analytics' %} aria-current="page"{% endif %}>Analyser</a>
+  <a href="{{ url_for('vendor.vendor_submit') }}" class="{{ 'active' if _vt == 'submit' }}"{% if _vt == 'submit' %} aria-current="page"{% endif %}>Indsend katalog</a>
+  <a href="{{ url_for('vendor.vendor_profile') }}" class="{{ 'active' if _vt == 'profile' }}"{% if _vt == 'profile' %} aria-current="page"{% endif %}>Profil</a>
+  <form method="post" action="{{ url_for('vendor.vendor_logout') }}" style="margin:0 0 0 auto"><button type="submit" class="logout" style="background:none;border:0;padding:0;font:inherit;color:var(--fm-ink-3);cursor:pointer">Log ud</button></form>
+</nav>

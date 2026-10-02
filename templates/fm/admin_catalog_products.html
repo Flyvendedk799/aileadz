@@ -1,15 +1,13 @@
 {% extends "fm_base.html" %}
+{% import 'fm/_macros.html' as ui %}
 {% block page_id %}acatalog{% endblock %}
 {% block title %}Kursusoversigt{% endblock %}
 {% block topbar_title %}Kursusoversigt{% endblock %}
 {% block topbar_sub %}Søg, redigér, skjul eller arkivér kurser. Ændringer gælder hele platformen, også AI'en.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-  <div class="pg-subnav">
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalogadmin</a>
-    <a class="pg-tab active" href="{{ url_for('catalog_admin.products') }}"><i class="fa-solid fa-list"></i> Kursusoversigt</a>
-    <a class="pg-tab" href="{{ url_for('admin_reports.catalog_freshness_dashboard') }}"><i class="fa-solid fa-calendar-xmark"></i> Friskhed</a>
-  </div>
+{% set active_admin_page = 'catalog' %}{% include 'fm/_admin_subnav.html' %}
+{{ ui.crumbs([('Katalog', url_for('admin_dashboard.admin_catalog')), ('Kursusoversigt', None)]) }}
 
   <form method="get" class="fm-card" style="padding:14px 16px;margin-bottom:14px">
     <div class="fm-flex fm-gap12" style="flex-wrap:wrap;align-items:center">

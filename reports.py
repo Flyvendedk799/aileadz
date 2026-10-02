@@ -66,9 +66,24 @@ def reports():
     peak_usage = max(daily_usage_values) if daily_usage_values else 0
     peak_day = sorted_dates[daily_usage_values.index(peak_usage)] if daily_usage_values else ""
     
-    # For bar chart: last 7 days
-    last7_dates = sorted_dates[-7:] if len(sorted_dates) >= 7 else sorted_dates
-    last7_usage = daily_usage_values[-7:] if len(daily_usage_values) >= 7 else daily_usage_values
+    # Charts use a gap-free calendar axis: a day without usage is a zero, not a
+    # missing point. The trend runs from the first day with usage (inside the
+    # window) to today; "last 7 days" means the last 7 calendar days, not the
+    # last 7 days that happened to have usage.
+    today = datetime.date.today()
+    first_day = None
+    if sorted_dates:
+        try:
+            first_day = datetime.datetime.strptime(sorted_dates[0], '%Y-%m-%d').date()
+        except ValueError:
+            first_day = None
+    chart_days = []
+    if first_day and first_day <= today:
+        chart_days = [(first_day + datetime.timedelta(days=i)).isoformat()
+                      for i in range((today - first_day).days + 1)]
+    chart_values = [daily_usage.get(d, 0) for d in chart_days]
+    last7_dates = [(today - datetime.timedelta(days=i)).isoformat() for i in range(6, -1, -1)]
+    last7_usage = [daily_usage.get(d, 0) for d in last7_dates]
     
     # Fetch current credits from users table
     try:
@@ -102,8 +117,8 @@ def reports():
                            total_used=total_credits_used,
                            current_credits=current_credits,
                            daily_details=daily_details,
-                           chart_labels=sorted_dates,
-                           chart_data=daily_usage_values,
+                           chart_labels=chart_days,
+                           chart_data=chart_values,
                            average_usage=average_daily_usage,
                            peak_usage=peak_usage,
                            peak_day=peak_day,

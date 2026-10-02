@@ -76,9 +76,13 @@
     else if (p < 75) buckets[3]++;
     else buckets[4]++;
   });
+  // "Ingen kurser" is counted for itself, so it steps back to the muted gray.
   FMChart.bar('progressDistChart', {
+    title: 'Medarbejdere fordelt på gennemsnitlig fremdrift',
     labels: ['Ingen kurser', '0–24 %', '25–49 %', '50–74 %', '75–100 %'],
-    series: [{ label: 'Medarbejdere', data: buckets, color: FMChart.cssVar('--fm-primary', '#0f766e') }],
+    valueLabels: true,
+    series: [{ label: 'Medarbejdere', data: buckets,
+               color: ['--fm-chart-muted', '--fm-primary', '--fm-primary', '--fm-primary', '--fm-primary'] }],
     empty: 'Ingen fremdriftsdata endnu'
   });
 })();

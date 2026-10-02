@@ -193,12 +193,13 @@
   // axis read more honestly than a radar (whose area exaggerates differences).
   if (document.getElementById('skillGapBars')) {
     FMChart.bar('skillGapBars', {
+      title: 'Faktisk niveau og målniveau pr. kompetence',
       horizontal: true,
       max: 5,
       labels: labels,
       series: [
-        { label: 'Faktisk niveau (gns.)', data: actual, color: FMChart.cssVar('--fm-primary', '#0f766e') },
-        { label: 'Målniveau', data: target, color: FMChart.cssVar('--fm-clay', '#c9603a') }
+        { label: 'Faktisk niveau (gns.)', data: actual, color: '--fm-primary' },
+        { label: 'Målniveau', data: target, color: '--fm-clay' }
       ],
       empty: 'Ingen kompetencemål defineret endnu'
     });
@@ -209,10 +210,14 @@
   // the line only ever plots company-level aggregates.
   var gt = {{ (growth_trend or {})|tojson|safe }};
   if (gt && gt.labels && gt.labels.length) {
+    var counts = gt.employee_counts || [];
     FMChart.line('skillGrowthChart', {
+      title: 'Gennemsnitligt målt kompetenceniveau pr. måned',
+      xFormat: 'month',
       labels: gt.labels,
       max: 5,
-      series: [{ label: 'Gns. målt niveau', data: gt.avg_levels || [], color: FMChart.cssVar('--fm-primary', '#0f766e') }],
+      series: [{ label: 'Gns. målt niveau', data: gt.avg_levels || [], color: '--fm-primary' }],
+      footer: function (i) { return counts[i] ? counts[i] + ' medarbejdere målt' : ''; },
       empty: 'Endnu ingen kompetencehistorik'
     });
   }

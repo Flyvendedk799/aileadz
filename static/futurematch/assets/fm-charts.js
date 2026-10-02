@@ -549,16 +549,19 @@
       }).join(', '));
     } else {
       model.series.forEach(function (s) {
-        var d = (s.data || []).map(function (v) { return Number(v) || 0; });
-        if (!d.length) return;
-        var hi = 0, lo = 0;
-        d.forEach(function (v, i) { if (v > d[hi]) hi = i; if (v < d[lo]) lo = i; });
+        // null = no point (e.g. a month no cohort has reached), not a zero.
+        var d = (s.data || []).map(function (v) { return v == null ? null : (Number(v) || 0); });
+        var idx = [];
+        d.forEach(function (v, i) { if (v != null) idx.push(i); });
+        if (!idx.length) return;
+        var hi = idx[0], lo = idx[0], last = idx[idx.length - 1];
+        idx.forEach(function (i) { if (d[i] > d[hi]) hi = i; if (d[i] < d[lo]) lo = i; });
         var name = s.label ? s.label + ': ' : '';
         if (kind === 'line' || kind === 'sparkline') {
-          parts.push(name + d.length + ' punkter' +
+          parts.push(name + idx.length + ' punkter' +
             (labels.length ? ' fra ' + lf(labels[0]) + ' til ' + lf(labels[labels.length - 1]) : '') +
             ', højeste ' + format(d[hi], opts) + (labels[hi] != null ? ' (' + lf(labels[hi]) + ')' : '') +
-            ', seneste ' + format(d[d.length - 1], opts));
+            ', seneste ' + format(d[last], opts));
         } else {
           parts.push(name + 'højeste ' + (labels[hi] != null ? lf(labels[hi]) + ' ' : '') + format(d[hi], opts) +
             ', laveste ' + (labels[lo] != null ? lf(labels[lo]) + ' ' : '') + format(d[lo], opts));

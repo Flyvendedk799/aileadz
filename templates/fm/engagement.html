@@ -268,9 +268,10 @@
   });
   var labels = [(floor < 60 ? floor + '–59 dage' : '< 60 dage'), '60–89 dage', '90+ dage', 'Aldrig aktiv'];
   FMChart.bar('engInactiveHist', {
+    title: 'Inaktive medarbejdere fordelt på dage uden aktivitet',
     labels: labels,
-    series: [{ label: 'Inaktive medarbejdere', data: buckets,
-               color: FMChart.cssVar('--fm-clay', '#c9603a') }],
+    valueLabels: true,
+    series: [{ label: 'Inaktive medarbejdere', data: buckets, color: '--fm-clay' }],
     empty: 'Ingen inaktive medarbejdere'
   });
 })();

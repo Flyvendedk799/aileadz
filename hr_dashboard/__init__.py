@@ -998,7 +998,7 @@ def create_hr_dashboard_blueprint():
                 for i in range(29, -1, -1):
                     day = today - timedelta(days=i)
                     row = by_day.get(day)
-                    approval_trend['labels'].append(day.strftime('%d.%m'))
+                    approval_trend['labels'].append(day.isoformat())  # chart formats via xFormat
                     approval_trend['pending'].append(int(row['pending']) if row and row['pending'] else 0)
                     approval_trend['approved'].append(int(row['approved']) if row and row['approved'] else 0)
                     approval_trend['rejected'].append(int(row['rejected']) if row and row['rejected'] else 0)
@@ -2061,24 +2061,23 @@ def create_hr_dashboard_blueprint():
 
             # Prepare chart data. The trend is gap-free: a day without orders is
             # a zero, not a missing point. A year is bucketed by month so the
-            # line stays readable (365 daily points are noise).
+            # line stays readable (365 daily points are noise). Labels stay ISO
+            # (YYYY-MM-DD / YYYY-MM); the chart formats them via xFormat.
             enr_by_day = {t['date']: int(t.get('enrollments') or 0) for t in learning_trends if t.get('date')}
             comp_by_day = {t['date']: int(t.get('completions') or 0) for t in learning_trends if t.get('date')}
             trend_days, trend_enr = _dense_daily_series(enr_by_day, period_days)
             _, trend_comp = _dense_daily_series(comp_by_day, period_days)
             if period_days > 90:
-                _mn = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec']
                 buckets = {}
                 for d, e, c in zip(trend_days, trend_enr, trend_comp):
                     b = buckets.setdefault(d[:7], [0, 0])
                     b[0] += e
                     b[1] += c
-                keys = sorted(buckets)
-                trend_labels = ['%s %s' % (_mn[int(k[5:7]) - 1], k[2:4]) for k in keys]
-                trend_enr = [buckets[k][0] for k in keys]
-                trend_comp = [buckets[k][1] for k in keys]
+                trend_labels = sorted(buckets)
+                trend_enr = [buckets[k][0] for k in trend_labels]
+                trend_comp = [buckets[k][1] for k in trend_labels]
             else:
-                trend_labels = ['%s.%s' % (d[8:10], d[5:7]) for d in trend_days]
+                trend_labels = trend_days
 
             # Course-title keyword buckets come out of SQL as English keys.
             _category_da = {'Leadership': 'Ledelse', 'Project Management': 'Projektledelse',

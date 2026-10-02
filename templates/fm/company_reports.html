@@ -106,8 +106,10 @@
   (function () {
     if (typeof FMChart === 'undefined') return;
     FMChart.line('dailyChart', {
-      labels: {{ (daily_chatbot_query_labels or []) | tojson | safe }}.map(function (d) { d = String(d); return d.slice(8, 10) + '.' + d.slice(5, 7); }),
-      series: [{ label: 'Beskeder', data: {{ (daily_chatbot_query_data or []) | tojson | safe }} }],
+      title: 'Beskeder til AI-assistenten pr. dag',
+      xFormat: 'day',
+      labels: {{ (daily_chatbot_query_labels or []) | tojson | safe }},
+      series: [{ label: 'Beskeder', data: {{ (daily_chatbot_query_data or []) | tojson | safe }}, color: '--fm-primary' }],
       empty: 'Ingen samtaler i perioden endnu'
     });
   })();

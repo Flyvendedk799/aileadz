@@ -292,6 +292,11 @@ def create_app():
     app.register_blueprint(companies_bp, url_prefix='/companies')
     app.register_blueprint(hr_dashboard_bp, url_prefix='/hr')
     app.register_blueprint(analytics_bp)
+    try:  # "Avanceret" link on Læringsanalyse (R-5); optional
+        import enterprise_analytics
+        enterprise_analytics.register_jinja(app)
+    except Exception as e:
+        logging.warning("Advanced analytics link skipped: %s", e)
     app.register_blueprint(api_enterprise_bp)
     app.register_blueprint(sso_bp)
     # Company settings hub + SSO email-domain discovery (N-4.6, N-7.1)

@@ -1,12 +1,27 @@
 # enterprise_analytics/__init__.py
 """
-Enterprise Analytics & AI System
-Advanced analytics, predictive insights, and machine learning capabilities
+Enterprise Analytics & AI System ("Avanceret analyse", R-5).
+
+Advanced analytics, predictive insights and ML (engagement clustering, anomaly
+detection, skill gaps) for one company.
+
+Contract:
+* Every route is gated by ``_guard``: the ``company.analytics_advanced``
+  capability (alias of ``hr.analytics`` in ``auth_decorators``), the
+  ``ADVANCED_ANALYTICS_ENABLED`` env flag (off by default), and tenancy: the
+  ``company_id`` in the URL must be the session's company unless the caller is a
+  platform admin.
+* The dashboard is reachable from Læringsanalyse via the ``advanced_analytics_url``
+  template global, which returns None when the flag or capability is missing.
+* People analytics follow DECISIONS #11: the dashboard shows aggregates only
+  (engagement distribution, department breakdowns) behind ``kanon`` floors; no
+  named per-employee ML labels.
 """
 
 from flask import Blueprint, request, jsonify, render_template, session, current_app, redirect, url_for, flash
 import MySQLdb.cursors
 import json
+import os
 from datetime import datetime
 import warnings
 warnings.filterwarnings('ignore')
@@ -56,6 +71,60 @@ def _suppress(rows, count_key, label_key=None, merge=False):
 
 analytics_bp = Blueprint('analytics', __name__)
 
+CAPABILITY = 'company.analytics_advanced'
+FLAG_ENV = 'ADVANCED_ANALYTICS_ENABLED'
+
+# Danish display labels for the internal engagement levels.
+ENGAGEMENT_LABELS_DA = {'High': 'Høj', 'Medium': 'Middel', 'Low': 'Lav'}
+
+
+def is_enabled():
+    """The env flag; off unless set to 1/true/yes/on."""
+    return (os.environ.get(FLAG_ENV) or '').strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _can(capability):
+    try:
+        import capabilities
+        return bool(capabilities.can(capability))
+    except Exception:
+        return False
+
+
+def _guard(company_id=None, as_json=False):
+    """None when the caller may use advanced analytics for ``company_id``
+    (None = the session's own company), else the response to return."""
+    def deny(message, status, endpoint='dashboard.dashboard'):
+        if as_json:
+            return jsonify({'error': message}), status
+        flash(message, 'warning' if status == 404 else 'danger')
+        return redirect(url_for(endpoint))
+
+    if not session.get('user'):
+        return deny('Log ind for at fortsætte.', 401, 'auth.login')
+    if not is_enabled():
+        return deny('Avanceret analyse er ikke slået til.', 404)
+    if not _can(CAPABILITY):
+        return deny('Du har ikke adgang til denne side.', 403)
+    if company_id is not None and company_id != session.get('company_id') and not _can('platform.admin'):
+        return deny('Du har ikke adgang til denne virksomheds data.', 403)
+    return None
+
+
+def advanced_analytics_url():
+    """Link for the "Avanceret" entry on Læringsanalyse, or None when hidden."""
+    cid = session.get('company_id')
+    if not cid or not is_enabled() or not _can(CAPABILITY):
+        return None
+    try:
+        return url_for('analytics.analytics_dashboard', company_id=cid)
+    except Exception:
+        return None
+
+
+def register_jinja(app):
+    app.jinja_env.globals['advanced_analytics_url'] = advanced_analytics_url
+
 class AdvancedAnalytics:
     """Advanced Analytics Engine with ML capabilities"""
     
@@ -82,7 +151,7 @@ class AdvancedAnalytics:
             cur.execute("""
                 SELECT elp.*, cu.department, cu.role, cu.job_title
                 FROM employee_learning_progress elp
-                JOIN company_users cu ON elp.user_id = cu.user_id
+                JOIN company_users cu ON elp.user_id = cu.user_id AND cu.company_id = elp.company_id
                 WHERE elp.company_id = %s 
                 AND elp.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
             """, (company_id, days_back))
@@ -92,7 +161,7 @@ class AdvancedAnalytics:
             cur.execute("""
                 SELECT epr.*, cu.department, cu.role
                 FROM employee_performance_reviews epr
-                JOIN company_users cu ON epr.employee_id = cu.user_id
+                JOIN company_users cu ON epr.employee_id = cu.user_id AND cu.company_id = epr.company_id
                 WHERE epr.company_id = %s
                 AND epr.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
             """, (company_id, days_back))
@@ -102,7 +171,7 @@ class AdvancedAnalytics:
             cur.execute("""
                 SELECT eg.*, cu.department, cu.role
                 FROM employee_goals eg
-                JOIN company_users cu ON eg.employee_id = cu.user_id
+                JOIN company_users cu ON eg.employee_id = cu.user_id AND cu.company_id = eg.company_id
                 WHERE eg.company_id = %s
                 AND eg.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
             """, (company_id, days_back))
@@ -331,13 +400,13 @@ class AdvancedAnalytics:
         progress, time_spent, attempts, score = feature_vector
         
         if time_spent > 1000 and progress < 50:
-            return "High time, low progress"
+            return "Meget tid, lav fremgang"
         elif attempts > 5 and score < 60:
-            return "Multiple attempts, low score"
+            return "Mange forsøg, lav score"
         elif progress > 90 and time_spent < 30:
-            return "Suspiciously fast completion"
+            return "Usædvanligt hurtig gennemførelse"
         else:
-            return "Unusual learning pattern"
+            return "Usædvanligt læringsmønster"
     
     def generate_skill_gap_analysis(self, company_id, employee_data):
         """Generate skill gap analysis"""
@@ -491,7 +560,7 @@ class AdvancedAnalytics:
             cur.execute("""
                 SELECT cu.id, elp.content_name, elp.final_score
                 FROM company_users cu
-                JOIN employee_learning_progress elp ON cu.user_id = elp.user_id
+                JOIN employee_learning_progress elp ON cu.user_id = elp.user_id AND elp.company_id = cu.company_id
                 WHERE cu.company_id = %s 
                 AND cu.id != %s
                 AND (cu.role = %s OR cu.department = %s)
@@ -590,20 +659,25 @@ analytics_engine = AdvancedAnalytics()
 
 @analytics_bp.route('/analytics/dashboard/<int:company_id>')
 def analytics_dashboard(company_id):
-    """Advanced analytics dashboard"""
-    # Check permissions
-    if session.get('company_id') != company_id or session.get('company_role') not in ['company_admin', 'hr_manager']:
-        return redirect(url_for('dashboard.dashboard'))
-    
+    """Advanced analytics dashboard (aggregates only, see the module contract)."""
+    denied = _guard(company_id)
+    if denied is not None:
+        return denied
+
     # Get company data
     data = analytics_engine.get_company_data(company_id)
     if not data:
-        flash('Analysedata kunne ikke indlæses.', 'error')
-        return redirect(url_for('dashboard.dashboard'))
-    
-    # Calculate engagement scores
+        flash('Analysedata kunne ikke indlæses.', 'danger')
+        return redirect(url_for('hr_dashboard.learning_analytics'))
+
+    # Engagement is shown as a company-wide distribution only, and only when the
+    # company itself is at least a k-cohort (DECISIONS #11).
     engagement_scores = analytics_engine.calculate_engagement_score(data['employees'], data['learning'])
-    
+    engagement_anon = None
+    if engagement_scores and _kanon is not None and not _kanon.is_cohort_safe(len(engagement_scores), _kanon.K_DEFAULT):
+        engagement_scores = []
+        engagement_anon = _kanon.anon_note()
+
     # Predict performance trends
     performance_predictions = analytics_engine.predict_performance_trends(
         company_id, data['employees'], data['performance']
@@ -617,10 +691,17 @@ def analytics_dashboard(company_id):
     
     # Create visualizations
     charts = create_analytics_charts(data, engagement_scores, performance_predictions)
-    
+    engagement_counts = {}
+    for score in engagement_scores or []:
+        engagement_counts[score['engagement_label']] = engagement_counts.get(score['engagement_label'], 0) + 1
+
     return render_template('fm/analytics_dashboard.html',
                          company_id=company_id,
-                         engagement_scores=engagement_scores,
+                         engagement_counts=engagement_counts,
+                         engagement_labels_da=ENGAGEMENT_LABELS_DA,
+                         engagement_anon=engagement_anon,
+                         dept_anon=charts.pop('_dept_anon', None),
+engagement_scores=engagement_scores,
                          performance_predictions=performance_predictions,
                          learning_anomalies=learning_anomalies,
                          skill_gaps=skill_gaps,
@@ -630,10 +711,13 @@ def analytics_dashboard(company_id):
 @analytics_bp.route('/analytics/employee/<int:employee_id>/recommendations')
 def employee_recommendations(employee_id):
     """Get personalized learning recommendations for employee"""
+    denied = _guard(as_json=True)
+    if denied is not None:
+        return denied
     company_id = session.get('company_id')
     if not company_id:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
+        return jsonify({'error': 'Ingen virksomhed.'}), 403
+
     recommendations = analytics_engine.create_learning_recommendations(company_id, employee_id)
 
     if recommendations is None:
@@ -653,9 +737,10 @@ def employee_recommendations(employee_id):
 @analytics_bp.route('/analytics/api/engagement-trends/<int:company_id>')
 def get_engagement_trends(company_id):
     """API endpoint for engagement trends data"""
-    if session.get('company_id') != company_id:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
+    denied = _guard(company_id, as_json=True)
+    if denied is not None:
+        return denied
+
     try:
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
@@ -685,9 +770,10 @@ def get_engagement_trends(company_id):
 @analytics_bp.route('/analytics/api/department-performance/<int:company_id>')
 def get_department_performance(company_id):
     """API endpoint for department performance comparison"""
-    if session.get('company_id') != company_id:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
+    denied = _guard(company_id, as_json=True)
+    if denied is not None:
+        return denied
+
     try:
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
@@ -744,8 +830,9 @@ def calculate_learning_roi(company_id):
     real course_orders / department spend; the estimate keys are explicitly
     derived from the labelled scenario and are non-factual projections.
     """
-    if session.get('company_id') != company_id:
-        return jsonify({'error': 'Unauthorized'}), 401
+    denied = _guard(company_id, as_json=True)
+    if denied is not None:
+        return denied
 
     try:
         # Delegate to the single canonical computation.
@@ -784,7 +871,8 @@ def create_analytics_charts(data, engagement_scores, performance_predictions):
     try:
         # Engagement Score Distribution
         if engagement_scores:
-            engagement_labels = [score['engagement_label'] for score in engagement_scores]
+            engagement_labels = [ENGAGEMENT_LABELS_DA.get(score['engagement_label'], score['engagement_label'])
+                                 for score in engagement_scores]
             engagement_counts = {label: engagement_labels.count(label) for label in set(engagement_labels)}
             
             fig_engagement = go.Figure(data=[
@@ -792,7 +880,7 @@ def create_analytics_charts(data, engagement_scores, performance_predictions):
                       values=list(engagement_counts.values()),
                       hole=0.3)
             ])
-            fig_engagement.update_layout(title="Employee Engagement Distribution")
+            fig_engagement.update_layout(title="Fordeling af engagement")
             charts['engagement_pie'] = json.dumps(fig_engagement, cls=plotly.utils.PlotlyJSONEncoder)
         
         # Performance Trend
@@ -804,29 +892,33 @@ def create_analytics_charts(data, engagement_scores, performance_predictions):
             fig_performance.add_trace(go.Scatter(
                 x=dates, y=performance_scores,
                 mode='lines+markers',
-                name='Performance Score',
+                name='Tilfredshed',
                 line=dict(color='#1f77b4', width=3)
             ))
             fig_performance.update_layout(
-                title="Performance Trends Over Time",
-                xaxis_title="Date",
+                title="Udvikling over tid",
+                xaxis_title="Dato",
                 yaxis_title="Score"
             )
             charts['performance_trend'] = json.dumps(fig_performance, cls=plotly.utils.PlotlyJSONEncoder)
         
         # Learning Hours by Department
         if data['employees']:
-            dept_hours = {}
+            dept_rows = {}
             for emp in data['employees']:
-                dept = emp['department'] or 'Unknown'
-                if dept not in dept_hours:
-                    dept_hours[dept] = 0
-                dept_hours[dept] += emp['total_learning_hours'] or 0
-            
+                dept = emp['department'] or 'Ukendt afdeling'
+                row = dept_rows.setdefault(dept, {'department': dept, 'hours': 0, 'employees': 0})
+                row['hours'] += float(emp['total_learning_hours'] or 0)
+                row['employees'] += 1
+            # k-anonymity: a small department's total is one person's hours.
+            rows, note = _suppress(list(dept_rows.values()), 'employees')
+            if note and note.get('suppressed'):
+                charts['_dept_anon'] = note.get('note_da')
+
             fig_dept_hours = go.Figure(data=[
-                go.Bar(x=list(dept_hours.keys()), y=list(dept_hours.values()))
+                go.Bar(x=[r['department'] for r in rows], y=[r['hours'] for r in rows])
             ])
-            fig_dept_hours.update_layout(title="Learning Hours by Department")
+            fig_dept_hours.update_layout(title="Læringstimer pr. afdeling")
             charts['dept_learning_hours'] = json.dumps(fig_dept_hours, cls=plotly.utils.PlotlyJSONEncoder)
         
     except Exception:
@@ -837,9 +929,10 @@ def create_analytics_charts(data, engagement_scores, performance_predictions):
 @analytics_bp.route('/analytics/export/<int:company_id>')
 def export_analytics(company_id):
     """Export analytics data"""
-    if session.get('company_id') != company_id or session.get('company_role') not in ['company_admin', 'hr_manager']:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
+    denied = _guard(company_id, as_json=True)
+    if denied is not None:
+        return denied
+
     format_type = request.args.get('format', 'json')
     
     # Get comprehensive analytics data

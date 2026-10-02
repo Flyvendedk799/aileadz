@@ -348,6 +348,7 @@ CAPABILITY_MIN_ROLE = {
     "company.settings": "hr_manager",
     "company.branding": "hr_manager",
     "company.integrations": "company_admin",  # SSO, API keys, webhooks
+    "company.admins": "company_admin",        # grant or revoke the company_admin role
 }
 
 # Navigation / settings-hub names (Part B, N-2.3) -> the matrix capability that

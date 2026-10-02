@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 import json
 import secrets
 from werkzeug.security import generate_password_hash
-from auth_decorators import require_role, require_company_role
+from auth_decorators import can, require_capability, require_role
 from branding_service import (
     get_branding,
     has_custom_branding_feature,
@@ -20,27 +20,23 @@ from branding_service import (
     set_custom_branding_feature,
 )
 
+# Company roles HR may hand out when adding an employee. Granting company_admin
+# additionally needs the ``company.admins`` capability (company admins only).
+ASSIGNABLE_ROLES = ('employee', 'team_lead', 'department_head', 'hr_manager', 'company_admin')
+
+
 def create_companies_blueprint():
     companies_bp = Blueprint('companies', __name__, template_folder='templates')
 
-    def require_branding_access():
+    def require_company_admin(capability='company.employees'):
+        """Guard for the company-administration pages. ``capability`` is asked of
+        the role matrix in auth_decorators (the same answer the nav links get), so
+        link visibility and route access always agree."""
         if 'user' not in session:
             flash("Log ind for at bruge denne funktion.", "danger")
             return redirect(url_for('auth.login'))
-        if session.get('role') == 'admin':
-            return None
-        if session.get('company_role') in ['company_admin', 'hr_manager']:
-            return None
-        flash("Du har ikke tilladelse til at administrere branding.", "danger")
-        return redirect(url_for('dashboard.dashboard'))
 
-    def require_company_admin():
-        """Decorator to ensure user is a company admin"""
-        if 'user' not in session:
-            flash("Log ind for at bruge denne funktion.", "danger")
-            return redirect(url_for('auth.login'))
-        
-        if not session.get('company_id') or session.get('company_role') not in ['company_admin', 'hr_manager']:
+        if not session.get('company_id') or not can(capability):
             flash("Du har ikke tilladelse til at bruge denne funktion.", "danger")
             return redirect(url_for('dashboard.dashboard'))
         return None
@@ -510,6 +506,8 @@ def create_companies_blueprint():
             # No password typed = invite: the employee gets a set-password link and
             # picks their own (HR never has to know or pass on a password).
             role = request.form.get('role', 'employee')
+            if role not in ASSIGNABLE_ROLES or (role == 'company_admin' and not can('company.admins')):
+                role = 'employee'
             department = request.form.get('department', '').strip()
             job_title = request.form.get('job_title', '').strip()
             employee_id = request.form.get('employee_id', '').strip()
@@ -725,7 +723,7 @@ def create_companies_blueprint():
                 employment_type = request.form.get('employment_type', employee['employment_type'])
                 status = request.form.get('status', employee['status'])
                 # Only a company admin may grant or take away the admin role.
-                if (session.get('company_role') != 'company_admin' and session.get('role') != 'admin'
+                if (not can('company.admins')
                         and role != employee['role'] and 'company_admin' in (role, employee['role'])):
                     role = employee['role']
 
@@ -823,7 +821,7 @@ def create_companies_blueprint():
     @companies_bp.route('/settings', methods=['GET', 'POST'])
     def settings():
         """Company settings management (GET lives in the settings hub, N-4.6)"""
-        auth_check = require_company_admin()
+        auth_check = require_company_admin('company.settings')
         if auth_check:
             return auth_check
         from settings_hub import hub_redirect
@@ -1035,7 +1033,7 @@ def create_companies_blueprint():
 
     @companies_bp.route('/branding', methods=['GET', 'POST'])
     @companies_bp.route('/branding/<int:company_id>', methods=['GET', 'POST'])
-    @require_company_role('company_admin', 'hr_manager')
+    @require_capability('company.branding')
     def branding(company_id=None):
         """Unified branding hub for HR admins (opened through the settings hub)."""
         if company_id is None:

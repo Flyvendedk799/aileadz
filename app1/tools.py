@@ -1541,7 +1541,8 @@ def _catalog_compact_fields(product):
         "locations": product.get("locations", [])[:5],
         "dates": dates[:5],
         "categories": _catalog_category_urls(product),
-        "image_url": product.get("image_url"),
+        # No image_url: the cards render the picture, and a URL in the tool result
+        # makes the model paste it into the answer as a full-width markdown image.
         "source": product.get("source"),
     }
     # Apply supplier agreement discount so catalog results quote the same

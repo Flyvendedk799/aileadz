@@ -1838,6 +1838,13 @@ body.chat-page .fm-top .fm-chip { font-size: 12px; }
 .chatx .w-card:hover .t { color: var(--cx-accent); }
 .chatx .w-card .h { display: none; }
 
+/* course cards read as part of the answer: a caption, tight to the text, logos shown whole */
+.chatx .cards-cap { padding: 0 4px; font-size: 12.5px; font-weight: 600; color: var(--fm-ink-3); letter-spacing: 0; }
+.chatx .tb-rich { margin-top: -2px; }
+.chatx .course-thumb.has-img { background: #fff; padding: 6px; }
+.chatx .course-thumb img { object-fit: contain; }
+.chatx .md img { display: none; }
+
 @media (max-width: 760px) {
   body.chat-page .fm-top-titles { position: static; transform: none; flex: 1; display: flex; justify-content: center; }
   .fm-top .ai-modebar a { padding: 0 10px; }

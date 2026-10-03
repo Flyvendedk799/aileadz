@@ -1,8 +1,9 @@
 {% extends "fm_base.html" %}
 {% block page_id %}mindmap{% endblock %}
 {% block title %}Mind-Map · Futurematch{% endblock %}
-{% block topbar_title %}Mind-Map{% endblock %}
-{% block topbar_sub %}Alt hvad AI'en husker om dig — og hvornår den bruger det{% endblock %}
+{% block topbar_title %}{% include 'fm/_ai_modebar.html' %}{% endblock %}
+{% block topbar_sub %}{% endblock %}
+{% block topbar_lead %}{% include 'fm/_ai_header_lead.html' %}{% endblock %}
 {% block body_class %}mindmap-page{% endblock %}
 
 {% block extra_head %}
@@ -20,11 +21,6 @@
   body.mindmap-page .fm-content { padding: 0; min-height: 0; display: flex; flex-direction: column; }
   body.mindmap-page .fm-foot { display: none; }
   .mm-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-  .ai-modebar { display: flex; align-items: center; gap: 8px; padding: 10px 20px; border-bottom: 1px solid var(--fm-line); background: var(--fm-surface); overflow-x: auto; }
-  .ai-modebar a { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--fm-line); background: var(--fm-surface-2); color: var(--fm-ink-2); font-size: 12.5px; font-weight: 650; white-space: nowrap; text-decoration: none; }
-  .ai-modebar a:hover { border-color: var(--fm-primary); color: var(--fm-primary); }
-  .ai-modebar a.active { border-color: var(--fm-primary); background: var(--fm-primary-tint); color: var(--fm-primary); }
-  .ai-modebar i { font-size: 13px; }
   .mm3d-stage { flex: 1; position: relative; min-height: 0; overflow: hidden; }
   /* support.js mounts React inside the x-dc element — ensure it fills stage.
      NB: never write the literal x-dc open tag with angle brackets anywhere
@@ -77,7 +73,6 @@
 
 {% block content %}
 <div class="mm-wrap">
-  {% include 'fm/_ai_modebar.html' %}
   <div class="mm3d-stage">
 {% raw %}
 <x-dc>

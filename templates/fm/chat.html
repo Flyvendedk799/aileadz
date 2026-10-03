@@ -4,6 +4,7 @@
 {# The page needs no heading of its own: the topbar carries the tabs and the profile pill, nothing else. #}
 {% block topbar_title %}{% include 'fm/_ai_modebar.html' %}{% endblock %}
 {% block topbar_sub %}{% endblock %}
+{% block topbar_lead %}{% include 'fm/_ai_header_lead.html' %}{% endblock %}
 {% block topbar_extra %}
 <a class="ai-ctx" id="aiWorkspaceStatus" href="{{ url_for('futurematch.mind_map') }}" hidden>
   <span class="ai-ctx-main"><span class="v" id="aiWsPct">—</span><span class="l">profil</span></span>

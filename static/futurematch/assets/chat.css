@@ -1560,31 +1560,7 @@ body.chat-page .fm-main { background: var(--fm-surface); }
   -webkit-font-smoothing: antialiased;
 }
 
-/* ----- top bar: the shell's tall header shrinks to one transparent row ----- */
-body.chat-page .fm-top {
-  min-height: 52px; padding: 8px 16px; gap: 8px;
-  background: color-mix(in srgb, var(--fm-surface) 78%, transparent);
-  border-bottom: 0;
-}
-body.chat-page .fm-top-titles { position: absolute; left: 50%; transform: translateX(-50%); flex: none; z-index: 1; }
-body.chat-page .fm-top-title { font-size: inherit; font-weight: inherit; letter-spacing: 0; overflow: visible; }
-body.chat-page .fm-top-actions { margin-left: auto; gap: 4px; }
-body.chat-page .fm-top .fm-icon-btn { border-color: transparent; background: transparent; width: 36px; height: 36px; flex-basis: 36px; color: var(--fm-ink-3); box-shadow: none; }
-body.chat-page .fm-top .fm-icon-btn:hover { background: var(--fm-surface-3); color: var(--fm-ink); }
-body.chat-page .fm-top .fm-chip { font-size: 12px; }
-
-/* the two workspaces as one segmented control */
-.chatx .ai-modebar, .fm-top .ai-modebar {
-  display: inline-flex; align-items: center; gap: 2px; padding: 3px; margin: 0; overflow: visible;
-  border: 0; border-radius: 999px; background: var(--fm-surface-3);
-}
-.fm-top .ai-modebar a {
-  display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 14px; border: 0; border-radius: 999px;
-  background: transparent; color: var(--fm-ink-3); font-size: 13px; font-weight: 600; letter-spacing: -.005em; white-space: nowrap; transition: .18s;
-}
-.fm-top .ai-modebar a i { font-size: 11px; }
-.fm-top .ai-modebar a:hover { color: var(--fm-ink); }
-.fm-top .ai-modebar a.active { background: var(--fm-surface); color: var(--fm-ink); box-shadow: 0 1px 3px rgba(20, 28, 24, .14); }
+/* ----- header: the shared slim header (fm.css) carries the Assistent / Mind-Map switch and the history buttons ----- */
 
 /* profile strength: one small pill; the rest on hover */
 .ai-ctx { position: relative; display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 999px; background: var(--fm-surface-3); color: var(--fm-ink-2); font-size: 12px; text-decoration: none; }
@@ -1845,15 +1821,18 @@ body.chat-page .fm-top .fm-chip { font-size: 12px; }
 .chatx .course-thumb img { object-fit: contain; }
 .chatx .md img { display: none; }
 
-@media (max-width: 760px) {
-  body.chat-page .fm-top-titles { position: static; transform: none; flex: 1; display: flex; justify-content: center; }
-  .fm-top .ai-modebar a { padding: 0 10px; }
-  .fm-top .ai-modebar a i { display: none; }
-  body.chat-page .fm-top-actions .fm-chip, body.chat-page .fm-top-actions form { display: none; }
-}
 @media (max-width: 560px) {
   .ai-ctx { display: none; }
 }
+/* pick up where you left off: the newest conversations under the suggestions */
+.chatx .w-recent { margin: 30px auto 0; max-width: 440px; text-align: left; }
+.chatx .w-recent[hidden] { display: none; }
+.chatx .w-recent-h { padding: 0 12px 6px; font-size: 12px; font-weight: 600; color: var(--fm-ink-3); }
+.chatx .w-recent-row { display: flex; align-items: baseline; gap: 14px; width: 100%; padding: 9px 12px; border: 0; border-radius: 12px; background: transparent; color: var(--fm-ink); font: inherit; font-size: 14px; text-align: left; cursor: pointer; transition: background .15s; }
+.chatx .w-recent-row:hover { background: var(--cx-fill); }
+.chatx .w-recent-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.chatx .w-recent-w { flex: 0 0 auto; font-size: 12px; color: var(--fm-ink-3); }
+
 @media (max-width: 640px) {
   .chatx .thread { padding: 14px 14px 8px; gap: 24px; }
   .chatx .av-bot { display: none; }

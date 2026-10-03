@@ -1,0 +1,8 @@
+{# Header buttons for the AI pages (/chat, /mind-map): conversation history and a new chat.
+   The panel itself is fm/_ai_sidebar.html; ai-sidebar.js wires these buttons. #}
+<button type="button" class="fm-icon-btn ai-lead-btn" data-ai-hist-toggle aria-haspopup="dialog" aria-expanded="false" aria-controls="aiHist" aria-label="Samtaler" title="Samtaler">
+  <i class="fa-solid fa-clock-rotate-left"></i>
+</button>
+<button type="button" class="fm-icon-btn ai-lead-btn" data-ai-new data-ai-new-href="{{ url_for('futurematch.chat') }}?new=1" aria-label="Ny samtale" title="Ny samtale">
+  <i class="fa-regular fa-pen-to-square"></i>
+</button>

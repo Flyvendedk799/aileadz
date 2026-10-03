@@ -94,7 +94,6 @@
           <li><a class="fm-nav-link {{ 'active' if _nav == 'chat' }}" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comment-dots"></i><span>AI-assistent</span></a></li>
           <li><a class="fm-nav-link {{ 'active' if _nav == 'mindmap' }}" href="{{ url_for('futurematch.mind_map') }}"><i class="fa-solid fa-brain"></i><span>Mind-Map</span></a></li>
         </ul>
-        {% if _in_ai %}{% include 'fm/_ai_sidebar.html' %}{% endif %}
       </div>
 
       <ul class="fm-nav-list">
@@ -190,6 +189,7 @@
   <div class="fm-main">
     <header class="fm-top">
       <button class="fm-icon-btn fm-menu-btn" data-side-open aria-label="Menu"><i class="fa-solid fa-bars"></i></button>
+      <div class="fm-top-lead">{% block topbar_lead %}{% endblock %}</div>
       <div class="fm-top-titles">
         <div class="fm-top-title">{% block topbar_title %}{% endblock %}</div>
         <div class="fm-top-sub">{% block topbar_sub %}{% endblock %}</div>
@@ -206,6 +206,9 @@
         {% endif %}
       </div>
     </header>
+
+    {# Conversation history for the AI pages: a floating panel opened from the header (see ai-sidebar.js). #}
+    {% if _in_ai %}{% include 'fm/_ai_sidebar.html' %}{% endif %}
 
     <main class="fm-content">
       {% if session.get('admin_acting_company_id') %}

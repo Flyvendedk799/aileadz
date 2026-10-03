@@ -1,22 +1,29 @@
-{# Shared conversation panel for /chat and /mind-map.
-   Mounted inside .fm-ai-cluster in fm_base.html. ai-sidebar.js fills #aiConvList. #}
-<div class="ai-conv-panel" id="aiConvPanel" data-ai-page="{{ page }}">
-  <div class="ai-conv-head">
-    <span class="ai-conv-label">Samtaler</span>
-    <button type="button" class="ai-conv-new" data-ai-new
-            data-ai-new-href="{{ url_for('futurematch.chat') }}?new=1"
-            title="Ny samtale" aria-label="Ny samtale">
-      <i class="fa-solid fa-plus"></i><span>Ny</span>
-    </button>
-  </div>
-  <label class="ai-conv-search">
-    <i class="fa-solid fa-magnifying-glass"></i>
-    <input id="aiConvSearch" type="search" placeholder="Søg samtaler…" autocomplete="off" />
-  </label>
-  <div class="ai-conv-filters" role="tablist" aria-label="Filtrer samtaler">
-    <button type="button" class="ai-conv-filter is-on" data-ai-filter="all" role="tab" aria-selected="true">Alle</button>
-  </div>
-  <div class="ai-conv-list" id="aiConvList" role="list">
-    <div class="ai-conv-empty">Indlæser…</div>
+{# Conversation history for /chat and /mind-map, mounted by fm_base.html inside .fm-main.
+   A floating panel (or, on wide chat screens, a pinned column); the header button
+   [data-ai-hist-toggle] opens it. ai-sidebar.js fills #aiConvList. #}
+<div class="ai-hist" id="aiHist">
+  <div class="ai-hist-scrim" data-ai-hist-close></div>
+  <div class="ai-conv-panel" id="aiConvPanel" data-ai-page="{{ page }}" role="dialog" aria-label="Samtaler">
+    <div class="ai-conv-head">
+      <span class="ai-conv-label">Samtaler</span>
+      <button type="button" class="ai-conv-new" data-ai-new
+              data-ai-new-href="{{ url_for('futurematch.chat') }}?new=1"
+              title="Ny samtale" aria-label="Ny samtale">
+        <i class="fa-solid fa-plus"></i><span>Ny</span>
+      </button>
+      <button type="button" class="ai-hist-btn ai-hist-pin" data-ai-hist-pin aria-pressed="false" title="Fastgør til siden" aria-label="Fastgør samtaler til siden">
+        <i class="fa-solid fa-thumbtack"></i>
+      </button>
+      <button type="button" class="ai-hist-btn" data-ai-hist-close title="Luk" aria-label="Luk samtaler">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <label class="ai-conv-search">
+      <i class="fa-solid fa-magnifying-glass"></i>
+      <input id="aiConvSearch" type="search" placeholder="Søg i samtaler…" autocomplete="off" />
+    </label>
+    <div class="ai-conv-list" id="aiConvList" role="list">
+      <div class="ai-conv-empty">Indlæser…</div>
+    </div>
   </div>
 </div>

@@ -1827,6 +1827,30 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
   send.onclick = () => { if (input.value.trim()) run(input.value.trim()); };
 
   /* ---------------- welcome ---------------- */
+  // "Pick up where you left off": the newest conversations on the welcome screen.
+  // The history panel (ai-sidebar.js) owns the list; this only shows its top three.
+  function paintRecents() {
+    const box = document.getElementById("wRecent");
+    if (!box) return;
+    const items = (window.fmAiSidebar && window.fmAiSidebar.recent ? window.fmAiSidebar.recent(3) : [])
+      .filter((c) => c && c.id != null && String(c.id) !== String(activeConvId));
+    if (!items.length) { box.hidden = true; box.innerHTML = ""; return; }
+    const when = (iso) => {
+      const d = new Date(iso); if (!iso || isNaN(d.getTime())) return "";
+      const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+      if (days < 1) return d.toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" });
+      if (days < 2) return "i går";
+      return d.toLocaleDateString("da-DK", { day: "numeric", month: "short" });
+    };
+    box.innerHTML = '<div class="w-recent-h">Fortsæt hvor du slap</div>' + items.map((c) =>
+      `<button type="button" class="w-recent-row" data-id="${esc(c.id)}"><span class="w-recent-t">${esc(c.title || "Samtale")}</span><span class="w-recent-w">${esc(when(c.updated_at))}</span></button>`).join("");
+    box.hidden = false;
+    box.querySelectorAll(".w-recent-row").forEach((b) => b.addEventListener("click", () => {
+      if (typeof window.fmOpenConversation === "function") window.fmOpenConversation(b.getAttribute("data-id"));
+    }));
+  }
+  document.addEventListener("fm:conversations", paintRecents);
+
   function welcome() {
     thread.innerHTML = `
       <div class="welcome">
@@ -1841,8 +1865,10 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
           <button class="w-card" data-q="Hvilke kompetencer mangler jeg for at nå mit mål?"><span class="ic"><i class="fa-solid fa-layer-group"></i></span><span><div class="t">Mine kompetencegab</div><div class="h">Se hvad der mangler</div></span></button>
           <button class="w-card" data-q="Opdater mit CV — jeg har erfaring med projektledelse og teamledelse"><span class="ic"><i class="fa-solid fa-id-card"></i></span><span><div class="t">Opdater dit CV</div><div class="h">Fortæl mig om din erfaring</div></span></button>
         </div>
+        <div class="w-recent" id="wRecent" hidden></div>
       </div>`;
     thread.querySelectorAll(".w-card").forEach((c) => c.onclick = () => ask(c.dataset.q));
+    paintRecents();
   }
   async function newChat() {
     attached = []; renderRef(); input.value = ""; toggleSend();

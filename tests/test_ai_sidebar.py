@@ -281,8 +281,14 @@ class AiSidebarTemplateTests(unittest.TestCase):
             self.assertIn('id="aiConvList"', html, tmpl)
             self.assertIn("ai-sidebar.js", html, tmpl)
             self.assertIn('data-page="%s"' % page, html, tmpl)
-            self.assertIn("fm-ai-cluster", html, tmpl)
-            self.assertIn('class="fm-ai-cluster in"', html, tmpl)
+            self.assertIn('class="fm-ai-cluster in"', html, tmpl)  # the AI links stay lit in the sidebar
+            # the history is a panel opened from the header, not part of the sidebar
+            self.assertIn('id="aiHist"', html, tmpl)
+            self.assertIn("data-ai-hist-toggle", html, tmpl)
+            self.assertIn("data-ai-new", html, tmpl)
+            self.assertLess(html.index('class="fm-side-scroll"'), html.index('id="aiConvPanel"'), tmpl)
+            side = html[html.index('<aside class="fm-side"'):html.index("</aside>")]
+            self.assertNotIn("aiConvPanel", side, tmpl)
 
     def test_non_ai_page_does_not_mount_conversation_panel(self):
         with open(os.path.join(TEMPLATES, "fm_base.html"), encoding="utf-8") as fh:
@@ -290,12 +296,15 @@ class AiSidebarTemplateTests(unittest.TestCase):
         self.assertIn("fm/_ai_sidebar.html", src)
         self.assertIn("ai-sidebar.js", src)
         self.assertLess(src.index("fm-ai-cluster"), src.index("Kursuskatalog"))
+        # mounted in .fm-main (header side), never inside the sidebar's scroll area
+        self.assertGreater(src.index("fm/_ai_sidebar.html"), src.index("</aside>"))
 
     def test_shared_js_has_search_filter_and_mode_badges(self):
         path = os.path.join(os.path.dirname(__file__), "..", "static/futurematch/assets/ai-sidebar.js")
         with open(path, encoding="utf-8") as fh:
             js = fh.read()
-        for needle in ("aiConvSearch", "data-ai-filter", "fmOpenConversation", "/chat?c="):
+        for needle in ("aiConvSearch", "data-ai-filter", "fmOpenConversation", "/chat?c=",
+                       "data-ai-hist-toggle", "fm:conversations", "ai-hist-pinned"):
             self.assertIn(needle, js)
         # The profiler is part of the assistant: no conversation opens on a separate page.
         self.assertNotIn("/ai-profiler", js)

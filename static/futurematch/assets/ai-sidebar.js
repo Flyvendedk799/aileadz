@@ -1,6 +1,8 @@
-/* Futurematch — shared AI conversation sidebar for /chat, /mind-map.
-   Fills #aiConvPanel. Chat/profiler pages expose window.fmOpenConversation /
-   window.fmNewChat; Mind-Map navigates to the matching surface. */
+/* Futurematch — shared AI conversation history for /chat, /mind-map.
+   Fills #aiConvPanel, a floating panel opened from the header button
+   [data-ai-hist-toggle] (on wide chat screens it can be pinned as a column).
+   Chat pages expose window.fmOpenConversation / window.fmNewChat; Mind-Map
+   navigates to the matching surface. */
 (function () {
   "use strict";
 
@@ -12,6 +14,9 @@
   const page = (panel.getAttribute("data-ai-page") || document.body.dataset.page || "").trim();
   const STORE_KEY = "fm-ai-active-conv";
   const FILTER_KEY = "fm-ai-conv-filter";
+  const PIN_KEY = "fm-ai-hist-pinned";
+  const hist = document.getElementById("aiHist") || panel;
+  const WIDE = window.matchMedia ? window.matchMedia("(min-width: 1180px)") : { matches: false, addEventListener: function () {} };
 
   const esc = (s) => String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -153,6 +158,7 @@
     if (!id) return;
     persistActive(id);
     render();
+    closeFloating();
     const conv = CONVS.find((c) => String(c.id) === String(id));
     if (page === "chat" && typeof window.fmOpenConversation === "function") {
       window.fmOpenConversation(id);
@@ -195,12 +201,14 @@
     if (opts.activeId != null) persistActive(opts.activeId);
     else if (opts.selectNewestIfNone && !activeId && CONVS.length) persistActive(CONVS[0].id);
     render();
+    document.dispatchEvent(new CustomEvent("fm:conversations", { detail: { items: CONVS } }));
     return CONVS;
   }
 
   function newChat() {
     persistActive(null);
     render();
+    closeFloating();
     if (typeof window.fmNewChat === "function") {
       window.fmNewChat();
       return;
@@ -210,7 +218,8 @@
     window.location.href = href;
   }
 
-  panel.querySelectorAll("[data-ai-new]").forEach((b) => {
+  // the header carries a "new chat" button too, so look beyond the panel
+  document.querySelectorAll("[data-ai-new]").forEach((b) => {
     b.addEventListener("click", (e) => { e.preventDefault(); newChat(); });
   });
   panel.querySelectorAll("[data-ai-filter]").forEach((b) => {
@@ -225,7 +234,64 @@
     searchEl.addEventListener("input", () => { query = searchEl.value || ""; render(); });
   }
 
+  /* ---- panel: floating (Esc / click outside closes) or pinned as a column ---- */
+  const toggles = document.querySelectorAll("[data-ai-hist-toggle]");
+  const pinBtn = panel.querySelector("[data-ai-hist-pin]");
+  const canPin = () => page === "chat" && WIDE.matches;
+  const isPinned = () => document.body.classList.contains("ai-hist-pinned");
+  const isOpen = () => hist.classList.contains("open") || isPinned();
+
+  function syncButtons() {
+    const open = isOpen();
+    toggles.forEach((b) => b.setAttribute("aria-expanded", open ? "true" : "false"));
+    if (pinBtn) {
+      pinBtn.classList.toggle("on", isPinned());
+      pinBtn.setAttribute("aria-pressed", isPinned() ? "true" : "false");
+      pinBtn.title = isPinned() ? "Frigør fra siden" : "Fastgør til siden";
+    }
+  }
+  function openFloating() {
+    hist.classList.add("open");
+    syncButtons();
+    if (searchEl) { try { searchEl.focus({ preventScroll: true }); } catch (e) { /* ignore */ } }
+  }
+  function closeFloating() {
+    hist.classList.remove("open");
+    syncButtons();
+  }
+  function setPinned(on) {
+    document.body.classList.toggle("ai-hist-pinned", !!on && canPin());
+    try { localStorage.setItem(PIN_KEY, on ? "1" : "0"); } catch (e) { /* ignore */ }
+    if (isPinned()) hist.classList.remove("open");
+    syncButtons();
+  }
+  function togglePanel() {
+    if (isPinned()) { setPinned(false); return; }
+    if (hist.classList.contains("open")) closeFloating(); else openFloating();
+  }
+
+  toggles.forEach((b) => b.addEventListener("click", (e) => { e.preventDefault(); togglePanel(); }));
+  if (pinBtn) pinBtn.addEventListener("click", () => { if (isPinned()) { setPinned(false); openFloating(); } else setPinned(true); });
+  panel.querySelectorAll("[data-ai-hist-close]").forEach((b) => b.addEventListener("click", () => { if (isPinned()) setPinned(false); else closeFloating(); }));
+  hist.querySelectorAll(".ai-hist-scrim[data-ai-hist-close]").forEach((b) => b.addEventListener("click", closeFloating));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && hist.classList.contains("open")) { closeFloating(); }
+  });
+  try { if (localStorage.getItem(PIN_KEY) === "1" && canPin()) document.body.classList.add("ai-hist-pinned"); } catch (e) { /* ignore */ }
+  if (WIDE.addEventListener) {
+    WIDE.addEventListener("change", () => {
+      if (!WIDE.matches) document.body.classList.remove("ai-hist-pinned");
+      else { try { if (localStorage.getItem(PIN_KEY) === "1" && canPin()) document.body.classList.add("ai-hist-pinned"); } catch (e) { /* ignore */ } }
+      syncButtons();
+    });
+  }
+  syncButtons();
+
   window.fmAiSidebar = {
+    // the newest conversations, for the welcome screen ("pick up where you left off")
+    recent: function (n) { return CONVS.slice(0, n || 3); },
+    open: openFloating,
+    close: closeFloating,
     refresh: refresh,
     setActive: function (id) { persistActive(id); render(); },
     getActive: function () { return activeId; },

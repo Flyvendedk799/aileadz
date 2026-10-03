@@ -143,6 +143,17 @@ Tool state is passed per turn via module globals: `set_search_context(...)`
   (`iter_buffered_text_chunks`, 3 words/chunk). It is regenerated only if empty or
   truncated; once a tool has run, the output cap lifts from the 320-token tool-turn
   cap to `max_output_tokens()`.
+- **Turn layout (`chat.js` `ZONES`):** every assistant turn is built from fixed zones, top to
+  bottom, whatever order the stream delivers events in: `activity` (tool line), `text` (the
+  answer), `rich` (course/comparison/path/profile cards, action buttons), `ask` (anything waiting
+  for the user: confirm cards, choice/form/question sheets), `notes` (memory and saved-item
+  notes), `foot` (suggestion chips, feedback, errors). A renderer places its element with
+  `place(body, zone, el)`, never `body.appendChild`; a new SSE card must pick a zone. The tool
+  line is one muted row ("Søger i kataloget" while live, "Brugte n værktøjer" when settled,
+  `settleActivity`) that expands to the chips; technical meta (latency, cache, category) lives in
+  the chip tooltip. While a card waits for a decision (`awaiting`), generic follow-up chips are
+  not added. Visual language: `chat.css` "CALM PASS" block (one card surface, one button
+  hierarchy: solid = do it, outline = alternative, text = escape hatch).
 - **Tool chips say what happened:** besides the label, a finished chip shows the outcome in
   words (`TOOL_STATUS_NOTES` in `chat.js`: no results / awaiting your confirmation / needs your
   answer / saved), "1 resultat" vs "n resultater", and the server's one-line message as tooltip and

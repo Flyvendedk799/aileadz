@@ -1,8 +1,22 @@
 {% extends "fm_base.html" %}
 {% block page_id %}chat{% endblock %}
 {% block title %}AI-assistent · Futurematch{% endblock %}
-{% block topbar_title %}AI-assistent{% endblock %}
-{% block topbar_sub %}AI-assistent · kan tage fejl — bekræft vigtige detaljer{% endblock %}
+{# The page needs no heading of its own: the topbar carries the tabs and the profile pill, nothing else. #}
+{% block topbar_title %}{% include 'fm/_ai_modebar.html' %}{% endblock %}
+{% block topbar_sub %}{% endblock %}
+{% block topbar_extra %}
+<a class="ai-ctx" id="aiWorkspaceStatus" href="{{ url_for('futurematch.mind_map') }}" hidden>
+  <span class="ai-ctx-main"><span class="v" id="aiWsPct">—</span><span class="l">profil</span></span>
+  <span class="ai-ctx-pop" role="tooltip">
+    <span class="ai-ctx-title">Fælles AI-kontekst</span>
+    <span class="ai-ctx-row"><span class="v" id="aiWsMem">—</span><span class="l">hukommelser</span></span>
+    <span class="ai-ctx-row"><span class="v" id="aiWsUsed">—</span><span class="l">brugt af AI</span></span>
+    <span class="ai-ctx-row"><span class="v" id="aiWsNodes">—</span><span class="l">datapunkter</span></span>
+    <span class="ai-ctx-next" id="aiWsNext"></span>
+    <span class="ai-ctx-go">Åbn Mind-Map</span>
+  </span>
+</a>
+{% endblock %}
 {% block body_class %}chat-page{% endblock %}
 
 {% block extra_head %}
@@ -50,25 +64,13 @@
   body.chat-page .fm-content { padding: 0; min-height: 0; display: flex; flex-direction: column; }
   body.chat-page .fm-foot { display: none; }
 
-  .chatx { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--fm-bg); }
+  .chatx { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--fm-surface); }
   .chatx .scroll { flex: 1; min-height: 0; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="chatx">
-  {% include 'fm/_ai_modebar.html' %}
-  <div class="ai-statusbar" id="aiWorkspaceStatus" hidden>
-    <div class="ai-status-title"><i class="fa-solid fa-circle-nodes"></i> Fælles AI-kontekst</div>
-    <div class="ai-status-items">
-      <span class="ai-status-item"><span class="v" id="aiWsPct">—</span><span class="l">profilstyrke</span></span>
-      <span class="ai-status-item"><span class="v" id="aiWsMem">—</span><span class="l">hukommelser</span></span>
-      <span class="ai-status-item"><span class="v" id="aiWsUsed">—</span><span class="l">brugt af AI</span></span>
-      <span class="ai-status-item"><span class="v" id="aiWsNodes">—</span><span class="l">datapunkter</span></span>
-    </div>
-    <div class="ai-status-missing" id="aiWsNext"></div>
-    <a class="ai-status-link" href="{{ url_for('futurematch.mind_map') }}">Åbn Mind-Map</a>
-  </div>
   <div class="nudge" id="nudge">
     <div class="nudge-inner">
       <span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></span>

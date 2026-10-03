@@ -218,10 +218,24 @@
     r.querySelector(".bubble").textContent = text;
     thread.appendChild(r); down(false, true);
   }
+  // Every assistant turn has the same fixed zones, top to bottom, no matter in
+  // which order the stream delivers things: what the AI did (activity), what it
+  // said (text), what it found (rich cards), what it needs from you (ask),
+  // quiet side notes (notes), and what to do next (foot). Renderers call
+  // place(body, zone, el) instead of appending, so text and tool UI never
+  // interleave by accident of timing.
+  const ZONES = ["activity", "text", "rich", "ask", "notes", "foot"];
+  function zoneEl(body, zone) {
+    return body.querySelector(":scope > .tb-" + zone) || body;
+  }
+  function place(body, zone, el) {
+    zoneEl(body, zone).appendChild(el);
+    return el;
+  }
   function addBot() {
     const r = document.createElement("div");
-    r.className = "msg";
-    r.innerHTML = `<div class="av-bot">${BOT}</div><div class="bot-body"></div>`;
+    r.className = "msg bot";
+    r.innerHTML = `<div class="av-bot">${BOT}</div><div class="bot-body">${ZONES.map((z) => `<div class="tb tb-${z}"></div>`).join("")}</div>`;
     thread.appendChild(r);
     return r.querySelector(".bot-body");
   }
@@ -234,7 +248,7 @@
     t.setAttribute("role", "status");
     t.setAttribute("aria-live", "polite");
     t.innerHTML = `<span class="d" aria-hidden="true"></span><span class="d" aria-hidden="true"></span><span class="d" aria-hidden="true"></span>`;
-    body.appendChild(t); down();
+    place(body, "activity", t); down();
     thinkStatus(body, "Arbejder…");
     return t;
   }
@@ -256,7 +270,6 @@
     if (!s) {
       s = document.createElement("span");
       s.className = "think-status";
-      s.style.cssText = "margin-left:8px;font-size:12px;color:var(--ink-3);font-style:italic;";
       t.appendChild(s);
     }
     s.textContent = String(text || "");
@@ -345,8 +358,8 @@
     // precise order message (date + location) for the agent.
     card.querySelectorAll(".vbook").forEach((b, vi) => b.addEventListener("click", function (e) {
       e.stopPropagation();
-      card.querySelectorAll(".vbook").forEach((x) => { x.textContent = "Vælg"; x.style.background = ""; x.style.color = ""; });
-      this.textContent = "Valgt ✓"; this.style.background = "var(--teal)"; this.style.color = "#042320";
+      card.querySelectorAll(".vbook").forEach((x) => { x.textContent = "Vælg"; x.classList.remove("picked"); });
+      this.textContent = "Valgt ✓"; this.classList.add("picked");
       selectedVariant = (c.variants || [])[vi] || null;
     }));
     // "Side" opens the real catalog product page when we have a handle.
@@ -361,7 +374,7 @@
     const wrap = document.createElement("div");
     wrap.className = "cards";
     list.forEach((c, i) => wrap.appendChild(courseCard(c, i === 0)));
-    body.appendChild(wrap); down();
+    place(body, "rich", wrap); down();
   }
 
   /* ---------------- suggestion chips ---------------- */
@@ -376,7 +389,7 @@
       b.onclick = () => ask(it);
       c.appendChild(b);
     });
-    body.appendChild(c); down();
+    place(body, "foot", c); down();
   }
 
   /* ---------------- feedback ---------------- */
@@ -471,7 +484,7 @@
         setTimeout(() => { btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'; }, 1400);
       });
     };
-    body.appendChild(row); body.appendChild(details); down();
+    place(body, "foot", row); place(body, "foot", details); down();
   }
 
   /* ---------------- collapse → pill ---------------- */
@@ -536,7 +549,7 @@
       }
       this.classList.add("done"); this.textContent = "Gemt ✓"; this.disabled = true;
       card.querySelector(".p-no").remove();
-      card.querySelector(".pcard-msg").innerHTML = '<span class="q" style="color:var(--green)">✓ Gemt</span> ' + esc(opts.message);
+      card.querySelector(".pcard-msg").innerHTML = '<span class="q ok">✓ Gemt</span> ' + esc(opts.message);
       toast(opts.toast || "Profil opdateret", opts.section);
       // Re-sync the ring from the real profile rather than guessing a bump.
       refreshWorkspace();
@@ -544,15 +557,15 @@
     };
     card.querySelector(".p-no").onclick = function () {
       card.classList.add("dim");
-      card.querySelector(".pcard-actions").innerHTML = '<span style="font-size:12px;color:var(--ink-3)">Afvist</span>';
+      card.querySelector(".pcard-actions").innerHTML = '<span class="pcard-state">Afvist</span>';
       collapseToPill(card, opts.label || "Opdatering", true);
     };
     card.querySelector(".p-chat").onclick = () => {
       card.classList.add("dim");
-      card.querySelector(".pcard-actions").innerHTML = '<span style="font-size:12px;color:var(--teal)">Svarer i chat…</span>';
+      card.querySelector(".pcard-actions").innerHTML = '<span class="pcard-state on">Svarer i chat…</span>';
       input.value = 'Ang. "' + opts.message.substring(0, 60) + '": '; input.focus(); resize(); toggleSend();
     };
-    body.appendChild(card); down();
+    place(body, "ask", card); down();
   }
 
   /* ---------------- saved-at-once profile additions (N-5.1) ---------------- */
@@ -568,7 +581,7 @@
       </div>`).join("");
     card.innerHTML = `
       <div class="pcard-ic">${ic[items[0].section] || ic.summary}</div>
-      <div class="pcard-body"><div class="pcard-msg"><span class="q" style="color:var(--green)">Noteret på din profil</span></div>${rows}</div>`;
+      <div class="pcard-body"><div class="pcard-msg"><span class="q ok">Noteret på din profil</span></div>${rows}</div>`;
     card.querySelectorAll(".psaved-row").forEach((row) => {
       const it = items[+row.dataset.i];
       const btn = row.querySelector(".psaved-undo");
@@ -577,14 +590,13 @@
         btn.disabled = true; btn.textContent = "…";
         try {
           await saveProfileUpdate(it.undo.action, it.undo.data || {});
-          row.querySelector(".psaved-label").style.textDecoration = "line-through";
-          row.querySelector(".psaved-label").style.opacity = ".6";
+          row.querySelector(".psaved-label").classList.add("undone");
           btn.replaceWith(Object.assign(document.createElement("span"), { textContent: "Fortrudt", className: "psaved-done" }));
           refreshWorkspace();
         } catch (e) { btn.disabled = false; btn.textContent = "Prøv igen"; }
       });
     });
-    body.appendChild(card); down();
+    place(body, "notes", card); down();
   }
 
   // Several removals/edits proposed in one turn: one card, accept all or none.
@@ -606,9 +618,9 @@
     };
     card.querySelector(".p-no").onclick = function () {
       card.classList.add("dim");
-      card.querySelector(".pcard-actions").innerHTML = '<span style="font-size:12px;color:var(--ink-3)">Afvist</span>';
+      card.querySelector(".pcard-actions").innerHTML = '<span class="pcard-state">Afvist</span>';
     };
-    body.appendChild(card); down();
+    place(body, "ask", card); down();
   }
 
   /* ---------------- choice card (ui_type=choice) ---------------- */
@@ -628,7 +640,7 @@
       b.classList.add("done");
       onPick(c);
     }));
-    body.appendChild(card); down();
+    place(body, "ask", card); down();
   }
 
   /* ---------------- UI card (form) ---------------- */
@@ -682,11 +694,11 @@
       collapseToPill(card, opts.label || "Tilføjet", false);
     };
     card.querySelector(".p-no").onclick = function () {
-      card.classList.add("dim"); card.querySelector(".pcard-actions").innerHTML = '<span style="font-size:12px;color:var(--ink-3)">Afvist</span>';
+      card.classList.add("dim"); card.querySelector(".pcard-actions").innerHTML = '<span class="pcard-state">Afvist</span>';
       collapseToPill(card, opts.label || "Opdatering", true);
     };
     card.querySelector(".p-chat").onclick = () => { input.value = "Lad mig fortælle: "; input.focus(); resize(); toggleSend(); };
-    body.appendChild(card); down();
+    place(body, "ask", card); down();
   }
 
   /* ---------------- product reference bar ---------------- */
@@ -724,7 +736,7 @@
   function injectProductHtml(body, html) {
     if (!html) return;
     let cards = body.querySelector(".cards");
-    if (!cards) { cards = document.createElement("div"); cards.className = "cards"; body.appendChild(cards); }
+    if (!cards) { cards = document.createElement("div"); cards.className = "cards"; place(body, "rich", cards); }
     const wrap = document.createElement("div");
     wrap.innerHTML = sanitizeHtml(html);
     cards.appendChild(wrap);
@@ -738,17 +750,16 @@
     row.className = "err";
     row.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>Forbindelsen blev afbrudt — Prøv igen.</span><button class="retry">Prøv igen</button>`;
     row.querySelector(".retry").onclick = () => { row.remove(); run(query, Object.assign({}, retryOpts || {}, { skipUser: true })); };
-    body.appendChild(row); down();
+    place(body, "foot", row); down();
   }
 
   // Muted marker when the user stops generation — the feedback row still
   // renders afterwards so aborts are measurable.
   function addStopMarker(body) {
     const m = document.createElement("div");
-    m.className = "md";
-    m.style.cssText = "opacity:.55;font-style:italic;font-size:12.5px;";
+    m.className = "note-line";
     m.textContent = "— stoppet —";
-    body.appendChild(m); down();
+    place(body, "foot", m); down();
   }
 
   // Balance dangling markdown while streaming so half-arrived constructs don't
@@ -844,12 +855,24 @@
     let box = body.querySelector(".tool-run");
     if (!box) {
       box = document.createElement("div");
-      box.className = "tool-run";
-      box.innerHTML = '<div class="tool-run-head"><i class="fa-solid fa-wand-magic-sparkles"></i><span>AI-værktøjer</span><span class="tool-count">0</span></div><div class="tool-run-list"></div>';
-      body.appendChild(box);
+      box.className = "tool-run live";
+      // One quiet line while the AI works; it folds itself into "Brugte n værktøjer" (see settleActivity).
+      box.innerHTML = '<button type="button" class="tool-run-head" aria-expanded="false"><span class="tr-dot" aria-hidden="true"></span><span class="tr-label">Arbejder</span><span class="tool-count">0</span><i class="fa-solid fa-chevron-down tr-chev" aria-hidden="true"></i></button><div class="tool-run-list"></div>';
+      box.querySelector(".tool-run-head").addEventListener("click", function () {
+        const open = box.classList.toggle("open");
+        this.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+      place(body, "activity", box);
     }
     const list = box.querySelector(".tool-run-list");
     const running = data.phase === "start" || data.status === "running";
+    if (running) {
+      // New work after an earlier fold-up: the line goes live again and names what is happening now.
+      box.classList.add("live");
+      box.classList.remove("open", "has-error");
+      box.querySelector(".tr-label").textContent = toolLabel(data);
+      box.querySelector(".tool-run-head").setAttribute("aria-expanded", "false");
+    }
     // Live events carry a call id: phase:'start' creates a running chip, the
     // finish event upgrades that same chip in place (label/latency/results)
     // instead of appending a duplicate. Without an id (or without a prior
@@ -870,8 +893,11 @@
       + (data.status === "error" ? " error" : "")
       + (partialFail ? " partial-failure" : "")
       + (running ? " running" : "");
+    // Visible meta stays about the outcome; the technical details (category,
+    // cache, latency) move to the tooltip so the line reads calmly.
     const meta = [];
-    if (data.category) meta.push(data.category);
+    const tech = [];
+    if (data.category) tech.push(data.category);
     const statusNote = !running && TOOL_STATUS_NOTES[data.status];
     if (statusNote) meta.push(statusNote);
     else if (Number(data.results_count) > 0) {
@@ -880,16 +906,17 @@
     }
     if (data.cache_hit) {
       const ttl = data.cache_ttl ? Math.round(data.cache_ttl) + "s" : "";
-      meta.push(ttl ? "cache " + ttl : "cache");
+      tech.push(ttl ? "cache " + ttl : "cache");
     }
     if (partialFail) meta.push("delvis fejl");
     if (data.side_effect) meta.push("ændrer data");
-    if (Number(data.latency_ms) > 0) meta.push(Number(data.latency_ms) + "ms");
+    if (Number(data.latency_ms) > 0) tech.push(Number(data.latency_ms) + "ms");
     const icon = data.ui_icon ? `<i class="fa-solid ${esc(data.ui_icon)}"></i>` : "";
     chip.innerHTML = `${icon}<span>${esc(toolLabel(data))}</span>${meta.length ? `<span class="meta">${esc(meta.join(" · "))}</span>` : ""}`;
     // Hover / screen reader: the server's one-line outcome ("Hukommelse gemt.", a safe error).
     const note = (data.status === "error" && data.safe_error) || data.message || "";
     if (note) { chip.title = note; chip.setAttribute("aria-label", toolLabel(data) + ": " + note); }
+    else if (tech.length) chip.title = tech.join(" · ");
     // Progress bar for running chips (shown when progress_label is set or always for running)
     if (running) {
       const progWrap = document.createElement("div");
@@ -946,6 +973,20 @@
   // muted "running" state — settle them so the UI doesn't imply ongoing work.
   function settleToolChips(body) {
     body.querySelectorAll(".tool-chip.running").forEach((c) => c.classList.remove("running"));
+    settleActivity(body);
+  }
+  // The work is done (an answer or a card has started): fold the live tool list
+  // into one muted line the user can open for the details.
+  function settleActivity(body) {
+    const box = body.querySelector(".tool-run.live");
+    if (!box) return;
+    box.classList.remove("live", "open");
+    const n = box.querySelectorAll(".tool-chip").length;
+    const failed = box.querySelectorAll(".tool-chip.error").length;
+    box.querySelector(".tr-label").textContent = n === 1 ? "Brugte 1 værktøj" : "Brugte " + n + " værktøjer";
+    box.classList.toggle("has-error", failed > 0 && failed === n);
+    const head = box.querySelector(".tool-run-head");
+    if (head) head.setAttribute("aria-expanded", "false");
   }
 
   // Update an in-flight chip's progress bar from a tool_progress SSE event.
@@ -1032,7 +1073,7 @@
       showResult("err", "Afvist");
     });
 
-    body.appendChild(card);
+    place(body, "ask", card);
     down();
   }
 
@@ -1044,27 +1085,30 @@
     if (!memories || !memories.length) return;
     let remaining = memories.length;
     const wrap = document.createElement("div");
-    wrap.style.cssText = "margin:8px 0 2px;";
+    wrap.className = "mem-used";
     const head = document.createElement("button");
     head.type = "button";
-    head.style.cssText = "display:inline-flex;align-items:center;gap:6px;background:color-mix(in srgb,var(--fm-primary) 9%,transparent);color:var(--fm-primary);border:1px solid color-mix(in srgb,var(--fm-primary) 22%,transparent);border-radius:999px;padding:4px 11px;font-size:11.5px;font-weight:650;cursor:pointer;";
+    head.className = "mem-used-head";
+    head.setAttribute("aria-expanded", "false");
     const headLabel = document.createElement("span");
     headLabel.textContent = "Brugte hukommelse om dig (" + remaining + ")";
-    head.innerHTML = "🧠 ";
+    head.innerHTML = '<i class="fa-solid fa-brain" aria-hidden="true"></i> ';
     head.appendChild(headLabel);
     const chips = document.createElement("div");
-    chips.style.cssText = "display:none;flex-wrap:wrap;gap:6px;margin-top:8px;";
+    chips.className = "mem-used-list";
+    chips.hidden = true;
     memories.forEach((m) => {
       const c = document.createElement("span");
-      c.style.cssText = "display:inline-flex;align-items:center;gap:5px;font-size:11.5px;padding:3px 9px;border-radius:8px;background:var(--fm-surface-2);border:1px solid var(--fm-line);color:var(--fm-ink-2);";
+      c.className = "mem-used-item";
       const lbl = document.createElement("span");
       lbl.textContent = (m.category ? "[" + m.category + "] " : "") + (m.label || "");
       c.appendChild(lbl);
       if (m.id) {
         const del = document.createElement("button");
         del.type = "button";
+        del.className = "mem-used-del";
         del.title = "Slet hukommelse";
-        del.style.cssText = "border:none;background:none;color:var(--fm-ink-3);cursor:pointer;font-size:10px;padding:0 2px;line-height:1;";
+        del.setAttribute("aria-label", "Slet hukommelse");
         del.innerHTML = "×";
         del.addEventListener("click", async (e) => {
           e.stopPropagation();
@@ -1072,7 +1116,7 @@
             const r = await fetch("/app1/memory/" + m.id, { method: "DELETE" });
             const res = await r.json();
             if (res.status === "ok") {
-              c.style.opacity = ".35";
+              c.classList.add("removed");
               del.disabled = true;
               remaining = Math.max(0, remaining - 1);
               headLabel.textContent = "Brugte hukommelse om dig (" + remaining + ")";
@@ -1083,9 +1127,12 @@
       }
       chips.appendChild(c);
     });
-    head.onclick = () => { chips.style.display = chips.style.display === "none" ? "flex" : "none"; };
+    head.onclick = () => {
+      chips.hidden = !chips.hidden;
+      head.setAttribute("aria-expanded", chips.hidden ? "false" : "true");
+    };
     wrap.appendChild(head); wrap.appendChild(chips);
-    body.appendChild(wrap); down();
+    place(body, "notes", wrap); down();
   }
 
   function renderMemorySaved(body, data) {
@@ -1095,7 +1142,7 @@
     const wrap = document.createElement("div");
     wrap.className = "mem-chip mem-saved";
     const label = document.createElement("span");
-    label.innerHTML = "🧠 <span>" + esc(data.message || ("Husket: " + (data.label || ""))) + "</span>";
+    label.innerHTML = '<i class="fa-solid fa-brain" aria-hidden="true"></i> <span>' + esc(data.message || ("Husket: " + (data.label || ""))) + "</span>";
     wrap.appendChild(label);
     if (data.id) {
       const del = document.createElement("button");
@@ -1110,7 +1157,7 @@
           const res = await r.json();
           if (res.status === "ok") {
             wrap.classList.add("removed");
-            label.innerHTML = "🧠 <span style='text-decoration:line-through;opacity:.6'>Slettet</span>";
+            label.innerHTML = '<i class="fa-solid fa-brain" aria-hidden="true"></i> <span class="mem-gone">Slettet</span>';
             del.remove();
             refreshWorkspace();
           } else { del.disabled = false; }
@@ -1118,7 +1165,7 @@
       });
       wrap.appendChild(del);
     }
-    body.appendChild(wrap); down();
+    place(body, "notes", wrap); down();
   }
 
   /* ---------------- cross-surface action card ---------------- */
@@ -1158,7 +1205,7 @@
       if (newTab) window.open(target, "_blank");
       else window.location.href = target;
     });
-    body.appendChild(card); down();
+    place(body, "rich", card); down();
   }
 
   /* ---------------- analytical comparison card ---------------- */
@@ -1200,7 +1247,7 @@
         trackLearner("recommendation_click", { source: "comparison" });
         window.open("/products/" + encodeURIComponent(b.getAttribute("data-h")), "_blank");
       }));
-    body.appendChild(card); down();
+    place(body, "rich", card); down();
   }
 
   /* ---------------- learning-path card ---------------- */
@@ -1235,7 +1282,7 @@
         window.open("/products/" + encodeURIComponent(h), "_blank");
       });
     });
-    body.appendChild(card); down();
+    place(body, "rich", card); down();
   }
 
   /* ---------------- CV summary card ---------------- */
@@ -1266,7 +1313,7 @@
       </div>`;
     card.querySelectorAll("[data-url]").forEach((b) =>
       b.addEventListener("click", () => window.open(b.getAttribute("data-url"), "_blank")));
-    body.appendChild(card); down();
+    place(body, "rich", card); down();
   }
 
   /* ---------------- Mind-map preview card ---------------- */
@@ -1297,7 +1344,7 @@
       const node = b.getAttribute("data-node");
       window.open("/mind-map" + (node ? "#n=" + encodeURIComponent(node) : ""), "_blank");
     }));
-    body.appendChild(card); down();
+    place(body, "rich", card); down();
   }
 
   /* ---------------- Skill-gap card (current → target on the 1-5 scale) ------- */
@@ -1315,7 +1362,7 @@
         <div class="csv-footer"><button class="csv-btn primary" data-url="/profile"><i class="fa-solid ${icon("fa-user")}"></i> Åbn profil</button></div>`;
       card.querySelectorAll("[data-url]").forEach((b) =>
         b.addEventListener("click", () => window.open(b.getAttribute("data-url"), "_blank")));
-      body.appendChild(card); down(); return;
+      place(body, "rich", card); down(); return;
     }
     const PRIO = { critical: "crit", high: "high", medium: "med", low: "low" };
     const rowsHtml = gaps.map((g) => {
@@ -1347,7 +1394,7 @@
       b.addEventListener("click", () => { try { if (typeof ask === "function") ask(b.getAttribute("data-ask")); } catch (e) {} }));
     card.querySelectorAll("[data-node]").forEach((b) =>
       b.addEventListener("click", () => window.open("/mind-map#n=" + encodeURIComponent(b.getAttribute("data-node")), "_blank")));
-    body.appendChild(card); down();
+    place(body, "rich", card); down();
   }
 
   /* ---------------- Agenda card (deadlines, approvals, certs, goals) -------- */
@@ -1362,7 +1409,7 @@
         <div class="csv-footer"><button class="csv-btn" data-url="/min-laering"><i class="fa-solid ${icon("fa-graduation-cap")}"></i> Åbn min læring</button></div>`;
       card.querySelectorAll("[data-url]").forEach((b) =>
         b.addEventListener("click", () => window.open(b.getAttribute("data-url"), "_blank")));
-      body.appendChild(card); down(); return;
+      place(body, "rich", card); down(); return;
     }
     const KIND = {
       deadline: { label: "Frist", icon: "fa-hourglass-half" },
@@ -1396,7 +1443,7 @@
       </div>`;
     card.querySelectorAll("[data-url]").forEach((b) =>
       b.addEventListener("click", () => window.open(b.getAttribute("data-url"), "_blank")));
-    body.appendChild(card); down();
+    place(body, "rich", card); down();
   }
 
   /* ---------------- My-compliance card (mandatory training, self-scoped) ---- */
@@ -1408,7 +1455,7 @@
       card.innerHTML = `
         <div class="cmc-head"><i class="fa-solid ${icon("fa-shield-halved")}"></i><span>Obligatoriske kurser</span></div>
         <div class="cmc-empty">${esc(data.message || "Der er ingen obligatoriske krav registreret for dig.")}</div>`;
-      body.appendChild(card); down(); return;
+      place(body, "rich", card); down(); return;
     }
     const STATE = {
       compliant: { label: "Opfyldt", cls: "ok" },
@@ -1441,7 +1488,7 @@
       </div>` : ""}`;
     card.querySelectorAll("[data-ask]").forEach((b) =>
       b.addEventListener("click", () => { try { if (typeof ask === "function") ask(b.getAttribute("data-ask")); } catch (e) {} }));
-    body.appendChild(card); down();
+    place(body, "rich", card); down();
   }
 
   async function streamFromBackend(body, actualQuery, kind, context) {
@@ -1462,6 +1509,7 @@
     let messageIndex = null;              // from the meta event; used by the feedback POST
     let cardsSeen = 0, productSeen = 0;   // pair structured course_cards with fallback product HTML
     let questionsSeen = false;            // a question sheet already answers this turn's questions
+    let awaiting = false;                 // a card is waiting for the user's decision: no generic follow-ups on top of it
     let eventsReceived = 0;               // meaningful events (excl. ping) — gates the silent retry
 
     // rAF-throttled rendering: buffer chunks and re-parse markdown at most once
@@ -1527,9 +1575,10 @@
           // Any real content event makes the dots placeholder redundant.
           sawContent = true;
           clearThinking(body);
+          if (data.type !== "tool_call" && data.type !== "tool_progress") settleActivity(body);
 
           if (data.type === "chunk") {
-            if (!textEl) { textEl = document.createElement("div"); textEl.className = "md"; body.appendChild(textEl); }
+            if (!textEl) { textEl = document.createElement("div"); textEl.className = "md"; place(body, "text", textEl); }
             fullText += (data.content || "");
             queueRender();
           } else if (data.type === "tool_call") {
@@ -1545,22 +1594,24 @@
             suggestions = data.items || [];
           } else if (data.type === "notice") {
             const note = document.createElement("div");
-            note.className = "md"; note.style.opacity = ".7"; note.style.fontStyle = "italic";
+            note.className = "note-line";
             note.textContent = data.content || "";
-            body.appendChild(note); down();
+            place(body, "notes", note); down();
           } else if (data.type === "profile_update") {
             const note = document.createElement("div");
-            note.className = "md";
+            note.className = "note-line";
             note.innerHTML = md(data.message || "Profil opdateret");
-            body.appendChild(note); down();
+            place(body, "notes", note); down();
             refreshWorkspace();
           } else if (data.type === "profile_saved") {
             renderProfileSaved(body, data.items || []);
             refreshWorkspace();
           } else if (data.type === "profile_confirm_batch") {
+            awaiting = true;
             renderProfileConfirmBatch(body, data.items || []);
           } else if (data.type === "profile_confirm_request") {
             // Proposed profile change -> native confirm card, wired to the real save.
+            awaiting = true;
             const conf = data.confirm || {};
             // Row ids are plumbing for the save call, not something to show.
             const tags = (conf.data && typeof conf.data === "object")
@@ -1574,18 +1625,21 @@
             if (data.ui_type === "questions" && window.FmQuestionSheet) {
               // Several questions at once: one field per question, sent back as ONE message.
               questionsSeen = true;
-              window.FmQuestionSheet.render(body, { message: data.message || "", fields: data.fields || [] },
+              window.FmQuestionSheet.render(zoneEl(body, "ask"), { message: data.message || "", fields: data.fields || [] },
                 { send: ask, after: () => down() });
-              return;
+              awaiting = true;
+              continue;
             }
             const choices = (data.choices || []).filter((c) => c && (c.label || c.value));
             if ((data.ui_type === "choice" || (!data.fields || !data.fields.length)) && choices.length) {
               // Choice card: options render as buttons; the pick is sent on.
               choiceCard(body, { section: data.section, message: data.message || "", choices: choices },
                 (c) => { if (data.save_action && data.section !== "summary") { saveProfileUpdate(data.save_action, Object.assign({}, data.prefilled || {}, { value: c.value })).catch(() => {}); } else { ask(c.label || c.value); } });
-              return;
+              awaiting = true;
+              continue;
             }
             // Form card -> native uiCard design, wired to the real save endpoint.
+            awaiting = true;
             const fields = (data.fields || []).map((f) => ({
               name: f.name, label: f.label, type: f.type,
               ph: f.placeholder || f.ph, hint: f.hint, options: f.options || [],
@@ -1607,6 +1661,7 @@
             updateToolProgress(body, data);
           } else if (data.type === "confirm_card") {
             // Side-effect tool preview: render Bekræft/Afvis card (Phase 8/9)
+            awaiting = true;
             renderConfirmCard(body, data);
           } else if (data.type === "ui_action") {
             // Cross-surface navigation directive → explicit action button.
@@ -1650,15 +1705,17 @@
       if (currentAbort === controller) currentAbort = null;
     }
     renderFinal();
+    settleActivity(body);
     // The model wrote a list of questions as prose instead of using the sheet: give the list
     // fields, so nobody has to type "1: ... 2: ..." into the chat.
     if (!questionsSeen && textEl && window.FmQuestionSheet) {
-      try { window.FmQuestionSheet.fromList(body, textEl, { send: ask, after: () => down() }); } catch (e) { /* cosmetic */ }
+      try { window.FmQuestionSheet.fromList(zoneEl(body, "ask"), textEl, { send: ask, after: () => down() }); } catch (e) { /* cosmetic */ }
     }
     // Render suggestion chips last, like the source UI. The server now
     // guarantees a set, but keep a client-side net so a turn never dead-ends
     // even if the suggestions event is dropped.
-    if (!suggestions || !suggestions.length) {
+    if (awaiting) suggestions = [];
+    else if (!suggestions || !suggestions.length) {
       suggestions = cardsSeen > 0
         ? ["Sammenlign de to bedste", "Vis billigere alternativer", "Fortæl mig mere"]
         : ["Vis populære kurser", "Hjælp mig med at vælge"];
@@ -1828,11 +1885,12 @@
         // the answer text, then course cards (matching the live stream order).
         if (Array.isArray(m._tools) && m._tools.length) {
           m._tools.forEach((t) => renderToolCall(body, t));
+          settleActivity(body);
         }
         const el = document.createElement("div");
         el.className = "md";
         el.innerHTML = md(content);
-        body.appendChild(el);
+        place(body, "text", el);
         if (Array.isArray(m._cards) && m._cards.length) addCourses(body, m._cards);
       }
     });

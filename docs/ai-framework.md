@@ -145,7 +145,7 @@ Tool state is passed per turn via module globals: `set_search_context(...)`
   cap to `max_output_tokens()`.
 - **Turn layout (`chat.js` `ZONES`):** every assistant turn is built from fixed zones, top to
   bottom, whatever order the stream delivers events in: `activity` (tool line), `text` (the
-  answer), `rich` (course/comparison/path/profile cards, action buttons), `ask` (anything waiting
+  answer), `rich` (course/comparison/path/profile cards, action buttons), `tail` (the closing remark/question after the cards), `ask` (anything waiting
   for the user: confirm cards, choice/form/question sheets), `notes` (memory and saved-item
   notes), `foot` (suggestion chips, feedback, errors). A renderer places its element with
   `place(body, zone, el)`, never `body.appendChild`; a new SSE card must pick a zone. The tool
@@ -154,6 +154,13 @@ Tool state is passed per turn via module globals: `set_search_context(...)`
   the chip tooltip. While a card waits for a decision (`awaiting`), generic follow-up chips are
   not added. Page chrome: `/chat` has no heading of its own; `chat.html` fills the shell's `topbar_title` block with the Assistent / Mind-Map segmented control and `topbar_extra` with the small profile-strength pill (`#aiWorkspaceStatus`, details on hover), so the topbar is one slim transparent row. Visual language: `chat.css` "CALM PASS" block (one card surface, one button
   hierarchy: solid = do it, outline = alternative, text = escape hatch).
+- **Answer text vs. course cards:** the cards own name, price, place, description and image.
+  `app1/card_text.py` (`tidy_answer`, run on the captured answer before it is streamed) strips
+  markdown images and cuts list items/paragraphs that restate a card, leaving `CARDS_MARK`
+  (`<!--kort-->`) where they were; `chat.js` shows the text before the mark above the cards and
+  the rest in the `tail` zone below them. `_catalog_compact_fields` deliberately has no
+  `image_url`, so the model has nothing to paste. `md()` drops `<img>` from assistant prose as a
+  safety net (the live-stream fallback path cannot be tidied server-side).
 - **Tool chips say what happened:** besides the label, a finished chip shows the outcome in
   words (`TOOL_STATUS_NOTES` in `chat.js`: no results / awaiting your confirmation / needs your
   answer / saved), "1 resultat" vs "n resultater", and the server's one-line message as tooltip and

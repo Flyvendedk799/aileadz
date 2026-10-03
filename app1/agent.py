@@ -11,6 +11,7 @@ import time
 from app1.tools import OPENAI_TOOLS, PROFILE_TOOLS, execute_tool, set_search_context
 from app1.memory_store import log_debug
 from . import render_multi_course_media, render_product_media, serialize_course_cards
+from .card_text import tidy_answer
 from db_compat import close_flask_mysql_connection, refresh_flask_mysql_connection
 
 # Grounding / prompt-injection hardening helpers. Guarded import so a missing or
@@ -203,6 +204,7 @@ Kurser vises automatisk som interaktive kort ved siden af din tekst — brugeren
 allerede se navn, pris, lokation og beskrivelse. Gentag dem derfor ikke i teksten, heller
 ikke som liste eller med fed skrift: det bliver dobbelt op og skubber kortene ned.
 Brug teksten på det kortene ikke kan — hvorfor netop dette passer til den her person.
+Sæt aldrig billeder eller logoer ind i teksten; kortene viser dem.
 
 OPFØLGNINGSFORSLAG:
 Afslut ALTID med: <suggestions>["forslag 1", "forslag 2", "forslag 3"]</suggestions>
@@ -3193,8 +3195,14 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                     # RT-02: the runtime captured the final answer (one
                     # completion saved) — chunk it ~3 ord ad gangen so the
                     # buffered text still feels typewriter-streamed.
+                    # Cards carry name/price/place/description/image: cut a prose
+                    # listing of the same courses so nothing shows twice.
+                    _answer = tidy_answer(
+                        runtime_result.text,
+                        [c for grp in buffered_course_cards for c in (grp or [])],
+                    )
                     for sse in _stream_tokens_to_client(
-                        iter_buffered_text_chunks(runtime_result.text)
+                        iter_buffered_text_chunks(_answer)
                     ):
                         yield sse
                 _log_latency(sid, "llm_stream_response", stream_start)

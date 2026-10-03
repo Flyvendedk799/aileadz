@@ -142,7 +142,9 @@
   }
   window.fmWorkspace = { refresh: refreshWorkspace, last: null };
 
-  const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).replace(/\n/g, "<br>"));
+  // Assistant prose never carries pictures: course cards own the imagery, and a pasted
+// logo renders full width and pushes the real UI down.
+const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).replace(/\n/g, "<br>")).replace(/<img\b[^>]*>/gi, "");
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   const thread = $("#thread");
@@ -224,7 +226,8 @@
   // quiet side notes (notes), and what to do next (foot). Renderers call
   // place(body, zone, el) instead of appending, so text and tool UI never
   // interleave by accident of timing.
-  const ZONES = ["activity", "text", "rich", "ask", "notes", "foot"];
+  const CARDS_MARK = "<!--kort-->";   // keep in step with app1/card_text.py
+  const ZONES = ["activity", "text", "rich", "tail", "ask", "notes", "foot"];
   function zoneEl(body, zone) {
     return body.querySelector(":scope > .tb-" + zone) || body;
   }
@@ -373,6 +376,10 @@
   function addCourses(body, list) {
     const wrap = document.createElement("div");
     wrap.className = "cards";
+    const cap = document.createElement("div");
+    cap.className = "cards-cap";
+    cap.textContent = list.length === 1 ? "Kursus til dig" : list.length + " kurser til dig";
+    wrap.appendChild(cap);
     list.forEach((c, i) => wrap.appendChild(courseCard(c, i === 0)));
     place(body, "rich", wrap); down();
   }
@@ -768,6 +775,7 @@
     let s = String(t || "");
     s = s.replace(/!?\[[^\]]*$/, "");            // "[Se kurset" (no closing ])
     s = s.replace(/!?\[[^\]]*\]\([^)]*$/, "");   // "[Se kurset](https://…" (no closing ))
+    s = s.replace(/<!?-{0,2}[a-z]*-{0,2}$/, "");  // half-arrived CARDS_MARK
     const fences = (s.match(/```/g) || []).length;
     if (fences % 2 === 1) s += "\n```";
     return s;
@@ -1505,7 +1513,7 @@
     };
 
     const decoder = new TextDecoder("utf-8");
-    let buffer = "", textEl = null, fullText = "", suggestions = null, done = false;
+    let buffer = "", textEl = null, tailEl = null, fullText = "", suggestions = null, done = false;
     let messageIndex = null;              // from the meta event; used by the feedback POST
     let cardsSeen = 0, productSeen = 0;   // pair structured course_cards with fallback product HTML
     let questionsSeen = false;            // a question sheet already answers this turn's questions
@@ -1515,9 +1523,22 @@
     // rAF-throttled rendering: buffer chunks and re-parse markdown at most once
     // per animation frame instead of on every chunk.
     let renderQueued = false, finalized = false;
+    // The server leaves CARDS_MARK where it cut a prose listing that the course cards
+    // already show: the text before it sits above the cards, the rest (the closing
+    // remark or question) below them, so the answer reads as one flow.
+    const paintAnswer = (balance) => {
+      const parts = fullText.split(CARDS_MARK);
+      const clean = (t) => (balance ? md(balanceMarkdown(t)) : md(t));
+      textEl.innerHTML = clean(parts[0]);
+      const rest = parts.slice(1).join("\n\n").trim();
+      if (rest) {
+        if (!tailEl) { tailEl = document.createElement("div"); tailEl.className = "md"; place(body, "tail", tailEl); }
+        tailEl.innerHTML = clean(rest);
+      }
+    };
     const renderStream = () => {
       if (finalized || !textEl) return;
-      textEl.innerHTML = md(balanceMarkdown(fullText));
+      paintAnswer(true);
       down();
     };
     const queueRender = () => {
@@ -1528,7 +1549,7 @@
     const renderFinal = () => {
       if (finalized) return;
       finalized = true;
-      if (textEl) { textEl.innerHTML = md(fullText); down(); }
+      if (textEl) { paintAnswer(false); down(); }
     };
 
     try {
@@ -1887,10 +1908,18 @@
           m._tools.forEach((t) => renderToolCall(body, t));
           settleActivity(body);
         }
+        const parts = String(content).split(CARDS_MARK);
         const el = document.createElement("div");
         el.className = "md";
-        el.innerHTML = md(content);
+        el.innerHTML = md(parts[0]);
         place(body, "text", el);
+        const rest = parts.slice(1).join("\n\n").trim();
+        if (rest) {
+          const tail = document.createElement("div");
+          tail.className = "md";
+          tail.innerHTML = md(rest);
+          place(body, "tail", tail);
+        }
         if (Array.isArray(m._cards) && m._cards.length) addCourses(body, m._cards);
       }
     });

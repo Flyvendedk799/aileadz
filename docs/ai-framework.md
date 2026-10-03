@@ -152,7 +152,7 @@ Tool state is passed per turn via module globals: `set_search_context(...)`
   line is one muted row ("Søger i kataloget" while live, "Brugte n værktøjer" when settled,
   `settleActivity`) that expands to the chips; technical meta (latency, cache, category) lives in
   the chip tooltip. While a card waits for a decision (`awaiting`), generic follow-up chips are
-  not added. Visual language: `chat.css` "CALM PASS" block (one card surface, one button
+  not added. Page chrome: `/chat` has no heading of its own; `chat.html` fills the shell's `topbar_title` block with the Assistent / Mind-Map segmented control and `topbar_extra` with the small profile-strength pill (`#aiWorkspaceStatus`, details on hover), so the topbar is one slim transparent row. Visual language: `chat.css` "CALM PASS" block (one card surface, one button
   hierarchy: solid = do it, outline = alternative, text = escape hatch).
 - **Tool chips say what happened:** besides the label, a finished chip shows the outcome in
   words (`TOOL_STATUS_NOTES` in `chat.js`: no results / awaiting your confirmation / needs your

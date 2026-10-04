@@ -70,9 +70,9 @@ class ResolveUserContactTests(unittest.TestCase):
 
 
 class ReadinessContactTests(unittest.TestCase):
-    def _readiness(self, company_row):
+    def _readiness(self, company_row, variants=None):
         product = {"handle": "distanceledelse", "title": "Distanceledelse",
-                   "vendor": "Udbyder A", "variants": []}
+                   "vendor": "Udbyder A", "variants": variants or []}
         with _patched_contact(company_row), \
                 mock.patch.object(tools.catalog, "get_product", return_value=product), \
                 mock.patch.object(tools, "_supplier_state_for_vendor", return_value={"is_active": True}), \
@@ -93,6 +93,34 @@ class ReadinessContactTests(unittest.TestCase):
         self.assertEqual(out["readiness"], "ready")
         self.assertEqual(out["missing_fields"], [])
         self.assertEqual(out["optional_missing"], ["phone"])
+
+    def test_single_variant_does_not_require_a_date(self):
+        out = self._readiness(
+            {"full_name": "Tobias P", "email": "t@firma.dk"},
+            [{"date": "", "location": "Online", "price": 9000}],
+        )
+        self.assertEqual(out["readiness"], "ready")
+        self.assertEqual(out["selected_variant"]["location"], "Online")
+
+    def test_distinct_price_variants_require_a_choice(self):
+        out = self._readiness(
+            {"full_name": "Tobias P", "email": "t@firma.dk"},
+            [{"date": "2026-11-01", "price": 9000}, {"date": "2026-12-01", "price": 10000}],
+        )
+        self.assertEqual(out["readiness"], "needs_info")
+        self.assertIn("dato/lokation", out["missing_fields"])
+
+    def test_preparation_uses_the_only_variant_and_still_needs_confirmation(self):
+        product = {"handle": "distanceledelse", "title": "Distanceledelse",
+                   "variants": [{"date": "2026-11-01", "location": "Online", "price": 9000}]}
+        with _patched_contact({"full_name": "Tobias P", "email": "t@firma.dk"}), \
+                mock.patch.object(tools.catalog, "get_product", return_value=product), \
+                mock.patch.object(tools, "_catalog_compact_fields", return_value=product), \
+                mock.patch.object(tools, "mark_order_flow_open"):
+            out = json.loads(tools._execute_prepare_course_order({"product_handle": "distanceledelse"}, "tobias"))
+        self.assertFalse(out["creates_order"])
+        self.assertEqual(out["status"], "ready_for_confirmation")
+        self.assertEqual(out["confirmation_payload"]["variant_location"], "Online")
 
 
 class CreateOrderConfirmGateTests(unittest.TestCase):
@@ -189,6 +217,15 @@ class OrderFlowFlagTests(unittest.TestCase):
         tools.mark_order_flow_open("distanceledelse")
         self.assertEqual(tools.order_flow_state(), {})
         self.assertFalse(tools.order_flow_open())
+
+    def test_follow_up_keeps_the_selected_course_in_the_playbook(self):
+        from app1.agent import _build_playbook_messages
+        app = self._app()
+        with app.test_request_context("/"):
+            tools.mark_order_flow_open("distanceledelse", stage="readiness")
+            layers = _build_playbook_messages("searching", "follow_up", user_query="Bare kør standard")
+        self.assertIn("distanceledelse", str(layers))
+        self.assertIn("bekræftelse", str(layers))
 
 
 if __name__ == "__main__":

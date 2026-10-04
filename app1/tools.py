@@ -219,6 +219,77 @@ _COPENHAGEN_METRO = {"frederiksberg", "herlev", "ballerup", "glostrup", "taastru
                      "nordhavn", "ørestad", "brøndby", "hvidovre", "rødovre"}
 
 
+# Regions people ask for that no catalog row names: match the towns inside them.
+_NORDSJAELLAND = {
+    "hillerød", "helsingør", "hørsholm", "fredensborg", "frederikssund", "allerød",
+    "birkerød", "holte", "lyngby", "kokkedal", "rungsted", "espergærde", "humlebæk",
+    "gilleleje", "hundested", "frederiksværk", "helsinge", "græsted", "farum",
+    "værløse", "ølstykke", "stenløse", "nivå", "snekkersten", "vedbæk", "nærum",
+    "virum", "skodsborg", "rudersdal", "furesø", "egedal", "gribskov", "halsnæs",
+}
+_REGION_TOWNS = {"nordsjælland": _NORDSJAELLAND, "nordsjaelland": _NORDSJAELLAND}
+
+# How a session or a course says it is not held in a room.
+_ONLINE_MARKERS = ("online", "virtuel", "virtual", "e-learning", "elearning", "webinar",
+                   "zoom", "teams", "fjernundervisning", "remote", "digitalt")
+_DELIVERY_ALIASES = {
+    "fysisk": "fysisk", "fysiske": "fysisk", "fremmøde": "fysisk", "physical": "fysisk",
+    "klasseundervisning": "fysisk", "tilstedeværelse": "fysisk", "ikke online": "fysisk",
+    "online": "online", "virtuel": "online", "virtuelt": "online", "e-learning": "online",
+}
+
+
+def _is_online_location(text):
+    t = (text or "").lower()
+    return any(m in t for m in _ONLINE_MARKERS)
+
+
+def _delivery_modes(product):
+    """{"fysisk", "online"} subset: how a product's sessions are held.
+
+    Works on catalog products (``locations``/``format``) and raw/augmented ones
+    (``variants[].option1``/``product_type``). A course with no location data
+    yields an empty set, so it never passes an explicit delivery filter.
+    """
+    locs = list(product.get("locations") or [])
+    for v in product.get("variants") or []:
+        if isinstance(v, dict):
+            locs.extend(x for x in (v.get("option1"), v.get("location"), v.get("city")) if x)
+    modes = {"online" if _is_online_location(loc) else "fysisk" for loc in locs if str(loc).strip()}
+    if _is_online_location(product.get("format") or product.get("product_type") or ""):
+        modes.add("online")
+    return modes
+
+
+def _normalize_delivery(value):
+    return _DELIVERY_ALIASES.get((value or "").strip().lower(), "")
+
+
+def _matches_delivery(product, delivery):
+    want = _normalize_delivery(delivery)
+    return not want or want in _delivery_modes(product)
+
+
+def _dedupe_results(products):
+    """Drop repeat listings: the same handle, or the same title from the same vendor.
+
+    The catalog holds some courses twice (re-imported or relisted under a new
+    handle), and showing both reads as a bug, not as two options.
+    """
+    seen, out = set(), []
+    for p in products:
+        if not isinstance(p, dict):
+            continue
+        handle = (p.get("handle") or "").strip().lower()
+        title_key = (re.sub(r"\W+", " ", (p.get("title") or "").lower()).strip(),
+                     (p.get("vendor") or "").strip().lower())
+        if (handle and handle in seen) or (title_key[0] and title_key in seen):
+            continue
+        seen.update(k for k in (handle, title_key if title_key[0] else None) if k)
+        out.append(p)
+    return out
+
+
 def _normalize_location(loc_input):
     """Normalize a location query: apply aliases, lowercase."""
     loc = loc_input.lower().strip()
@@ -240,7 +311,7 @@ def _location_matches(query_loc, variant_loc_raw):
             if metro_city in variant_loc:
                 return True
 
-    return False
+    return any(town in variant_loc for town in _REGION_TOWNS.get(normalized, ()))
 
 def extract_city_name(address):
     """Turn addresses like 'Kongsvang Alle 29, 8000 Aarhus C' into 'Aarhus'."""
@@ -804,7 +875,8 @@ OPENAI_TOOLS.extend([
                     "category": {"type": "string", "description": "Category slug or category name filter."},
                     "vendor": {"type": "string", "description": "Vendor slug or vendor name filter."},
                     "format": {"type": "string", "description": "Course format such as E-learning, Kursus, Konference."},
-                    "location": {"type": "string", "description": "City/location filter."},
+                    "delivery": {"type": "string", "enum": ["fysisk", "online"], "description": "How the course is held. 'fysisk' when the user wants to attend in person or says no online; 'online' when they want online/virtual. Results keep only courses with a session held that way."},
+                    "location": {"type": "string", "description": "City or region (e.g. 'Aarhus', 'Nordsjælland')."},
                     "price_min": {"type": "number", "description": "Minimum price in DKK."},
                     "price_max": {"type": "number", "description": "Maximum price in DKK."},
                     "language": {"type": "string", "description": "Teaching language: 'dansk' or 'engelsk'. Use when the user asks for a specific language."},
@@ -1821,17 +1893,36 @@ def _build_profile_boost(username):
 
 
 def _execute_catalog_search(args, username=None):
+    fmt = args.get("format") or ""
+    location = args.get("location") or ""
+    # "fysisk"/"online" is how a course is held, not a format or a town; the
+    # model sometimes files it under either, so move it to the delivery filter.
+    delivery = _normalize_delivery(args.get("delivery")) or _normalize_delivery(fmt) or _normalize_delivery(location)
+    if _normalize_delivery(fmt) and fmt.strip().lower() != "e-learning":
+        fmt = ""
+    if _normalize_delivery(location):
+        location = ""
+    # A region ("Nordsjælland") is matched town by town here, not by the catalog's
+    # substring facet, which knows no regions.
+    region = location if _normalize_location(location) in _REGION_TOWNS else ""
     filters = {
         "q": args.get("query") or "",
         "category": _resolve_category_slug(args.get("category") or ""),
         "vendor": _resolve_vendor_slug(args.get("vendor") or ""),
-        "format": args.get("format") or "",
-        "location": args.get("location") or "",
+        "format": fmt,
+        "location": "" if region else location,
         "price_min": args.get("price_min"),
         "price_max": args.get("price_max"),
         "sort": "relevance",
     }
     limit = int(args.get("limit") or 4)
+
+    def _post_filter(items):
+        return _dedupe_results([
+            p for p in items
+            if _matches_delivery(p, delivery)
+            and (not region or any(_location_matches(region, loc) for loc in (p.get("locations") or [])))
+        ])
     query = (args.get("query") or "").strip()
     # Metadata-backed facets (honoured on the augmented/RAG products that carry
     # structured_metadata; a no-op for catalog rows that lack it, so they are
@@ -1843,13 +1934,16 @@ def _execute_catalog_search(args, username=None):
     completed_titles, completed_handles = _completed_course_keys(username)
     profile_boost = _build_profile_boost(username)
 
-    result = catalog.search_products(filters=filters, page=1, per_page=max(1, min(limit, 8)))
+    # Post-filters (delivery, region, duplicates) need headroom to still fill `limit`.
+    per_page = 24 if (delivery or region) else max(1, min(limit, 8)) + 4
+    result = catalog.search_products(filters=filters, page=1, per_page=per_page)
+    candidates = _post_filter(result["products"])
     products = [
-        p for p in result["products"]
+        p for p in candidates
         if p.get("handle") not in _current_shown_handles and p.get("vendor") not in _current_blocked_vendors
     ]
-    if not products and result["products"]:
-        products = [p for p in result["products"] if p.get("vendor") not in _current_blocked_vendors]
+    if not products and candidates:
+        products = [p for p in candidates if p.get("vendor") not in _current_blocked_vendors]
 
     use_rag = query and (len(products) < max(1, limit // 2) or (result.get("total", 0) or 0) <= 1)
     if use_rag:
@@ -1871,6 +1965,9 @@ def _execute_catalog_search(args, username=None):
         if isinstance(detailed, dict) and "error" not in detailed:
             confidence = detailed.get("confidence", confidence)
             rag_products = _filter_blocked_vendors(detailed.get("products", []))
+            # Delivery is an exclusion the user stated ("ikke online"), so it is
+            # never relaxed below; duplicates are dropped before slicing to limit.
+            rag_products = _dedupe_results([p for p in rag_products if _matches_delivery(p, delivery)])
             # TL-03: carry the hard constraints (pris/lokation/format) into the
             # RAG fallback — semantisk søgning kender ikke filtrene, så uden
             # dette kan "under 5.000 kr i Aarhus" returnere kurser over budget
@@ -1886,7 +1983,7 @@ def _execute_catalog_search(args, username=None):
                     rag_products,
                     price_min=filters["price_min"],
                     price_max=filters["price_max"],
-                    location=filters["location"],
+                    location=region or filters["location"],
                     fmt=filters["format"],
                     language=language,
                     difficulty=difficulty,
@@ -1901,10 +1998,10 @@ def _execute_catalog_search(args, username=None):
             # courses. profile_boost is None for anonymous users → no-op.
             if profile_boost and rag_products:
                 try:
-                    rag_products = hybrid_rank_products(
+                    rag_products = _dedupe_results(hybrid_rank_products(
                         rag_products, query, load_augmented_products(),
                         limit=len(rag_products), profile_boost=profile_boost,
-                    )
+                    ))
                 except Exception:
                     pass  # fall back to the semantic order on any failure
             if rag_products:
@@ -1942,7 +2039,8 @@ def _execute_catalog_search(args, username=None):
         total=result.get("total", len(compact)),
         confidence=confidence,
         search_mode="catalog",
-        filters={k: v for k, v in filters.items() if v not in ("", None)},
+        filters={k: v for k, v in {**filters, "location": region or filters["location"],
+                                   "delivery": delivery}.items() if v not in ("", None)},
         results=compact,
         catalog_url="/catalog",
         search_debug={"embedding_skipped": True},
@@ -2560,7 +2658,20 @@ def _execute_prepare_course_order(args, username):
         "variant_location": (variant or {}).get("location") or (variant or {}).get("city") or args.get("variant_location") or "",
     }
     mark_order_flow_open(product["handle"], stage="prepared")
+    # A ready order gets the same confirm card as create_course_order's preview, so
+    # the user always has a Bekræft button, whichever of the two the model called.
+    # The card's confirmation re-dispatches to create_course_order (confirm_tool).
+    preview = {}
+    if not missing:
+        preview = json.loads(_execute_create_order(
+            {**args, "variant_date": payload["variant_date"],
+             "variant_location": payload["variant_location"], "confirm": False},
+            username,
+        ))
+        if not preview.get("needs_confirmation"):
+            preview = {}
     return json.dumps({
+        **preview,
         "status": "ready_for_confirmation" if not missing else "needs_info",
         "creates_order": False,
         "missing_fields": missing,
@@ -2574,7 +2685,7 @@ def _execute_prepare_course_order(args, username):
             f"Bekræft at du vil anmode om tilmelding til {product['title']} "
             f"for {contact['name'] or 'brugeren'}."
         ),
-        "next_step": (
+        "next_step": preview.get("next_step") or (
             "Når brugeren siger ja, kald create_course_order med confirm=true. "
             "Henvis ALDRIG brugeren til at bestille selv på kursussiden."
         ),
@@ -5519,12 +5630,74 @@ def _variant_options(product, limit=8):
     return out[:limit]
 
 
+_ISO_DATE_RE = re.compile(r"\b(\d{4})-(\d{1,2})-(\d{1,2})")
+_NUMERIC_DATE_RE = re.compile(r"\b(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?\b")
+
+
+def _date_points(text):
+    """Every (day, month, year) a session date or a user's wording names.
+
+    Catalog dates are Danish prose ("15. september 2026", "15.-16. september 2026"),
+    while the model passes whatever the user said ("16 september", "2026-09-16",
+    "16/9", "september"). Day and year are None when the text does not give them.
+    """
+    from calendar_service import _DANISH_MONTHS
+    s = (text or "").lower()
+    points = [(int(d), int(m), int(y)) for y, m, d in _ISO_DATE_RE.findall(s)]
+    s = _ISO_DATE_RE.sub(" ", s)
+    tokens = re.findall(r"[a-zæøå]+|\d+", s)
+    if not any(t in _DANISH_MONTHS for t in tokens):
+        for d, m, y in _NUMERIC_DATE_RE.findall(s):
+            if 1 <= int(m) <= 12:
+                year = int(y) if y else None
+                points.append((int(d), int(m), year + 2000 if year and year < 100 else year))
+        return points
+    pending_days = []
+    yearless = []  # indexes of points still waiting for a year
+    for tok in tokens:
+        if tok in _DANISH_MONTHS:
+            month = _DANISH_MONTHS[tok]
+            for day in pending_days or [None]:
+                yearless.append(len(points))
+                points.append((day, month, None))
+            pending_days = []
+        elif tok.isdigit():
+            num = int(tok)
+            if len(tok) == 4:
+                for i in yearless:
+                    points[i] = (points[i][0], points[i][1], num)
+                yearless = []
+            elif 1 <= num <= 31:
+                pending_days.append(num)
+    return points
+
+
+def _session_date_match(want, have):
+    """2 = the wanted date falls on this session, 1 = same month only, 0 = no."""
+    wanted, held = _date_points(want), _date_points(have)
+    if not wanted or not held:
+        return 0
+    best = 0
+    for wd, wm, wy in wanted:
+        same_month = [hd for hd, hm, hy in held if hm == wm and (not wy or not hy or wy == hy)]
+        if not same_month:
+            continue
+        days = [d for d in same_month if d]
+        if not wd or not days or min(days) <= wd <= max(days):
+            return 2
+        best = 1
+    return best
+
+
 def _pick_variant(product, want_date="", want_location=""):
     """The session the user chose (N-3.1: price the CHOSEN variant, not variants[0]).
 
     Returns ``(variant_or_None, ambiguous)``. ``ambiguous`` is True when several
     sessions remain with DIFFERENT prices and the user has not narrowed it down, so
     the assistant should ask which one instead of booking at a guessed price.
+
+    Dates are compared as dates, not strings: "16 september" picks the
+    "15.-16. september 2026" session, and "september" picks the only September one.
     """
     variants = [v for v in (product.get("variants") or []) if isinstance(v, dict)]
     if not variants:
@@ -5532,7 +5705,15 @@ def _pick_variant(product, want_date="", want_location=""):
     wd, wl = (want_date or "").strip().lower(), (want_location or "").strip().lower()
     cands = variants
     if wd:
-        cands = [v for v in cands if wd in (v.get("date") or "").lower() or (v.get("date") or "").lower() in wd] or []
+        def _text_hit(v):
+            have = (v.get("date") or "").lower()
+            return bool(have) and (wd in have or have in wd)
+        scored = [(v, 2 if _text_hit(v) else _session_date_match(wd, v.get("date"))) for v in cands]
+        cands = [v for v, score in scored if score == 2]
+        if not cands:
+            # Same month, different day: only safe when it is the one session that month.
+            month_only = [v for v, score in scored if score == 1]
+            cands = month_only if len(month_only) == 1 else []
     if wl:
         cands = [v for v in cands if wl in (v.get("location") or "").lower() or wl in (v.get("city") or "").lower()] or []
     if (wd or wl) and not cands:
@@ -5611,8 +5792,10 @@ def _execute_create_order(args, username=None):
             "status": "needs_info",
             "missing_fields": ["variant"],
             "options": _variant_options(product),
-            "message": ("Kurset har flere hold med forskellig pris. Spørg kort, hvilket hold brugeren vil have "
-                        "(dato og sted), og kald så værktøjet igen med variant_date/variant_location."),
+            "message": ("Holdet er ikke entydigt: enten findes den ønskede dato/sted ikke, eller der er flere hold "
+                        "med forskellig pris. Nævn de hold, der står i options, spørg kort hvilket brugeren vil "
+                        "have, og kald så værktøjet igen med variant_date/variant_location. Henvis ikke til "
+                        "kursussiden."),
         }, ensure_ascii=False, default=str)
 
     if variant is not None and variant.get("price") is not None:
@@ -5670,12 +5853,18 @@ def _execute_create_order(args, username=None):
     # stray call booking a course. The user's own yes is what sets confirm=true.
     if not bool(args.get("confirm")):
         mark_order_flow_open(handle, stage="awaiting_confirm")
+        when = ", ".join(x for x in (variant_selection.get("date"), variant_selection.get("location")) if x)
         return json.dumps(needs_confirmation_payload(
             action="create_course_order",
             summary_da=(
-                f"Bekræft bestilling af '{product_data['title']}' til {user_name} "
-                f"({user_email}). Kald create_course_order igen med confirm=true når brugeren siger ja."
+                f"Bestil '{product_data['title']}'" + (f" ({when})" if when else "")
+                + f" til {user_name} ({user_email})."
             ),
+            confirm_tool="create_course_order",
+            price=price_str,
+            next_step=("Bekræftelseskortet vises nu under dit svar. Bed brugeren trykke Bekræft på kortet "
+                       "(eller sige ja, så kalder du create_course_order igen med confirm=true). "
+                       "Ordren er IKKE oprettet endnu, og der er intet link at tilmelde sig via."),
             details={
                 "product_handle": handle,
                 "product_title": product_data["title"],

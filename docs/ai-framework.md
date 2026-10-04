@@ -303,6 +303,14 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
   cross-tenant targets. Employee action tools: `save_course_for_later`,
   `set_course_reminder` (immediate), `manage_my_order` (cancel own order),
   `request_manager_approval` (confirm, self-scoped).
+- **Course orders:** `create_course_order` without `confirm` (and a ready
+  `prepare_course_order`, which carries the same preview with
+  `confirm_tool: "create_course_order"`) emits the confirm card; the agent stores the
+  pending call under `confirm_tool`, so Bekræft always runs `create_course_order`. One
+  card per action and course per turn. The session is resolved by `_pick_variant`,
+  which compares dates as dates ("16 september" picks "15.-16. september 2026"; a bare
+  month picks the only session that month). A turn that ran an order tool
+  (`_ORDER_TOOLS` in `agent.py`) drops course cards: the confirm card is the UI.
 - **Profile writes:** additions save immediately with an inline **Fortryd** (undo);
   removals/edits keep the confirm card; several changes can share one card
   (`AI_PROFILE_AUTOSAVE=0` restores propose-then-confirm). Removing or editing
@@ -326,6 +334,12 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
 - **Hard filters in RAG fallback** (`AI_SEARCH_HARD_FILTERS`): `catalog_search` filters
   fallback results with the same predicates; an emptied set returns unfiltered results
   with `filters_relaxed: true` + `relaxed_filters`.
+- **Delivery, regions, duplicates** (`catalog_search`): `delivery` (`fysisk`/`online`)
+  keeps courses with a session held that way (`_delivery_modes`); it is an exclusion the
+  user stated, so it is never relaxed. "fysisk"/"online" passed as `location` or
+  `format` is moved to `delivery`. A region (`_REGION_TOWNS`, e.g. Nordsjælland) is
+  matched town by town. `_dedupe_results` drops repeat listings (same handle, or same
+  title + vendor) before slicing to `limit`.
 - **Per-card WHY:** `_course_match_reason` (verifiable: matched query/profile terms +
   attributes, never an LLM guess) -> `serialize_course_cards(reasons=...)` -> `card.why`.
 - **`compare_courses` / `catalog_compare_products`**: `_comparison_analysis` computes

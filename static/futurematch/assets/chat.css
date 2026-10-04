@@ -1174,6 +1174,11 @@ body.chat-page.light-mode .md blockquote {
   color: var(--red);
   background: var(--red-glow);
 }
+.confirm-card-link {
+  color: inherit;
+  text-decoration: underline;
+  font-weight: 700;
+}
 
 /* ============================================================
    CO-PILOT UPGRADE — cross-surface cards, WHY line, memory edit

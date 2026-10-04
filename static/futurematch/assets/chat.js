@@ -1021,8 +1021,14 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
     const card = document.createElement("div");
     card.className = "confirm-card";
     const action = data.action || "";
+    const isOrder = action === "create_course_order";
     const summaryDa = data.summary_da || "";
-    const details = data.details || "";
+    // details is free text for some tools and a structured map for others; only
+    // text is shown (the summary already names course, session and contact).
+    const rawDetails = data.details;
+    const details = typeof rawDetails === "string" ? rawDetails
+      : (rawDetails && Array.isArray(rawDetails.participants) && rawDetails.participants.length
+        ? "Deltagere: " + rawDetails.participants.join(", ") : "");
     const recipientCount = data.recipient_count != null ? data.recipient_count : null;
     const price = data.price != null ? data.price : null;
 
@@ -1033,7 +1039,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
     card.innerHTML = `
       <div class="confirm-card-head">
         <i class="fa-solid fa-triangle-exclamation"></i>
-        <span>Bekræft handling</span>
+        <span>${isOrder ? "Bekræft bestilling" : "Bekræft handling"}</span>
       </div>
       <div class="confirm-card-body">${esc(summaryDa)}</div>
       ${details ? `<div class="confirm-card-details">${esc(details)}</div>` : ""}
@@ -1046,14 +1052,23 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
 
     const okBtn = card.querySelector(".confirm-card-ok");
     const cancelBtn = card.querySelector(".confirm-card-cancel");
-    const showResult = (cls, msg) => {
+    const showResult = (cls, msg, link) => {
       okBtn.disabled = true; cancelBtn.disabled = true;
       const res = document.createElement("div");
       res.className = "confirm-card-result " + cls;
       res.textContent = msg;
+      if (link) {
+        const a = document.createElement("a");
+        a.href = link.href;
+        a.textContent = link.label;
+        a.className = "confirm-card-link";
+        res.appendChild(document.createTextNode(" "));
+        res.appendChild(a);
+      }
       card.appendChild(res);
       down();
     };
+    const OK_STATUSES = ["success", "order_created", "team_orders_created", "handed_off_to_hr"];
 
     okBtn.addEventListener("click", async () => {
       okBtn.disabled = true; cancelBtn.disabled = true;
@@ -1065,7 +1080,13 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
           body: JSON.stringify({ token: data.token }),
         });
         const result = await resp.json();
-        if (result.status === "success" || result.status === "already_confirmed") {
+        if (result.status === "order_created") {
+          // The order tool's message is a long markdown receipt meant for the
+          // model; the card says it plainly and links to the order.
+          const label = result.order_status_label ? " (" + result.order_status_label + ")" : "";
+          showResult("ok", "Bestillingen er registreret" + label + ".",
+            { href: result.order_url || "/min-tidslinje", label: "Se bestillingen" });
+        } else if (OK_STATUSES.indexOf(result.status) >= 0) {
           showResult("ok", result.message_da || result.message || "Bekræftet");
         } else if (result.status === "already_confirmed") {
           showResult("ok", "Allerede bekræftet");

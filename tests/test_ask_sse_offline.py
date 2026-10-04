@@ -559,15 +559,8 @@ class ConfirmStoreUnitTests(unittest.TestCase):
         self.assertIsNone(confirm_store.pop_pending("sess-1", "nonexistent-token"))
 
 
-class ConfirmCardSSETests(unittest.TestCase):
-    """Phase 8: a side-effect tool response emits a confirm_card SSE event."""
-
-    _CONFIRM_TOOL_PAYLOAD = json.dumps({
-        "needs_confirmation": True,
-        "action": "manage_my_order",
-        "message_da": "Annuller bestillingen Python Basis?",
-        "details": "Bestillingen Python Basis vil blive annulleret.",
-    }, ensure_ascii=False)
+class _FreshAgentState:
+    """Clears the agent's in-process caches and the confirm store per test."""
 
     def setUp(self):
         import ai_runtime
@@ -586,6 +579,17 @@ class ConfirmCardSSETests(unittest.TestCase):
         ai_runtime._OPENAI_CLIENT_KEY = None
         ai_runtime._TOOL_CACHE.clear()
         confirm_store.clear_all()
+
+
+class ConfirmCardSSETests(_FreshAgentState, unittest.TestCase):
+    """Phase 8: a side-effect tool response emits a confirm_card SSE event."""
+
+    _CONFIRM_TOOL_PAYLOAD = json.dumps({
+        "needs_confirmation": True,
+        "action": "manage_my_order",
+        "message_da": "Annuller bestillingen Python Basis?",
+        "details": "Bestillingen Python Basis vil blive annulleret.",
+    }, ensure_ascii=False)
 
     def _drive_side_effect_turn(self):
         """Drive a turn where manage_my_order returns needs_confirmation."""
@@ -672,6 +676,71 @@ class ConfirmCardSSETests(unittest.TestCase):
 
         body2 = resp2.get_json()
         self.assertEqual(body2.get("status"), "already_confirmed")
+
+
+class OrderTurnSSETests(_FreshAgentState, unittest.TestCase):
+    """An ordering turn shows the confirm card, not course cards from the lookup."""
+
+    _PREPARE_PAYLOAD = json.dumps({
+        "status": "ready_for_confirmation",
+        "creates_order": False,
+        "needs_confirmation": True,
+        "action": "create_course_order",
+        "confirm_tool": "create_course_order",
+        "message_da": "Bestil 'Projektledelse Grundkursus' (12. august 2026, København) til Eva (eva@firma.dk).",
+        "details": {"product_handle": "projektledelse-grund"},
+        "price": "12500",
+    }, ensure_ascii=False)
+
+    def _drive_order_turn(self):
+        both = type("Resp", (), {
+            "id": "resp_1",
+            "output": [
+                {"type": "function_call", "name": "catalog_search", "call_id": "call_1",
+                 "arguments": json.dumps({"query": "projektledelse"})},
+                {"type": "function_call", "name": "prepare_course_order", "call_id": "call_2",
+                 "arguments": json.dumps({"product_handle": "projektledelse-grund",
+                                          "variant_date": "12 august"})},
+            ],
+            "usage": {"input_tokens": 10, "output_tokens": 3},
+        })()
+        text = "Tryk Bekræft på kortet, så er pladsen bestilt."
+        fake_responses = _ScriptedResponses([both, _final_response("resp_2", text)])
+        fake_execute = _FakeExecuteTool({"catalog_search": _TOOL_PAYLOAD,
+                                         "prepare_course_order": self._PREPARE_PAYLOAD})
+        env = {"AI_RUNTIME": "responses", "AI_LLM_ROUTER": "0",
+               "AI_GROUNDING_RECALL": "0", "OPENAI_API_KEY": "sk-test"}
+        with patch("ai_runtime.OpenAI", _make_fake_client_cls(fake_responses)),                 patch("ai_runtime.iter_completion_stream", _ScriptedStream([text])),                 patch("app1.agent.execute_tool", fake_execute),                 patch("app1.tools.resolve_products_for_ui", lambda **kwargs: list(_RAW_PRODUCTS)),                 patch.dict(os.environ, env):
+            client = _APP.test_client()
+            with client.session_transaction() as sess:
+                sess["user"] = "eva"
+            resp = client.post("/app1/ask", json={"query": "Jeg vil gerne bestille Projektledelse Grundkursus"})
+            self.assertEqual(resp.status_code, 200)
+            raw = resp.get_data(as_text=True)
+        self.assertEqual([c["name"] for c in fake_execute.calls], ["catalog_search", "prepare_course_order"])
+        return _parse_sse(raw), client
+
+    def test_order_turn_shows_confirm_card_without_course_cards(self):
+        events, _ = self._drive_order_turn()
+        self.assertEqual(_of_type(events, "course_cards"), [])
+        self.assertEqual(_of_type(events, "product"), [])
+        cards = _of_type(events, "confirm_card")
+        self.assertEqual(len(cards), 1, cards)
+        self.assertEqual(cards[0]["action"], "create_course_order")
+        self.assertEqual(cards[0]["price"], "12500")
+
+    def test_prepared_order_confirms_through_create_course_order(self):
+        events, client = self._drive_order_turn()
+        token = _of_type(events, "confirm_card")[0]["token"]
+        created = json.dumps({"status": "order_created", "order_id": "o-1"})
+        with patch("app1.tools.execute_tool", return_value=created) as mock_exec,                 patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}):
+            resp = client.post("/app1/confirm_tool_action", json={"token": token})
+        self.assertEqual(resp.get_json().get("status"), "order_created")
+        from tool_confirm import tool_call_parts
+        name, args = tool_call_parts(mock_exec.call_args[0][0])
+        self.assertEqual(name, "create_course_order")
+        self.assertTrue(args.get("confirm"))
+        self.assertEqual(args.get("variant_date"), "12 august")
 
 
 if __name__ == "__main__":

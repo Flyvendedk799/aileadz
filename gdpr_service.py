@@ -802,6 +802,9 @@ def _build_where(spec, subject):
 # from ``set_params(subject)``); match: [(column, subject-field)], OR-ed.
 EXTRA_SPECS = [
     # --- hard deletes (personal, no audit/financial value) ---------------
+    dict(kind="delete", table="company_chat_messages",
+         match=[("sender_member_id", "user_id_or_member"),
+                ("recipient_member_id", "user_id_or_member")], extra="company_scope"),
     dict(kind="delete", table="ai_agent_runs", match=[("username", "username")]),
     dict(kind="delete", table="ai_tool_runs", match=[("username", "username")]),
     dict(kind="delete", table="hr_chatbot_interactions", match=[("username", "username")]),
@@ -992,6 +995,7 @@ COVERAGE = {
         "employee_learning_progress", "employee_skills_matrix", "employee_goals",
         "employee_performance_reviews", "employee_skill_history", "user_2fa", "password_reset_tokens",
         "email_log",
+        "company_chat_messages",
         # AI store (N-3.3): erased through the subject's session ids / username / browser token
         "ai_sessions", "ai_analytics_events", "ai_debug_logs", "ai_latency_logs", "ai_anonymous_profiles",
         # small per-user tables now owned by schema_registry (username-keyed profile data)

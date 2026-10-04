@@ -31,6 +31,16 @@ logger = logging.getLogger(__name__)
 _ENGINE = "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 
 REGISTRY_DDL = [
+    f"""CREATE TABLE IF NOT EXISTS company_chat_messages (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        company_id INT NOT NULL,
+        sender_member_id INT NOT NULL,
+        recipient_member_id INT NOT NULL,
+        body TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_company_chat_sender (company_id, sender_member_id, recipient_member_id, id),
+        INDEX idx_company_chat_recipient (company_id, recipient_member_id, sender_member_id, id)
+    ) {_ENGINE}""",
     f"""CREATE TABLE IF NOT EXISTS users (
         id INT AUTO_INCREMENT PRIMARY KEY,
         username VARCHAR(255) NOT NULL,

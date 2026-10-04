@@ -87,6 +87,7 @@
         <li><a class="fm-nav-link {{ 'active' if _nav == 'emphome' }}" href="{{ url_for('futurematch.employee_home') }}"><i class="fa-solid fa-house"></i><span>Min læring</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if _nav == 'timeline' }}" href="{{ url_for('futurematch.timeline') }}"><i class="fa-solid fa-timeline"></i><span>Mine bestillinger</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if _nav == 'goals' }}" href="{{ url_for('futurematch.learning_goals') }}"><i class="fa-solid fa-bullseye"></i><span>Udviklingsmål</span></a></li>
+        {% if session.get('company_id') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'company_chat' }}" href="{{ url_for('futurematch.company_chat') }}"><i class="fa-solid fa-comments"></i><span>Kollega-chat</span></a></li>{% endif %}
       </ul>
 
       <div class="fm-ai-cluster {{ 'in' if _in_ai }}">

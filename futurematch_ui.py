@@ -6,8 +6,9 @@ The shared shell lives in templates/fm_base.html; individual pages extend it.
 """
 import os
 import datetime
+from auth_decorators import require_company
 from flask import (Blueprint, render_template, session, abort, redirect,
-                   url_for, request, flash, current_app)
+                   url_for, request, flash, current_app, jsonify)
 
 futurematch_bp = Blueprint('futurematch', __name__, template_folder='templates')
 
@@ -141,6 +142,7 @@ SIDEBAR_BY_ENDPOINT = {
     'futurematch.my_order': 'timeline',
     'futurematch.learning_goals': 'goals',
     'futurematch.chat': 'chat',
+    'futurematch.company_chat': 'company_chat',
     'futurematch.ai_profiler': 'chat',
     'futurematch.mind_map': 'mindmap',
     'futurematch.my_cv': 'profile',
@@ -226,6 +228,78 @@ def nav_state(page_id='', hr_tab='', admin_tab=''):
 def chat():
     """AI assistant chat surface (standalone shell with chat.js)."""
     return render_template('fm/chat.html', chat_cfg=_chat_cfg())
+
+
+def _company_chat_members(cur, company_id, user_id):
+    """Only active members with a real account can exchange messages."""
+    cur.execute(
+        "SELECT id, user_id, COALESCE(NULLIF(full_name, ''), username, email) AS name, role "
+        "FROM company_users WHERE company_id=%s AND user_id IS NOT NULL "
+        "AND status='active' ORDER BY id DESC", (company_id,)
+    )
+    members = list(cur.fetchall())
+    me = next((member for member in members if member['user_id'] == user_id), None)
+    unique = {}
+    for member in members:
+        unique.setdefault(member['user_id'], member)
+    return me, list(unique.values())
+
+
+@futurematch_bp.route('/kollega-chat', methods=['GET', 'POST'])
+@require_company
+def company_chat():
+    """Private one-to-one chat, scoped to the signed-in company and its members."""
+    import MySQLdb.cursors
+    company_id, user_id = session.get('company_id'), session.get('user_id')
+    if not user_id:
+        abort(403)
+    conn = current_app.mysql.connection
+    cur = conn.cursor(MySQLdb.cursors.DictCursor)
+    try:
+        me, members = _company_chat_members(cur, company_id, user_id)
+        if not me:
+            abort(403)
+        peers = [m for m in members if m['id'] != me['id']]
+        if request.method == 'POST':
+            data = request.get_json(silent=True) or {}
+            try:
+                peer_id = int(data.get('recipient_id'))
+            except (TypeError, ValueError):
+                return jsonify(error='Vælg en kollega.'), 400
+            if not any(m['id'] == peer_id for m in peers):
+                return jsonify(error='Kollegaen er ikke tilgængelig i virksomheden.'), 403
+            raw_body = data.get('body')
+            body = raw_body.strip() if isinstance(raw_body, str) else ''
+            if not body or len(body) > 5000:
+                return jsonify(error='Beskeden skal være mellem 1 og 5000 tegn.'), 400
+            cur.execute(
+                "INSERT INTO company_chat_messages "
+                "(company_id, sender_member_id, recipient_member_id, body) "
+                "VALUES (%s, %s, %s, %s)",
+                (company_id, me['id'], peer_id, body),
+            )
+            conn.commit()
+            return jsonify(ok=True, id=cur.lastrowid), 201
+        peer_id = request.args.get('recipient_id', type=int)
+        if request.args.get('format') == 'json':
+            if not peer_id or not any(m['id'] == peer_id for m in peers):
+                return jsonify(error='Vælg en kollega i virksomheden.'), 403
+            cur.execute(
+                "SELECT id, sender_member_id, body, created_at FROM company_chat_messages "
+                "WHERE company_id=%s AND "
+                "((sender_member_id=%s AND recipient_member_id=%s) OR "
+                "(sender_member_id=%s AND recipient_member_id=%s)) "
+                "ORDER BY id DESC LIMIT 100",
+                (company_id, me['id'], peer_id, peer_id, me['id']),
+            )
+            messages = list(reversed(cur.fetchall()))
+            return jsonify(messages=[{
+                'id': m['id'], 'mine': m['sender_member_id'] == me['id'],
+                'body': m['body'], 'created_at': m['created_at'].isoformat(),
+            } for m in messages])
+        return render_template('fm/company_chat.html', peers=peers, me=me)
+    finally:
+        cur.close()
 
 
 def _chat_cfg():

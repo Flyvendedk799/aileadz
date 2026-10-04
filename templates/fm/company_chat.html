@@ -1,0 +1,49 @@
+{% extends "fm_base.html" %}
+{% block page_id %}company_chat{% endblock %}
+{% block title %}Kollega-chat · Futurematch{% endblock %}
+{% block topbar_title %}Kollega-chat{% endblock %}
+{% block topbar_sub %}Skriv direkte til kolleger og HR i din virksomhed{% endblock %}
+{% block extra_head %}
+<style>
+  .col-chat { display:grid; grid-template-columns: minmax(220px, 290px) 1fr; max-width:1100px; min-height: min(75vh, 720px); margin:24px auto; border:1px solid var(--fm-line); border-radius:18px; overflow:hidden; background:var(--fm-surface); }
+  .col-people { border-right:1px solid var(--fm-line); overflow:auto; }
+  .col-people h2 { font-size:15px; margin:0; padding:20px; }
+  .col-person { display:block; width:100%; padding:14px 20px; border:0; border-top:1px solid var(--fm-line); background:transparent; color:var(--fm-ink); text-align:left; cursor:pointer; }
+  .col-person:hover, .col-person.active { background:var(--fm-surface-2); }
+  .col-person small { display:block; margin-top:3px; color:var(--fm-ink-3); }
+  .col-thread { display:flex; flex-direction:column; min-width:0; }
+  .col-thread h2 { font-size:16px; margin:0; padding:20px; border-bottom:1px solid var(--fm-line); }
+  .col-messages { flex:1; min-height:320px; max-height:65vh; overflow:auto; padding:20px; }
+  .col-message { width:fit-content; max-width:80%; padding:10px 14px; margin:8px 0; border-radius:14px; background:var(--fm-surface-2); white-space:pre-wrap; overflow-wrap:anywhere; }
+  .col-message.mine { margin-left:auto; background:var(--fm-primary); color:white; }
+  .col-message time { display:block; margin-top:5px; font-size:11px; opacity:.75; }
+  .col-compose { display:flex; gap:10px; padding:16px; border-top:1px solid var(--fm-line); }
+  .col-compose textarea { flex:1; min-height:44px; max-height:140px; resize:vertical; padding:10px; border:1px solid var(--fm-line); border-radius:10px; font:inherit; }
+  .col-compose button { align-self:end; border:0; border-radius:10px; background:var(--fm-primary); color:white; padding:12px 18px; cursor:pointer; }
+  .col-compose button:disabled { opacity:.5; cursor:default; }
+  .col-status { min-height:20px; padding:0 16px 12px; font-size:13px; color:var(--fm-ink-3); }
+  @media(max-width:700px) { .col-chat { grid-template-columns:1fr; margin:12px; } .col-people { max-height:180px; border-right:0; border-bottom:1px solid var(--fm-line); } .col-messages { min-height:260px; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="col-chat" id="companyChat" data-url="{{ url_for('futurematch.company_chat') }}">
+  <div class="col-people" aria-label="Kolleger">
+    <h2>Vælg en kollega</h2>
+    {% for peer in peers %}
+      <button type="button" class="col-person" data-id="{{ peer.id }}" data-name="{{ peer.name }}">{{ peer.name }}<small>{{ 'HR / administrator' if peer.role in ['company_admin', 'hr_manager'] else 'Kollega' }}</small></button>
+    {% else %}<p style="padding:0 20px">Ingen andre aktive kolleger endnu.</p>{% endfor %}
+  </div>
+  <div class="col-thread">
+    <h2 id="colTitle">Vælg en kollega for at starte</h2>
+    <div class="col-messages" id="colMessages" role="log" aria-live="polite"></div>
+    <form class="col-compose" id="colForm">
+      <textarea id="colBody" maxlength="5000" placeholder="Skriv en besked…" aria-label="Besked" disabled></textarea>
+      <button type="submit" id="colSend" disabled>Send</button>
+    </form>
+    <div class="col-status" id="colStatus" role="status"></div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='futurematch/assets/company-chat.js') }}?v={{ asset_version('futurematch/assets/company-chat.js') }}"></script>
+{% endblock %}

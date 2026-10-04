@@ -36,6 +36,7 @@ For the AI internals see [ai-framework.md](ai-framework.md). For standing constr
 | Module | Role |
 |---|---|
 | `futurematch_ui.py`, `templates/fm/` | main learner/HR/admin UI blueprint and the design gallery (`/ui`, admin only; renders any `templates/fm/<page>.html`) |
+| `futurematch_ui.py` (`/kollega-chat`), `templates/fm/company_chat.html`, `static/futurematch/assets/company-chat.js` | company member direct messages, separate from AI chat; active sender and recipient membership are checked on each request; messages are company-scoped and covered by GDPR export/erasure |
 | `catalog_service.py`, `catalog_routes.py`, `catalog_admin_routes.py`, `catalog_freshness.py`, `shopify_sync.py` | the ONE course catalog (source file `CATALOG_SOURCE_FILE`, vendor submissions, Shopify sync) |
 | `learner_orders.py`, `learner_context.py`, `completion_service.py`, `competency.py`, `skill_history.py`, `learning_path_service.py`, `goal_sharing.py`, `goal_sharing_ui.py` | learner order detail, learner view of own HR data, completion moment, skills |
 | `cv_ingest.py`, `cv_parse_store.py` | CV / job-ad ingestion behind the profile page's CV import |

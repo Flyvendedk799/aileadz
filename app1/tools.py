@@ -2509,7 +2509,8 @@ def _execute_check_course_readiness(args, username):
     missing = [_DA_CONTACT_LABELS[f] for f in contact["missing_required"]]
     variant_date = args.get("variant_date") or ""
     variant_location = args.get("variant_location") or ""
-    if product.get("variants") and not (variant_date or variant_location):
+    variant, ambiguous = _pick_variant(product, variant_date, variant_location)
+    if ambiguous:
         missing.append("dato/lokation")
     supplier_active = supplier_state.get("is_active", True)
     readiness = "blocked" if not supplier_active else ("ready" if not missing else "needs_info")
@@ -2524,6 +2525,8 @@ def _execute_check_course_readiness(args, username):
         "confirm_fields": contact["confirm_fields"],
         "contact_sources": contact["sources"],
         "product": _catalog_compact_fields(product),
+        "selected_variant": variant,
+        "variant_options": _variant_options(product) if ambiguous else [],
         "supplier_state": supplier_state,
         "employee": {
             "name": contact["name"],
@@ -2545,13 +2548,16 @@ def _execute_prepare_course_order(args, username):
         "phone": args.get("user_phone"),
     })
     missing = ["user_" + field for field in contact["missing_required"]]
+    variant, ambiguous = _pick_variant(product, args.get("variant_date", ""), args.get("variant_location", ""))
+    if ambiguous:
+        missing.append("variant")
     payload = {
         "product_handle": product["handle"],
         "user_name": contact["name"],
         "user_email": contact["email"],
         "user_phone": contact["phone"],
-        "variant_date": args.get("variant_date") or "",
-        "variant_location": args.get("variant_location") or "",
+        "variant_date": (variant or {}).get("date") or args.get("variant_date") or "",
+        "variant_location": (variant or {}).get("location") or (variant or {}).get("city") or args.get("variant_location") or "",
     }
     mark_order_flow_open(product["handle"], stage="prepared")
     return json.dumps({
@@ -2562,6 +2568,7 @@ def _execute_prepare_course_order(args, username):
         "confirm_fields": contact["confirm_fields"],
         "contact_sources": contact["sources"],
         "confirmation_payload": payload,
+        "variant_options": _variant_options(product) if ambiguous else [],
         "product": _catalog_compact_fields(product),
         "confirmation_text": (
             f"Bekræft at du vil anmode om tilmelding til {product['title']} "

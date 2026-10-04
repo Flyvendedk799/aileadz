@@ -492,10 +492,20 @@ def _build_playbook_messages(stage, intent, mode="default", user_query=""):
     those the active mode allows (see MODE_PROFILES)."""
     allowed = set(mode_profile(mode)["flow_playbooks"])
     blocks = []
+    from app1.tools import order_flow_state
+    active_order = order_flow_state()
     if "buying" in allowed and (
-        stage in ("ready_to_buy", "team_buying") or intent in ("buying", "team_buying")
+        stage in ("ready_to_buy", "team_buying") or intent in ("buying", "team_buying") or active_order
     ):
         blocks.append(SYSTEM_PLAYBOOK_BUYING)
+        if active_order.get("handle"):
+            blocks.append(
+                "IGANGVÆRENDE BESTILLING: Brugeren har allerede valgt kursus med handle "
+                + active_order["handle"]
+                + ". Fortsæt bestillingen fra dette kursus. Søg kun efter nye kurser, hvis brugeren beder om det. "
+                "Hvis brugeren siger 'standard', brug den entydige standardvariant fra værktøjet; "
+                "spørg kun om hold, når værktøjet melder flere reelle valg. Opret aldrig ordre uden bekræftelse."
+            )
     profile_turn = stage in ("profile_update", "profile_and_search") or intent in (
         "profile_update", "profile_and_search", "profiler_resume",
     )
@@ -506,6 +516,8 @@ def _build_playbook_messages(stage, intent, mode="default", user_query=""):
     search_turn = intent in ("discovery", "follow_up", "profile_and_search", "comparison", "detail") or stage in (
         "searching", "needs_discovery", "correcting",
     )
+    if active_order and not _COURSE_REQUEST_PATTERNS.search(user_query or ""):
+        search_turn = False
     if "search" in allowed and search_turn:
         blocks.append(SYSTEM_PLAYBOOK_SEARCH)
     elif "search_on_request" in allowed and user_query and _COURSE_REQUEST_PATTERNS.search(user_query):

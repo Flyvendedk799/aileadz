@@ -62,3 +62,6 @@ ldap3>=2.9,<3
 # clean ServerHoster venv — pin them so PDF resumes parse on every deploy.
 pypdf>=6.16.1,<7
 pdfplumber>=0.11,<0.13
+
+# Cross-process atomic catalogue editing and review publication.
+filelock>=3.16,<4

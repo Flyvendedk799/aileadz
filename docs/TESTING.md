@@ -1,6 +1,6 @@
 # Testing
 
-~1,900 tests, all runnable **offline**: no MySQL, no OpenAI/Anthropic key, no network. A full run takes about one minute.
+Over 2,200 tests, all runnable **offline**: no MySQL, no OpenAI/Anthropic key, no network. A full run takes about one minute.
 
 ```bash
 pip install -r requirements.txt pytest pytest-timeout
@@ -13,7 +13,7 @@ SANDBOX=1 AI_WARMUP_ON_IMPORT=0 py -c "from run import create_app; create_app()"
 
 `tests/conftest.py` sets the env for you (`SANDBOX=1`, `AI_WARMUP_ON_IMPORT=0`, `SCHEDULER_OPPORTUNISTIC=0`, `AI_MEMORY_BACKEND=sqlite`, `ENTERPRISE_TABLE_SYNC_SKIP=1`, `CATALOG_AUTO_EMBED=0`). If no MySQL answers on `MYSQL_HOST:MYSQL_PORT`, it makes `pymysql.connect` fail instantly so best-effort DB writes never hang a test. It also treats every session as an active membership and resets the confirm store between tests.
 
-CI (`.github/workflows/ci.yml`) additionally runs against a real MySQL 8 service; only `tests/test_schema_baseline.py` needs it (builds every table from scratch and asserts `verify_schema` finds nothing missing). A handful of tests skip when the real Shopify export or MySQL is absent (`test_catalog_service.py`, `test_ask_sse_offline.py`).
+CI (`.github/workflows/ci.yml`) additionally runs against a real MySQL 8 service; `tests/test_schema_baseline.py` and the disposable-sandbox concurrency regression in `tests/test_launch_mysql.py` need it (builds every table from scratch and asserts `verify_schema` finds nothing missing). A handful of tests skip when the real Shopify export or MySQL is absent (`test_catalog_service.py`, `test_ask_sse_offline.py`).
 
 ## Which harness to use
 
@@ -43,3 +43,16 @@ If a statement is untranslatable, extend `SqliteMysql` (it raises loudly on purp
 ## Local full-stack sandbox
 
 For a real MySQL + browser session: [../sandbox/README.md](../sandbox/README.md).
+
+## Launch workflow regressions
+
+`test_launch_learning.py`, `test_launch_fulfillment.py`, `test_launch_catalog.py`,
+`test_mail_delivery.py` and `test_customer_launch.py` cover frozen paths, internal
+enrolment, quote changes, group rollback, renewal, cancellation fees, participant
+changes, verified outcomes, publication crash recovery, delivery uncertainty and
+customer response notifications. The MySQL test races two orders against one
+budget; it runs only against the explicitly named disposable `futurematch_sandbox`.
+
+Offline route tests render the actual Jinja templates but cannot establish visual
+quality or live SMTP/supplier delivery. Use the launch runbook for browser and
+real-recipient acceptance.

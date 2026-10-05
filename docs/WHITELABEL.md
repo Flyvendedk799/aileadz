@@ -47,9 +47,9 @@ Without the `custom_branding` feature (and not a platform admin) the hub drops
   `enable_white_label`).
 - `hide_platform_branding` only takes effect while branding is active; `fm_base.html` then drops
   the Futurematch references.
-- Caveat: `_row_to_branding` reads `branding_draft` instead of the live columns whenever
-  `branding_status='draft'`, so a saved draft is what `get_branding()` returns to everybody until
-  a live save; it is not an internal-only preview.
+- `get_branding()` reads published settings. Only the authorized editor explicitly uses
+  `get_branding(..., preview=True)` to see `branding_draft`; saving a draft never changes the
+  learner, public or mail identity. Publishing saves the reviewed form once.
 
 ## Embeddable chat widget
 

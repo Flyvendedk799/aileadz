@@ -49,7 +49,7 @@ def _can_cancel(status):
 
 
 def _can_complete(status):
-    return lc.normalize_status(status) in (lc.APPROVED, lc.BOOKED)
+    return lc.normalize_status(status) == lc.BOOKED
 
 
 def register_learner_order_routes(bp):
@@ -80,8 +80,18 @@ def register_learner_order_routes(bp):
             vendor_name = (product or {}).get("vendor") or ""
         except Exception:
             pass
+        from order_fulfillment import details
+        conn = current_app.mysql.connection
+        import MySQLdb.cursors
+        detail_cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        try:
+            fulfillment = details(detail_cur,order_id)
+            detail_cur.execute("SELECT * FROM course_order_changes WHERE order_id=%s ORDER BY created_at DESC",(order_id,))
+            changes = list(detail_cur.fetchall() or [])
+        finally:
+            detail_cur.close()
         return render_template(
-            "fm/my_order.html",
+            "fm/my_order.html", fulfillment=fulfillment, changes=changes,
             order=row,
             status=status,
             status_label=lc.status_label(status),
@@ -93,7 +103,7 @@ def register_learner_order_routes(bp):
             can_complete=_can_complete(status),
             has_date=bool(row.get("variant_date")),
             moment=moment,
-            just_completed=request.args.get("completed") == "1",
+            just_completed=request.args.get("completed") == "1" and status == lc.COMPLETED,
             billing_label=lc.BILLING_LEARNER_LABELS[lc.normalize_billing(row.get("billing_status"))],
             status_labels=lc.STATUS_LABELS_SHORT,
         )
@@ -109,7 +119,7 @@ def register_learner_order_routes(bp):
             code = 200 if res.get("success") else (404 if res.get("error") == "not_found" else 400)
             return jsonify(res), code
         if res.get("success"):
-            flash("Din bestilling er annulleret.", "success")
+            flash(res.get("message") or "Din bestilling er annulleret.", "success")
         else:
             flash(res.get("message") or "Bestillingen kunne ikke annulleres.", "danger")
         return redirect(url_for("futurematch.my_order", order_id=order_id))
@@ -118,13 +128,14 @@ def register_learner_order_routes(bp):
     def my_order_complete(order_id):
         if not session.get("user"):
             return jsonify({"success": False, "message": "Log ind først."}), 401
-        import order_service
-        res = order_service.complete_order(_ctx(), order_id)
+        from order_fulfillment import report_completion
+        res = report_completion(_ctx(), order_id, note=request.form.get('evidence_note',''), evidence_url=request.form.get('evidence_url',''))
         if _wants_json():
             code = 200 if res.get("success") else (404 if res.get("error") == "not_found" else 400)
             return jsonify(res), code
         if res.get("success"):
-            return redirect(url_for("futurematch.my_order", order_id=order_id, completed=1))
+            flash(res.get("message") or "Deltagelsen er registreret.", "success")
+            return redirect(url_for("futurematch.my_order", order_id=order_id))
         flash(res.get("message") or "Kurset kunne ikke markeres som gennemført.", "danger")
         return redirect(url_for("futurematch.my_order", order_id=order_id))
 
@@ -193,11 +204,19 @@ def register_learner_order_routes(bp):
             abort(404)
         try:
             from calendar_service import build_ics
+            import order_fulfillment
+            import MySQLdb.cursors
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            try:
+                booking = order_fulfillment.details(cur,order_id).get('booking_json') or {}
+            finally:
+                cur.close()
             ics = build_ics(
                 title="Kursus: %s" % (row.get("product_title") or "Uddannelse"),
-                start=row.get("variant_date"),
-                location=row.get("variant_location") or "",
-                description="Bestilt kursus (ordre %s)." % str(order_id)[:8],
+                start=booking.get('start_at') or row.get("variant_date"),
+                end=booking.get('end_at') or None,
+                location=booking.get('location') or booking.get('join_url') or row.get("variant_location") or "",
+                description="\n".join(filter(None,["Bestilt kursus (ordre %s)." % str(order_id)[:8],booking.get('reference'),booking.get('instructions'),booking.get('join_url')])) ,
                 url=request.url_root.rstrip("/") + url_for("futurematch.my_order", order_id=order_id),
             )
         except Exception as e:

@@ -1,0 +1,68 @@
+{% extends "fm_base.html" %}
+{% block title %}Futurematch til virksomheder{% endblock %}
+{% block topbar_title %}Kompetenceudvikling fra behov til udbytte{% endblock %}
+{% block content %}
+    <div class="fm-wrap" style="max-width:1100px">
+        <section class="fm-card" style="padding:32px;margin-bottom:20px">
+            <p class="fm-eyebrow">For danske virksomheder</p>
+            <h1>Find den rette læring. Få styr på resten.</h1>
+            <p>Futurematch forbinder medarbejderens kursusvalg med HR-godkendelser, budgetter, leverandørbooking og opfølgning på kompetencer.</p>
+            <a class="btn btn-primary" href="#demo">Bed om en demo</a>
+            <a class="btn btn-ghost" href="{{ url_for('catalog.catalog_index') }}">Se kursuskataloget</a>
+        </section>
+        <div class="fm-grid"
+             style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+                    margin-bottom:20px">
+            <section class="fm-card" style="padding:22px">
+                <h2>Medarbejderen</h2>
+                <p>Find relevante kurser med AI eller i kataloget, anmod om en plads og følg din booking og læring.</p>
+            </section>
+            <section class="fm-card" style="padding:22px">
+                <h2>HR og ledere</h2>
+                <p>Godkend tilmeldinger, styr budgetter og krav, og følg op på faktisk deltagelse og kursusudbytte.</p>
+            </section>
+            <section class="fm-card" style="padding:22px">
+                <h2>Et aftalt kundeforløb</h2>
+                <p>Vi aftaler omfang, pladser, AI-forbrug og onboarding sammen. Fakturering sker uden for platformen.</p>
+            </section>
+        </div>
+        <section class="fm-card" style="padding:28px;max-width:760px" id="demo">
+            <h2>Se jeres arbejdsgang i en demo</h2>
+            <p>Fortæl kort om virksomheden og det, I vil løse. Vi kontakter jer for at aftale næste skridt. Formularen booker ikke automatisk et mødetidspunkt.</p>
+            {% if sent %}
+                <p role="status">Tak. Din forespørgsel er registreret.</p>
+            {% endif %}
+            <form method="post">
+                <label class="fm-field">
+                    <span>Navn</span>
+                    <input class="fm-input" name="name" required maxlength="255">
+                </label>
+                <label class="fm-field">
+                    <span>Arbejdsmail</span>
+                    <input class="fm-input" name="email" type="email" required maxlength="255">
+                </label>
+                <label class="fm-field">
+                    <span>Virksomhed</span>
+                    <input class="fm-input" name="company_name" required maxlength="255">
+                </label>
+                <label class="fm-field">
+                    <span>Hvad vil I gerne forbedre?</span>
+                    <textarea class="fm-input" name="message" maxlength="4000">
+</textarea>
+                </label>
+                <div hidden>
+                    <label>
+                        Website<input name="website" tabindex="-1" autocomplete="off">
+                    </label>
+                </div>
+                <label>
+                    <input type="checkbox" name="contact_consent" value="yes" required>
+                    I må kontakte mig om denne forespørgsel. <a href="{{ url_for('pages.privacy') }}">Læs om behandling af oplysninger</a>.
+                </label>
+                <div style="margin-top:16px">
+                    <button class="btn btn-primary">Send demoforespørgsel</button>
+                </div>
+            </form>
+        </section>
+    </div>
+{% endblock %}

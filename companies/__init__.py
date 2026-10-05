@@ -15,7 +15,6 @@ from branding_service import (
     has_custom_branding_feature,
     is_whitelabel_active,
     log_branding_change,
-    publish_branding,
     save_branding_settings,
     set_custom_branding_feature,
 )
@@ -1100,8 +1099,6 @@ def create_companies_blueprint():
 
             as_draft = action == 'save_draft'
             ok = save_branding_settings(company_id, data, as_draft=as_draft, user_id=session.get('user_id'))
-            if action == 'publish':
-                ok = publish_branding(company_id, user_id=session.get('user_id'))
             if ok:
                 log_branding_change(
                     company_id, action, '', 'updated', session.get('user_id'),
@@ -1136,7 +1133,13 @@ def create_companies_blueprint():
             settings_history = []
             theme_templates = []
 
-        live_branding = get_branding(company_id)
+        live_branding = get_branding(company_id, preview=True)
+        if settings.get('branding_status') == 'draft' and settings.get('branding_draft'):
+            draft = settings['branding_draft']
+            if isinstance(draft,str):
+                try: draft=json.loads(draft)
+                except ValueError: draft={}
+            settings={**settings,**draft}
         return render_template(
             'fm/branding.html',
             company=company,

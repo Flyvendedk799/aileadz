@@ -31,20 +31,34 @@ def applicable_employees(cur, company_id, dept, role):
     return list(cur.fetchall() or [])
 
 
-def has_open_or_done(cur, user_id, company_id, handle):
-    ph = ",".join(["%s"] * len(OPEN_OR_DONE))
-    cur.execute(
-        "SELECT 1 FROM course_orders WHERE user_id = %s AND company_id = %s AND product_handle = %s "
-        "AND status IN (" + ph + ") LIMIT 1",
-        (user_id, company_id, handle) + OPEN_OR_DONE,
-    )
-    return cur.fetchone() is not None
+def has_open_or_done(cur, user_id, company_id, handle, recurrence_months=0):
+    """An expired completion must not suppress a renewal; an open renewal does."""
+    import datetime
+    cur.execute("SELECT status, completion_date FROM course_orders WHERE user_id = %s AND company_id = %s AND product_handle = %s AND status IN ('pending_approval','approved','booked','completed','pending','confirmed','processing')", (user_id,company_id,handle))
+    for row in cur.fetchall() or []:
+        if row['status'] != 'completed' or not recurrence_months:
+            return True
+        completed = row.get('completion_date')
+        if isinstance(completed,str):
+            try:
+                completed = datetime.datetime.fromisoformat(completed)
+            except ValueError:
+                completed = None
+        if completed is None:
+            # Legacy undated records retain their old interpretation; new verified
+            # completions always have a timestamp.
+            return True
+        if isinstance(completed,datetime.datetime):
+            completed = completed.date()
+        if completed + datetime.timedelta(days=int(int(recurrence_months)*30.44)) > datetime.date.today() + datetime.timedelta(days=60):
+            return True
+    return False
 
 
 def assign_required_course(cur, ctx, company_id, requirement_id, *, create=None):
     """Returns {created, skipped, failed, message}. ``create`` is injectable for tests."""
-    import order_service
-    cur.execute("SELECT id, title, required_course_handle, applies_to_department, applies_to_role "
+    import enrollment_service
+    cur.execute("SELECT id, title, required_course_handle, applies_to_department, applies_to_role, recurrence_months "
                 "FROM compliance_requirements WHERE id = %s AND company_id = %s", (requirement_id, company_id))
     req = cur.fetchone()
     if not req:
@@ -54,8 +68,7 @@ def assign_required_course(cur, ctx, company_id, requirement_id, *, create=None)
         return {"created": 0, "skipped": 0, "failed": 0,
                 "message": "Kravet har intet påkrævet kursus. Redigér kravet og angiv kursets handle først."}
     try:
-        import catalog_service
-        product = catalog_service.get_product(handle)
+        product = enrollment_service.get_course(handle, company_id)
     except Exception:
         product = None
     if not product:
@@ -63,15 +76,15 @@ def assign_required_course(cur, ctx, company_id, requirement_id, *, create=None)
                 "message": "Kurset ‘%s’ findes ikke i kataloget. Ret kursets handle på kravet." % handle}
     price = product.get("price_min") or 0
     created = skipped = failed = 0
-    make = create or order_service.create_order
+    make = create or enrollment_service.create_order
     for emp in applicable_employees(cur, company_id, req.get("applies_to_department"), req.get("applies_to_role")):
-        if has_open_or_done(cur, emp["user_id"], company_id, handle):
+        if has_open_or_done(cur, emp["user_id"], company_id, handle, req.get("recurrence_months") or 0):
             skipped += 1
             continue
         res = make(ctx, product_handle=handle, product_title=product.get("title") or handle, price=price,
                    user_email=emp.get("email") or "", user_name=emp.get("name") or "",
                    extra={"assign_to": emp, "department": emp.get("department"),
-                          "recommended_by_tool": "compliance:%s" % requirement_id})
+                          "compliance_requirement_id": requirement_id, "recommended_by_tool": "compliance:%s" % requirement_id})
         if res.get("success") and not res.get("duplicate"):
             created += 1
         elif res.get("success"):

@@ -61,7 +61,7 @@ class VendorOrdersTests(VendorBase):
         self.assertIn("Bekræft plads", html)
 
     def test_vendor_books_own_order_and_learner_and_hr_are_told(self):
-        r = self.vendor_client().post("/vendor/orders/%s/book" % self.o_mine, data={})
+        r = self.vendor_client().post("/vendor/orders/%s/book" % self.o_mine, data={"start_at":"2026-01-01T09:00","location":"København","reference":"FIXTURE"})
         self.assertEqual(r.status_code, 302)
         self.assertEqual(self.status(self.o_mine), "booked")
         self.assertIn("order.booked", self.events)
@@ -86,7 +86,7 @@ class VendorOrdersTests(VendorBase):
 
     def test_vendor_marks_attended_after_booking(self):
         c = self.vendor_client()
-        c.post("/vendor/orders/%s/book" % self.o_mine, data={})
+        c.post("/vendor/orders/%s/book" % self.o_mine, data={"start_at":"2026-01-01T09:00","location":"København","reference":"FIXTURE"})
         c.post("/vendor/orders/%s/complete" % self.o_mine, data={})
         self.assertEqual(self.status(self.o_mine), "completed")
         self.assertIn("course.completed", self.events)
@@ -108,7 +108,7 @@ class VendorOrdersTests(VendorBase):
         with self.app.app_context():
             self.assertEqual(awaiting_booking_count(11), 1)
             self.assertEqual(awaiting_booking_count(12), 1)
-        self.vendor_client().post("/vendor/orders/%s/book" % self.o_mine, data={})
+        self.vendor_client().post("/vendor/orders/%s/book" % self.o_mine, data={"start_at":"2026-01-01T09:00","location":"København","reference":"FIXTURE"})
         with self.app.app_context():
             self.assertEqual(awaiting_booking_count(11), 0)
 

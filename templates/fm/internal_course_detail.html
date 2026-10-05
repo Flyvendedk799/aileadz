@@ -1,0 +1,31 @@
+{% extends "fm_base.html" %}
+{% block title %}{{ product.title }}{% endblock %}
+{% block topbar_title %}Internt kursus{% endblock %}
+{% block content %}
+    <div class="fm-wrap">
+        <a href="{{ url_for('learning.internal_courses') }}">Alle interne kurser</a>
+        <h1>{{ product.title }}</h1>
+        <p>{{ product.description_text|striptags }}</p>
+        <p>{{ product.price_min }} kr. · {{ product.location or 'Tid og sted bekræftes af HR' }}</p>
+        {% if product.external_url %}
+            <a href="{{ product.external_url }}" target="_blank" rel="noopener">Åbn kursusmateriale</a>
+        {% endif %}
+        <form method="post" class="fm-card" style="padding:20px;max-width:640px">
+            <input type="hidden" name="expected_price" value="{{ product.price_min }}">
+            <label class="fm-field">
+                <span>Din e-mail</span>
+                <input class="fm-input"
+                       type="email"
+                       name="email"
+                       value="{{ contact_email }}"
+                       required>
+            </label>
+            <label class="fm-field">
+                <span>Besked til HR</span>
+                <textarea class="fm-input" name="notes" maxlength="2000">
+</textarea>
+            </label>
+            <button class="btn btn-primary">Anmod om tilmelding</button>
+        </form>
+    </div>
+{% endblock %}

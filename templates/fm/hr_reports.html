@@ -11,6 +11,7 @@
 </style>
 {% endblock %}
 {% block content %}
+<div class="fm-wrap"><a class="btn btn-ghost" href="{{ url_for('mail_delivery.deliveries') }}">Mailstatus og genafsendelse</a></div>
 <div class="fm-wrap">
 {% set active_hr_page = 'reports' %}{% include 'fm/_hr_subnav.html' %}
 

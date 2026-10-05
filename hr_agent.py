@@ -395,7 +395,7 @@ def handle_hr_ask(user_query, flask_session, page=None):
                     try:
                         from app1 import confirm_store as _cs
                         _token = _cs.store_pending(
-                            hr_sid, "hr", tool_result.name, tool_result.arguments or {}
+                            hr_sid, "hr", tool_result.name, __import__("tool_confirm").confirmed_arguments(tool_result.name,tool_result.arguments,_hr_tr_dict)
                         )
                         yield sse({
                             "type": "confirm_card",

@@ -1,3 +1,7 @@
+import hashlib
+import tempfile
+import functools
+import threading
 import csv
 import datetime
 import html
@@ -22,7 +26,7 @@ IMPORT_PRODUCTS_FILE = "catalog_import_products.json"
 # Admin edits / unpublish state (N-3.1). One overlay for every reader of the catalog.
 CATALOG_OVERLAY_FILE = "catalog_overlay.json"
 PRODUCT_STATUSES = ("active", "hidden", "archived")
-EDITABLE_FIELDS = ("title", "summary", "vendor", "tags", "image_url")
+EDITABLE_FIELDS = ("title", "summary", "vendor", "tags", "image_url", "variants", "cancellation_terms")
 IMPORT_DRAFT_DIR = os.path.join("catalog_import_drafts")
 AI_CATEGORY_DRAFT_DIR = os.path.join("catalog_ai_category_drafts")
 
@@ -122,10 +126,33 @@ def _read_json(path, default):
         return deepcopy(default)
 
 
+_CATALOG_LOCKS = {}
+_CATALOG_LOCK_GUARD = threading.Lock()
+
+
+def _serialized_catalog_write(fn):
+    @functools.wraps(fn)
+    def wrapped(*args, **kwargs):
+        from filelock import FileLock
+        path = _instance_path('catalog-write.lock')
+        os.makedirs(os.path.dirname(path),exist_ok=True)
+        with _CATALOG_LOCK_GUARD:
+            lock = _CATALOG_LOCKS.setdefault(path,FileLock(path,timeout=15))
+        with lock:
+            return fn(*args, **kwargs)
+    return wrapped
+
+
 def _write_json(path, payload):
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
+    fd, temporary = tempfile.mkstemp(prefix='.catalog-',dir=os.path.dirname(path))
+    try:
+        with os.fdopen(fd,'w',encoding='utf-8') as stream:
+            json.dump(payload,stream,ensure_ascii=False,indent=2)
+            stream.flush();os.fsync(stream.fileno())
+        os.replace(temporary,path)
+    finally:
+        if os.path.exists(temporary):os.unlink(temporary)
 
 
 def clear_catalog_cache():
@@ -309,7 +336,7 @@ def normalize_variant(variant, fallback_price=None):
                 seats = int(variant.get("seats"))
             except (TypeError, ValueError):
                 seats = None
-    return {
+    result = {
         "id": variant.get("id") if isinstance(variant, dict) else None,
         "title": title,
         "price": price,
@@ -319,6 +346,10 @@ def normalize_variant(variant, fallback_price=None):
         "date": date,
         "seats": seats,
     }
+
+    from enrollment_service import session_key
+    result['session_id'] = session_key(result)
+    return result
 
 
 def _load_category_overrides():
@@ -374,6 +405,10 @@ def _apply_overlay(raw_products):
         status = entry.get("status")
         if status in PRODUCT_STATUSES:
             product["_catalog_status"] = status
+        if isinstance(entry.get("variants"), list):
+            product["variants"] = deepcopy(entry["variants"])
+        if "cancellation_terms" in entry:
+            product["cancellation_terms"] = entry["cancellation_terms"]
         if entry.get("title"):
             product["title"] = entry["title"]
         if entry.get("summary"):
@@ -533,6 +568,7 @@ def normalize_product(raw_product, overrides=None):
         "locations": locations,
         "dates": dates,
         "metadata": metadata,
+        "cancellation_terms": raw_product.get("cancellation_terms") or "",
         "source": raw_product.get("_catalog_source") or "shopify_json",
         "status": raw_product.get("_catalog_status") or "active",
         "edited": bool(raw_product.get("_catalog_edited")),
@@ -802,7 +838,7 @@ def product_search_text(product):
     return " ".join(pieces).lower()
 
 
-def get_company_discount_map(company_id):
+def get_company_discount_map(company_id, *, strict=False):
     """Return {vendor_name_lower: agreement_dict} for currently-valid, active
     negotiated supplier agreements for a company.
 
@@ -856,6 +892,8 @@ def get_company_discount_map(company_id):
             }
         cur.close()
     except Exception as exc:
+        if strict:
+            raise ValueError('Aftaleprisen kunne ikke kontrolleres. Prøv igen, før bestillingen oprettes.') from exc
         try:
             current_app.logger.warning("Company discount lookup failed: %s", exc)
         except Exception:
@@ -864,13 +902,13 @@ def get_company_discount_map(company_id):
     return discounts
 
 
-def apply_discount_to_price(price, agreement):
+def apply_discount_to_price(price, agreement, *, participants=1):
     """Compute the effective price for a single list price given an agreement.
 
     Returns None when no meaningful discount applies (so callers keep the list
     price). Supports percentage / fixed_amount / fixed_price discount types.
     """
-    if agreement is None or price is None:
+    if agreement is None or price is None or int(agreement.get("min_participants") or 1) > participants:
         return None
     try:
         list_price = float(price)
@@ -1154,6 +1192,8 @@ def get_related_products(product, limit=4):
 
 
 def build_product_url(handle):
+    if str(handle).startswith("internal:"):
+        return "/interne-kurser/" + str(handle).split(":",1)[1]
     return f"/products/{handle}"
 
 
@@ -1339,11 +1379,27 @@ def list_import_drafts():
     return drafts
 
 
+@_serialized_catalog_write
 def confirm_import_draft(job_id):
     draft = get_import_draft(job_id)
     if not draft:
         return None
     payload = _read_json(_instance_path(IMPORT_PRODUCTS_FILE), {"products": []})
+    if draft.get('status') == 'confirmed':
+        return draft
+    if draft.get('direct_edit'):
+        handle = draft['products'][0]['handle']
+        current = get_product_any(handle)
+        if not current or not _same_vendor(current.get('vendor'),draft.get('forced_vendor')):
+            raise ValueError('Kurset tilhører ikke længere denne leverandør.')
+        overlay = _read_json(_instance_path(CATALOG_OVERLAY_FILE), {'products': {}})
+        applied = (overlay.get('products', {}).get(handle) or {}).get('applied_drafts') or []
+        if job_id not in applied:
+            update_product(handle,draft['edit_fields'],actor='approved vendor edit',expected_revision=draft.get('expected_revision'),publication_id=job_id)
+        draft['status']='confirmed'
+        draft['confirmed_at']=datetime.datetime.utcnow().isoformat()+'Z'
+        _write_json(_instance_path(IMPORT_DRAFT_DIR,f'{job_id}.json'),draft)
+        return draft
     existing = {product.get("handle"): product for product in payload.get("products", []) if product.get("handle")}
     # S-2.7: enforced again at confirm time, because the draft is a file on disk.
     # A vendor-uploaded draft can only (re)write products of THAT vendor or new
@@ -1569,6 +1625,7 @@ def ai_category_diff(job):
     }
 
 
+@_serialized_catalog_write
 def confirm_ai_category_job(job_id):
     job = get_ai_category_job(job_id)
     if not job:
@@ -1605,6 +1662,7 @@ def delete_ai_category_job(job_id):
 
 # ── Admin product management (N-3.1) ───────────────────────────────────────
 
+@_serialized_catalog_write
 def _save_overlay_entry(handle, updater):
     payload = _read_json(_instance_path(CATALOG_OVERLAY_FILE), {"products": {}})
     if not isinstance(payload, dict):
@@ -1641,10 +1699,14 @@ def set_products_status(handles, status, actor=""):
     return done
 
 
-def update_product(handle, fields, actor=""):
+@_serialized_catalog_write
+def update_product(handle, fields, actor="", expected_revision=None, publication_id=None):
     """Edit admin-editable fields (title, summary, vendor, tags, image_url)."""
     if not get_product_any(handle):
         return None
+    clear_catalog_cache()
+    if expected_revision and product_revision(get_product_any(handle)) != expected_revision:
+        raise ValueError('Kurset er ændret siden du åbnede det. Genindlæs og gennemgå ændringerne.')
     clean = {}
     for key in EDITABLE_FIELDS:
         if key not in fields:
@@ -1659,9 +1721,12 @@ def update_product(handle, fields, actor=""):
     def _upd(entry):
         entry.update(clean)
         entry["edited_by"] = actor or ""
+        if publication_id:
+            entry['applied_drafts'] = list(dict.fromkeys((entry.get('applied_drafts') or []) + [publication_id]))
     return _save_overlay_entry(handle, _upd)
 
 
+@_serialized_catalog_write
 def reset_product_edits(handle):
     payload = _read_json(_instance_path(CATALOG_OVERLAY_FILE), {"products": {}})
     if isinstance(payload, dict) and handle in (payload.get("products") or {}):
@@ -1736,3 +1801,43 @@ def catalog_stats():
         "csv_products": sum(1 for product in products if product.get("source") == "csv"),
         "last_loaded_at": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
+
+
+def product_revision(product):
+    fields = {key:(product or {}).get(key) for key in ('handle','title','summary','vendor','variants','cancellation_terms','status')}
+    return hashlib.sha256(json.dumps(fields,sort_keys=True,ensure_ascii=False,default=str).encode()).hexdigest()
+
+
+def session_fields_from_form(form):
+    """Validate the complete session editor before any live write."""
+    from enrollment_service import money
+    ids=form.getlist('session_id');dates=form.getlist('session_date');places=form.getlist('session_location')
+    prices=form.getlist('session_price');seats=form.getlist('session_seats')
+    if len({len(ids),len(dates),len(places),len(prices),len(seats)}) != 1 or len(ids)>100:
+        raise ValueError('Holdformularen er ufuldstændig. Genindlæs siden.')
+    removed=set(form.getlist('remove_session'));variants=[];seen=set()
+    for sid,date,place,price,stock in zip(ids,dates,places,prices,seats):
+        if sid in removed:continue
+        if not any((date.strip(),place.strip(),price.strip(),stock.strip())):continue
+        sid=sid or 'session-'+uuid.uuid4().hex[:24]
+        if sid in seen:raise ValueError('To hold har samme id. Genindlæs siden.')
+        seen.add(sid)
+        from calendar_service import parse_danish_date
+        if date.strip() and date.strip().lower() not in ('efter aftale','løbende','on demand') and not parse_danish_date(date):
+            raise ValueError('Angiv en gyldig dato eller skriv efter aftale.')
+        amount=money(price.strip().replace(' ', '').replace('.', '').replace(',', '.') if ',' in price else price.strip())
+        if stock.strip():
+            try:quantity=int(stock)
+            except ValueError:raise ValueError('Ledige pladser skal være et helt tal.') from None
+            if quantity<0:raise ValueError('Ledige pladser må ikke være negativt.')
+        else:quantity=None
+        variants.append({'id':sid,'price':str(amount),'date':date.strip()[:255],'location':place.strip()[:500],'seats':quantity})
+    if not variants:raise ValueError('Tilføj mindst ét hold, eventuelt med dato efter aftale.')
+    return {'variants':variants,'cancellation_terms':form.get('cancellation_terms','').strip()[:4000]}
+
+
+def session_editor_context(product, form=None):
+    if form is not None:
+        rows=[dict(session_id=sid,date=date,location=place,price=price,seats=seats) for sid,date,place,price,seats in zip(form.getlist('session_id'),form.getlist('session_date'),form.getlist('session_location'),form.getlist('session_price'),form.getlist('session_seats'))]
+        return {'session_rows':rows,'revision':form.get('revision',''),'cancellation_terms':form.get('cancellation_terms','')}
+    return {'session_rows':list((product or {}).get('variants') or []) + [{'price':None,'seats':None} for _ in range(3)],'revision':product_revision(product),'cancellation_terms':(product or {}).get('cancellation_terms') or ''}

@@ -75,7 +75,7 @@ class PathTests(unittest.TestCase):
         self.assertIn("Tildelt af HR", orders[0]["request_notes"])
         self.assertEqual(self.db.one("SELECT completion_deadline FROM course_orders WHERE user_id=1")["completion_deadline"].strftime("%Y-%m-%d"), "2026-12-01")
         note = self.db.one("SELECT action_url FROM notifications WHERE user_id='ada' AND kind='assignment'")
-        self.assertEqual(note["action_url"], "/min-laering")
+        self.assertTrue(note["action_url"].startswith("/min-laering/forloeb/"))
 
     def test_reassigning_skips_enrolled_and_does_not_reorder(self):
         lps.save_steps(self.cur, 7, 1, [{"course_handle": "prince2"}])

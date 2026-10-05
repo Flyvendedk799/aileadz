@@ -84,6 +84,7 @@
 </style>
 {% endblock %}
 {% block content %}
+{% if session.get('company_id') and has_endpoint('learning.internal_courses') %}<div class="fm-wrap"><a class="btn btn-ghost" href="{{ url_for('learning.internal_courses') }}">Se virksomhedens interne kurser</a></div>{% endif %}
 <div class="fm-wrap">
         <section class="cat-hero" data-reveal data-d="1">
           <div>

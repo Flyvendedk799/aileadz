@@ -1,0 +1,77 @@
+{% extends "fm_base.html" %}
+{% block title %}Kundeforløb{% endblock %}
+{% block topbar_title %}Salg og kundeopfølgning{% endblock %}
+{% block content %}
+    <div class="fm-wrap">
+        {% include "fm/_admin_subnav.html" %}
+        <h1>Kundeforløb</h1>
+        <a class="btn btn-ghost" href="{{ url_for('customer_success.sales') }}">Åbn demosiden</a>
+        <a class="btn btn-ghost"
+           href="{{ url_for('companies.register_company') }}">Opret virksomhed efter aftale</a>
+        <div style="overflow-x:auto">
+            <table class="fm-table">
+                <thead>
+                    <tr>
+                        <th>Virksomhed</th>
+                        <th>Ansvarlig</th>
+                        <th>Fase</th>
+                        <th>Næste status</th>
+                        <th>Pilot / fornyelse</th>
+                        <th>Åbne henvendelser</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for a in accounts %}
+                        <tr>
+                            <td>
+                                <a href="{{ url_for('customer_success.manage_account',company_id=a.id) }}">{{ a.company_name }}</a>
+                            </td>
+                            <td>{{ a.account_owner or 'Ikke tildelt' }}</td>
+                            <td>{{ {'onboarding':'Opstart','pilot':'Pilot','active':'Aktiv','renewal':'Fornyelse','paused':'På pause'}.get(a.stage,'Opstart') }}</td>
+                            <td>{{ a.next_review or 'Ikke aftalt' }}</td>
+                            <td>{{ a.pilot_end or '—' }} / {{ a.renewal_date or '—' }}</td>
+                            <td>{{ a.open_requests }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <h2>Demoforespørgsler</h2>
+        {% for lead in leads %}
+            <article class="fm-card" style="padding:20px;margin-bottom:12px">
+                <h3>{{ lead.company_name }} · {{ lead.name }}</h3>
+                <a href="mailto:{{ lead.email }}">{{ lead.email }}</a>
+                <p>{{ lead.message }}</p>
+                <form method="post"
+                      action="{{ url_for('customer_success.update_enquiry',enquiry_id=lead.id) }}">
+                    <label class="fm-field">
+                        <span>Status</span>
+                        <select class="fm-select" name="status">
+                            {% for key,label in [('new','Ny'),('contacted','Kontaktet'),('demo_booked','Demo aftalt'),('converted','Kunde oprettet'),('closed','Afsluttet')] %}
+                                <option value="{{ key }}"
+                                        {% if lead.status==key %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="fm-field">
+                        <span>Tilknyt virksomhed</span>
+                        <select class="fm-select" name="company_id">
+                            <option value="">Ingen endnu</option>
+                            {% for a in accounts %}
+                                <option value="{{ a.id }}"
+                                        {% if lead.company_id==a.id %}selected{% endif %}>{{ a.company_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="fm-field">
+                        <span>Ansvarlig og næste handling</span>
+                        <textarea class="fm-input" name="note" maxlength="4000">{{ lead.owner_note or '' }}</textarea>
+                    </label>
+                    <button class="btn btn-primary">Gem opfølgning</button>
+                </form>
+            </article>
+        {% else %}
+            <p>Ingen demoforespørgsler endnu.</p>
+        {% endfor %}
+    </div>
+{% endblock %}

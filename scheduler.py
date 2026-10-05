@@ -628,7 +628,21 @@ def _job_profile_checkin_heartbeat(app):
 # ── Job registry ─────────────────────────────────────────────────────────────
 # Each job: name, interval_seconds, fn(app)->summary(dict), enabled.
 # Ordered so the cheap, frequent outbox drain runs first.
+def _job_mail_delivery(app):
+    with app.app_context():
+        from mail_delivery import drain
+        return drain()
+
+
+def _job_launch_followup(app):
+    with app.app_context():
+        from launch_followup import run
+        return run()
+
+
 JOBS = [
+    {'name': 'launch_followup', 'interval_seconds': 86400, 'fn': _job_launch_followup, 'enabled': True},
+    {'name':'mail_delivery','interval_seconds':60,'fn':_job_mail_delivery,'enabled':True},
     {
         'name': 'outbox_drain',
         'interval_seconds': 120,          # ~2 min: near-real-time webhook delivery

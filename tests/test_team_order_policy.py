@@ -143,7 +143,7 @@ class TeamOrderFlowTests(Base):
         self.assertEqual(out["status"], "team_orders_created")
         self.assertEqual(self.db.one("SELECT status FROM course_orders")["status"], "pending_approval")
 
-    def test_a_manager_requester_gets_their_team_approved_at_once(self):
+    def test_manager_team_assignment_uses_the_same_employee_policy_as_hr_screen(self):
         self.policy(tp.LINKED)
         self.session.update({"user": "hr", "user_id": 5, "company_role": "hr_manager", "company_department": "HR"})
         with mock.patch.object(tools, "resolve_user_contact", return_value={
@@ -151,7 +151,7 @@ class TeamOrderFlowTests(Base):
             out = json.loads(tools._execute_create_order(
                 {"product_handle": "prince2", "participants": ["Bo Jensen"], "confirm": True}, "hr"))
         self.assertEqual(out["created"], 1)
-        self.assertEqual(self.db.one("SELECT status FROM course_orders")["status"], "approved")
+        self.assertEqual(self.db.one("SELECT status FROM course_orders")["status"], "pending_approval")
 
     def test_hr_bulk_assign_hands_the_request_to_hr_with_a_prefilled_link(self):
         self.policy(tp.HR_BULK)

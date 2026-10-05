@@ -50,17 +50,22 @@ def _emit_event_safe(company_id, event_type, payload):
 
 
 def _send_email_safe(to_email, subject, template_name, company_id,
-                     dedupe_key=None, **context):
-    """Send a branded transactional email. No-op without SMTP; never raises."""
+                     dedupe_key=None, cursor=None, **context):
+    """Stage durable business mail. Transactional staging errors abort the write."""
     if not to_email:
         return
     try:
-        from email_service import send_branded_email, _resolve_branding
+        from email_service import _resolve_branding
+        from mail_delivery import enqueue
         branding = _resolve_branding(company_id)
-        send_branded_email(to_email, subject, template_name, branding,
-                           company_id=company_id, dedupe_key=dedupe_key, **context)
+        key = dedupe_key or ('order:%s:%s:%s' % (context.get('order_id'),template_name,context.get('decision','')) if context.get('order_id') else None)
+        if key and key.startswith('budget_overrun_alert:'):
+            key += ':' + datetime.date.today().isoformat()
+        enqueue(to_email,subject,template_name,branding,company_id=company_id,dedupe_key=key,cursor=cursor,**context)
     except Exception as e:  # pragma: no cover - defensive
         logger.debug("order_service: email(%s) skipped: %s", template_name, e)
+        if cursor is not None:
+            raise
 
 
 def _app_base_url():
@@ -122,7 +127,7 @@ _EMAIL_DEDUPE_HOURS = 24
 
 
 def _send_approval_needed_emails_safe(company_id, *, order_id, product_title,
-                                      price, department, requester):
+                                      price, department, requester, cursor=None):
     """Email the order_approval_needed template to manager-level recipients.
 
     Fired AFTER commit, best-effort: no-ops cleanly when SMTP is unconfigured
@@ -135,7 +140,7 @@ def _send_approval_needed_emails_safe(company_id, *, order_id, product_title,
     try:
         from email_service import email_recently_sent
         dedupe_key = "order_approval_needed:%s" % order_id
-        if email_recently_sent(dedupe_key, within_hours=_EMAIL_DEDUPE_HOURS,
+        if cursor is None and email_recently_sent(dedupe_key, within_hours=_EMAIL_DEDUPE_HOURS,
                                company_id=cid):
             return
         recipients = _manager_recipient_emails(cid)
@@ -149,7 +154,7 @@ def _send_approval_needed_emails_safe(company_id, *, order_id, product_title,
             _send_email_safe(
                 to_email,
                 "Kursusbestilling afventer godkendelse",
-                "order_approval_needed", cid,
+                "order_approval_needed", cid, cursor=cursor,
                 dedupe_key=dedupe_key,
                 product_title=product_title or "",
                 amount=amount,
@@ -159,6 +164,8 @@ def _send_approval_needed_emails_safe(company_id, *, order_id, product_title,
             )
     except Exception as e:  # pragma: no cover - defensive
         logger.debug("order_service: approval-needed email skipped: %s", e)
+        if cursor is not None:
+            raise
 
 
 def _send_budget_overrun_emails_safe(company_id, *, department, spent,
@@ -317,8 +324,9 @@ class OrderContext:
         The API key authenticates a *company*, not an individual employee, so we
         treat the API actor as manager-level by default (``company_admin``) — the
         same way a department head ordering on someone's behalf would be. This
-        means API-created company orders skip the per-employee approval step but
-        STILL go through the shared budget check (budget-aware approval applies).
+        identifies who may request the operation. The canonical enrolment wrapper
+        resolves a real employee and applies that employee's approval policy;
+        the API actor does not bypass the employee's budget or approval rules.
         """
         try:
             from flask import g
@@ -642,21 +650,21 @@ def _vendor_id_for_handle(cur, product_handle):
         return None
 
 
-def _find_recent_duplicate(cur, ctx, product_handle, variant_date):
+def _find_recent_duplicate(cur, ctx, product_handle, variant_date, variant_location=""):
     """An equivalent still-open order for the same person within the window."""
     if not product_handle or not (ctx.username or ctx.user_id):
         return None
     try:
         cur.execute(
             """
-            SELECT order_id, status FROM course_orders
-            WHERE product_handle = %s AND COALESCE(variant_date, '') = %s
+            SELECT order_id, status, price FROM course_orders
+            WHERE COALESCE(company_id,0) = %s AND COALESCE(variant_location,'') = %s AND product_handle = %s AND COALESCE(variant_date, '') = %s
               AND (username = %s OR (user_id IS NOT NULL AND user_id = %s))
               AND status IN ('pending_approval', 'approved', 'booked')
               AND created_at >= DATE_SUB(NOW(), INTERVAL %s MINUTE)
-            ORDER BY created_at DESC LIMIT 1
+            ORDER BY created_at DESC LIMIT 1 FOR UPDATE
             """,
-            (product_handle, variant_date or "", ctx.username, ctx.user_id,
+            (ctx.company_id or 0,variant_location or "",product_handle, variant_date or "", ctx.username, ctx.user_id,
              _DUPLICATE_WINDOW_MINUTES),
         )
         return cur.fetchone()
@@ -677,7 +685,7 @@ def _next_step_message(status, needs_approval):
 def create_order(ctx, *, product_handle, product_title, price,
                  variant_date="", variant_location="",
                  user_email="", user_name="", user_phone="",
-                 status=None, extra=None):
+                 status=None, extra=None, deferred_events=None):
     """Create an order through the single authorized path.
 
     One transaction (single connection, commit once, rollback on error):
@@ -696,6 +704,7 @@ def create_order(ctx, *, product_handle, product_title, price,
     status_label, next_step, order_url, duplicate?...}
     """
     extra = extra or {}
+    acting_ctx = ctx
     price_f = _to_float(price)
     order_id = str(uuid.uuid4())
 
@@ -726,11 +735,34 @@ def create_order(ctx, *, product_handle, product_title, price,
     try:
         cur = _dict_cursor(conn)
 
+        assignment_step = extra.get('assignment_step_id')
+        if assignment_step:
+            cur.execute("SELECT * FROM learning_assignment_steps WHERE id = %s AND company_id = %s AND user_id = %s FOR UPDATE", (assignment_step, ctx.company_id, ctx.user_id))
+            step = cur.fetchone()
+            if not step or step.get('course_handle') != product_handle:
+                conn.rollback()
+                return {'success': False, 'error': 'assignment_not_found', 'message': 'Tildelingen blev ikke fundet.'}
+            if step.get('order_id'):
+                cur.execute("SELECT status FROM course_orders WHERE order_id = %s AND company_id = %s", (step['order_id'],ctx.company_id))
+                existing = cur.fetchone()
+                if existing and existing['status'] not in ('cancelled','rejected'):
+                    conn.rollback()
+                    return {'success': True, 'duplicate': True, 'order_id': step['order_id'], 'status': existing['status'], 'order_url': order_url(step['order_id'])}
+
+        # Serialize duplicate detection for the same participant, including two
+        # simultaneous confirmations from different application workers.
+        if ctx.user_id:
+            cur.execute('SELECT id FROM users WHERE id=%s FOR UPDATE',(ctx.user_id,))
+            cur.fetchone()
         # --- 0. idempotency ------------------------------------------------
-        dup = _find_recent_duplicate(cur, ctx, product_handle, variant_date)
+        dup = _find_recent_duplicate(cur, ctx, product_handle, variant_date, variant_location)
         if dup:
             dup_id = dup.get("order_id") if isinstance(dup, dict) else dup[0]
             dup_status = lc.normalize_status(dup.get("status") if isinstance(dup, dict) else dup[1])
+            if assignment_step:
+                cur.execute("UPDATE learning_assignment_steps SET order_id = %s, status = 'ordered', last_error = NULL WHERE id = %s", (dup_id,assignment_step))
+                if deferred_events is None:
+                    conn.commit()
             return {
                 "success": True,
                 "duplicate": True,
@@ -741,7 +773,7 @@ def create_order(ctx, *, product_handle, product_title, price,
                 "auto_approved": False,
                 "budget_warning": None,
                 "budget_charged": False,
-                "price": price_f,
+                "price": _to_float(dup.get("price")) if isinstance(dup,dict) else price_f,
                 "next_step": _next_step_message(dup_status, dup_status == lc.PENDING_APPROVAL),
                 "order_url": order_url(dup_id),
                 "message": "Du har allerede anmodet om dette kursus. Se status på din tidslinje.",
@@ -784,14 +816,14 @@ def create_order(ctx, *, product_handle, product_title, price,
                 cur.execute(
                     """
                     SELECT id, annual_budget, spent FROM department_budgets
-                    WHERE company_id = %s AND department = %s AND fiscal_year = %s
+                    WHERE company_id = %s AND department = %s AND fiscal_year = %s FOR UPDATE
                     """,
                     (ctx.company_id, dept, fiscal_year),
                 )
                 budget_row = cur.fetchone()
             except Exception as be:
                 logger.warning("order_service: budget lookup failed: %s", be)
-                budget_row = None
+                raise
 
             if budget_row:
                 annual = _to_float(budget_row.get("annual_budget"))
@@ -858,6 +890,18 @@ def create_order(ctx, *, product_handle, product_title, price,
             ),
         )
 
+        if extra.get("quote"):
+            import json
+            quote = extra["quote"]
+            cur.execute("INSERT INTO course_order_details (order_id, company_id, user_id, session_id, quote_json) VALUES (%s, %s, %s, %s, %s)",
+                        (order_id, ctx.company_id, ctx.user_id, quote.get("session_id"), json.dumps(quote, ensure_ascii=False)))
+            if quote.get("internal_course_id"):
+                cur.execute("UPDATE course_orders SET internal_course_id = %s, course_source = 'internal' WHERE order_id = %s",
+                            (quote["internal_course_id"], order_id))
+
+        if assignment_step:
+            cur.execute("UPDATE learning_assignment_steps SET order_id = %s, status = 'ordered', last_error = NULL WHERE id = %s", (order_id,assignment_step))
+
         # --- 4. approval row ---------------------------------------------
         if needs_approval and ctx.company_id:
             try:
@@ -871,29 +915,30 @@ def create_order(ctx, *, product_handle, product_title, price,
                 )
             except Exception as ae:
                 logger.warning("order_service: approval insert failed: %s", ae)
+                raise
 
         # --- 5. charge budget EXACTLY ONCE -------------------------------
         if charge_now and budget_row is not None:
             try:
-                new_spent = _to_float(budget_row.get("spent")) + price_f
                 cur.execute(
-                    "UPDATE department_budgets SET spent = %s WHERE id = %s",
-                    (new_spent, budget_row["id"]),
+                    "UPDATE department_budgets SET spent = spent + %s WHERE id = %s",
+                    (price_f, budget_row["id"]),
                 )
             except Exception as ce:
                 logger.warning("order_service: budget charge failed: %s", ce)
+                raise
 
         # --- 6. history + audit -------------------------------------------
         _new_row = {"order_id": order_id, "company_id": ctx.company_id}
         _record_history(cur, _new_row, kind="status", from_value=None, to_value=initial_status,
-                        ctx=ctx, note="Auto-godkendt via politik" if auto_approved_by_policy else None)
+                        ctx=acting_ctx, note="Auto-godkendt via politik" if auto_approved_by_policy else None)
         _audit_desc = f"{product_title} ({ctx.source})"
         if auto_approved_by_policy:
             _audit_desc += " [auto-godkendt via politik]"
         _write_audit(
             cur,
             company_id=ctx.company_id,
-            user_id=ctx.user_id,
+            user_id=acting_ctx.user_id,
             action="order.auto_approved" if auto_approved_by_policy else "order.created",
             resource_id=order_id,
             description=_audit_desc,
@@ -912,40 +957,11 @@ def create_order(ctx, *, product_handle, product_title, price,
                 dedupe_key="approval-needed:%s" % order_id,
             )
 
-        conn.commit()
-
-        # --- 7. cross-integration side effects (post-commit, best-effort) ---
-        if needs_approval:
-            _event_type = "order.needs_approval"
-        elif auto_approved_by_policy:
-            _event_type = "order.auto_approved"
-        else:
-            _event_type = "order.created"
-        _emit_event_safe(
-            ctx.company_id,
-            _event_type,
-            {"order_id": order_id, "product_title": product_title,
-             "price": price_f, "status": initial_status,
-             "department": dept, "source": ctx.source,
-             "auto_approved": auto_approved_by_policy},
-        )
-        if not needs_approval:
-            # An approved order also announces itself as order.approved so
-            # webhook subscribers get the same signal as a manual approval.
-            _emit_event_safe(ctx.company_id, "order.approved", {
-                "order_id": order_id, "product_title": product_title,
-                "status": initial_status, "previous_status": None,
-                "department": dept, "user_email": user_email or None,
-                "auto_approved": auto_approved_by_policy})
-            _notify_vendor_safe({"order_id": order_id, "vendor_id": vendor_id,
-                                 "product_title": product_title,
-                                 "variant_date": variant_date, "variant_location": variant_location,
-                                 "user_name": user_name or ctx.username, "company_id": ctx.company_id})
         if user_email:
             # ONE confirmation email (order_handler no longer sends its own).
             _send_email_safe(
                 user_email, f"Ordrebekræftelse — {product_title}",
-                "order_confirmation", ctx.company_id,
+                "order_confirmation", ctx.company_id, cursor=cur,
                 product_title=product_title, order_id=order_id,
                 recipient_name=user_name or ctx.username or "",
                 status_line=lc.status_label(initial_status),
@@ -962,8 +978,47 @@ def create_order(ctx, *, product_handle, product_title, price,
                 product_title=product_title,
                 price=price_f,
                 department=dept,
-                requester=ctx.username or user_name or "",
+                requester=ctx.username or user_name or "", cursor=cur,
             )
+
+        if not needs_approval:
+            _notify_vendor_safe({'order_id':order_id,'vendor_id':vendor_id,'product_title':product_title,
+                                 'variant_date':variant_date,'variant_location':variant_location,
+                                 'user_name':user_name or ctx.username,'company_id':ctx.company_id},cursor=cur)
+
+        if deferred_events is None:
+            conn.commit()
+
+        def emit(company_id, event_type, payload):
+            if deferred_events is None:
+                _emit_event_safe(company_id,event_type,payload)
+            else:
+                deferred_events.append((company_id,event_type,payload))
+
+        # --- 7. cross-integration side effects (post-commit, best-effort) ---
+        if needs_approval:
+            _event_type = "order.needs_approval"
+        elif auto_approved_by_policy:
+            _event_type = "order.auto_approved"
+        else:
+            _event_type = "order.created"
+        emit(
+            ctx.company_id,
+            _event_type,
+            {"order_id": order_id, "product_title": product_title,
+             "price": price_f, "status": initial_status,
+             "department": dept, "source": ctx.source,
+             "auto_approved": auto_approved_by_policy},
+        )
+        if not needs_approval:
+            # An approved order also announces itself as order.approved so
+            # webhook subscribers get the same signal as a manual approval.
+            emit(ctx.company_id, "order.approved", {
+                "order_id": order_id, "product_title": product_title,
+                "status": initial_status, "previous_status": None,
+                "department": dept, "user_email": user_email or None,
+                "auto_approved": auto_approved_by_policy})
+
 
         return {
             "success": True,
@@ -1118,7 +1173,7 @@ def _maybe_refund(cur, row):
             SET spent = GREATEST(0, spent - %s)
             WHERE company_id = %s AND department = %s AND fiscal_year = %s
             """,
-            (price_f, company_id, department, fiscal_year),
+            (max(0, price_f - _to_float(row.get("_cancellation_fee"))), company_id, department, fiscal_year),
         )
         cur.execute(
             "UPDATE course_orders SET budget_charged = 0 WHERE order_id = %s",
@@ -1127,7 +1182,7 @@ def _maybe_refund(cur, row):
         return True
     except Exception as e:
         logger.warning("order_service: refund failed: %s", e)
-        return False
+        raise
 
 
 def _maybe_charge(cur, row):
@@ -1154,7 +1209,7 @@ def _maybe_charge(cur, row):
         cur.execute(
             """
             SELECT id, annual_budget, spent FROM department_budgets
-            WHERE company_id = %s AND department = %s AND fiscal_year = %s
+            WHERE company_id = %s AND department = %s AND fiscal_year = %s FOR UPDATE
             """,
             (company_id, department, fiscal_year),
         )
@@ -1163,8 +1218,8 @@ def _maybe_charge(cur, row):
             return False
         new_spent = _to_float(brow.get("spent")) + price_f
         cur.execute(
-            "UPDATE department_budgets SET spent = %s WHERE id = %s",
-            (new_spent, brow["id"]),
+            "UPDATE department_budgets SET spent = spent + %s WHERE id = %s",
+            (price_f, brow["id"]),
         )
         cur.execute(
             "UPDATE course_orders SET budget_charged = 1 WHERE order_id = %s",
@@ -1187,10 +1242,6 @@ def _maybe_charge(cur, row):
                 action_url="/hr/budgets",
                 dedupe_key="budget-overrun:%s:%s" % (company_id, department),
             )
-            _emit_event_safe(company_id, "budget.overrun", {
-                "department": department, "spent": new_spent,
-                "annual_budget": annual, "order_id": row.get("order_id"),
-            })
             row["_budget_overrun"] = {
                 "company_id": company_id,
                 "department": department,
@@ -1201,7 +1252,7 @@ def _maybe_charge(cur, row):
         return True
     except Exception as e:
         logger.warning("order_service: charge-on-transition failed: %s", e)
-        return False
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -1250,6 +1301,9 @@ def _apply_transition(cur, ctx, row, new, actors, *, note=None, reason=None):
         sets.append("booked_at = NOW()")
         sets.append("booked_by = %s")
         params.append(actor_label)
+    if new == lc.CANCELLED:
+        sets.append('cancellation_fee = %s')
+        params.append(_to_float(row.get('_cancellation_fee')))
     if new in (lc.CANCELLED, lc.REJECTED) and (reason or note):
         sets.append("cancel_reason = %s")
         params.append(str(reason or note)[:255])
@@ -1320,6 +1374,7 @@ def _apply_transition(cur, ctx, row, new, actors, *, note=None, reason=None):
     except Exception as e:  # notifications must never break the transition
         logger.debug("order_service: transition notifications skipped: %s", e)
 
+    _queue_transition_emails(ctx,row,old,new,note=note,reason=reason,cursor=cur)
     return {"charged": charged, "refunded": refunded, "old": old}
 
 
@@ -1330,6 +1385,7 @@ def _after_transition(ctx, row, old, new, info, *, note=None, reason=None):
 
     _overrun = row.get("_budget_overrun")
     if _overrun:
+        _emit_event_safe(company_id, "budget.overrun", _overrun)
         _send_budget_overrun_emails_safe(
             _overrun.get("company_id"),
             department=_overrun.get("department"),
@@ -1363,40 +1419,6 @@ def _after_transition(ctx, row, old, new, info, *, note=None, reason=None):
             "completed_at": datetime.datetime.now().isoformat(),
         })
 
-    to_email = row.get("user_email")
-    if to_email and ctx.actor_kind != "system":
-        link = order_url(order_id)
-        if new in (lc.APPROVED, lc.REJECTED):
-            decision = "afvist" if new == lc.REJECTED else "godkendt"
-            msg = ("Din bestilling blev desværre afvist." if new == lc.REJECTED
-                   else "Din bestilling er godkendt. Udbyderen bekræfter nu din plads, og du får besked, når den er booket.")
-            if new == lc.REJECTED and note:
-                msg += f" Begrundelse fra HR: {note}"
-            _send_email_safe(
-                to_email, f"Din kursusbestilling er {decision}", "order_approved", company_id,
-                product_title=row.get("product_title", ""), order_id=order_id,
-                decision=decision, message=msg, order_url=link,
-            )
-        elif new == lc.BOOKED:
-            _send_email_safe(
-                to_email, f"Din plads er booket — {row.get('product_title', '')}",
-                "order_booked", company_id,
-                product_title=row.get("product_title", ""), order_id=order_id,
-                variant_date=row.get("variant_date") or "",
-                variant_location=row.get("variant_location") or "", order_url=link,
-            )
-        elif new == lc.CANCELLED and "owner" not in actors_for(ctx, row):
-            _send_email_safe(
-                to_email, f"Din bestilling er annulleret — {row.get('product_title', '')}",
-                "order_cancelled", company_id,
-                product_title=row.get("product_title", ""), order_id=order_id,
-                reason=reason or "", order_url=link,
-            )
-
-    if new == lc.APPROVED and old == lc.PENDING_APPROVAL:
-        _notify_vendor_safe(row)
-    if new == lc.CANCELLED and ctx.actor_kind == "vendor":
-        _send_hr_vendor_decline_email_safe(row, reason)
 
 
 def set_status(ctx, order_id, new_status, *, note=None, reason=None):
@@ -1419,6 +1441,10 @@ def set_status(ctx, order_id, new_status, *, note=None, reason=None):
         return {"success": False, "error": "bad_status", "message": "Ugyldig status."}
     new = lc.normalize_status(raw)
 
+    if new == lc.COMPLETED:
+        return complete_order(ctx,order_id,note=note)
+    if lc.normalize_status(new_status) == lc.BOOKED:
+        return book_order(ctx,order_id,note=note)
     conn = _get_connection()
     if conn is None:
         return {"success": False, "error": "no_db",
@@ -1451,6 +1477,10 @@ def set_status(ctx, order_id, new_status, *, note=None, reason=None):
             return {"success": False, "error": code, "message": msg,
                     "status": old, "order_id": order_id}
 
+        if new == lc.CANCELLED and old == lc.BOOKED and 'vendor' not in actors:
+            conn.rollback()
+            from order_fulfillment import request_change
+            return request_change(ctx,order_id,'cancel',{'note':reason or note or ''})
         info = _apply_transition(cur, ctx, row, new, actors, note=note, reason=reason)
         conn.commit()
         _after_transition(ctx, row, old, new, info, note=note, reason=reason)
@@ -1493,10 +1523,9 @@ def cancel_order(ctx, order_id, reason=None):
     return res
 
 
-def book_order(ctx, order_id, note=None):
-    """Mark an approved order as booked (vendor confirms the seat; HR/admin may do
-    it on behalf of a vendor without portal access — the actor is logged)."""
-    return set_status(ctx, order_id, lc.BOOKED, note=note)
+def book_order(ctx, order_id, note=None, booking=None):
+    from order_fulfillment import book
+    return book(ctx,order_id,booking=booking,note=note)
 
 
 def decide_approval(ctx, approval_id, decision, notes="", department_scope=None):
@@ -1578,6 +1607,11 @@ def complete_order(ctx, order_id, *, note=None):
         if not actors:
             return {"success": False, "error": "not_found", "message": "Ordren blev ikke fundet."}
 
+        if 'owner' in actors and not ({'manager','admin','vendor'} & actors):
+            conn.rollback()
+            from order_fulfillment import report_completion
+            return report_completion(ctx,order_id,note=note or '')
+
         old = lc.normalize_status(row.get("status"))
         if old == lc.COMPLETED:
             moment = _completion_moment(row)
@@ -1590,7 +1624,16 @@ def complete_order(ctx, order_id, *, note=None):
             return {"success": False, "error": code, "message": msg, "status": old}
 
         info = _apply_transition(cur, ctx, row, lc.COMPLETED, actors, note=note)
+        from order_fulfillment import _save_details, capture_baseline
+        _save_details(cur,row)
+        capture_baseline(cur,row,at_booking=False)
+        cur.execute("UPDATE course_order_details SET completion_state='verified',verified_at=CURRENT_TIMESTAMP,verified_by=%s WHERE order_id=%s", (ctx.actor_label or ctx.username or ctx.actor_kind,order_id))
+        cur.execute("UPDATE learning_outcome_reviews SET status='open' WHERE order_id=%s AND status='awaiting_completion'",(order_id,))
         _record_completion_side_effects(cur, row)
+        from learning_path_service import refresh_for_order
+        refresh_for_order(cur, order_id, row.get("company_id"))
+        from learning_path_service import sync_personal_path_completion
+        sync_personal_path_completion(cur,row)
         conn.commit()
         _after_transition(ctx, row, old, lc.COMPLETED, info, note=note)
         _notify_manager_of_completion(row)
@@ -1692,7 +1735,7 @@ def _notify_manager_of_completion(row):
         msg = (f"{row.get('user_name') or row.get('username') or 'En medarbejder'} har gennemført "
                f"“{row.get('product_title')}”. Bekræft kompetenceløftet, så det tæller i kompetenceoverblikket.")
         common = dict(title="Bekræft kompetenceløft", message=msg, kind="skill_uplift",
-                      action_url="/hr/employee/%s/details" % uid,
+                      action_url="/hr/ordre/%s/udbytte" % row.get("order_id"),
                       dedupe_key="uplift:%s" % row.get("order_id"), dedupe_hours=None)
         if mgr:
             notify_user(cur, user_id=mgr, company_id=cid, **common)
@@ -1885,7 +1928,7 @@ def bulk_set_billing_status(ctx, order_ids, new_billing, **fields):
 # ---------------------------------------------------------------------------
 # Vendor notices (N-6.1)
 # ---------------------------------------------------------------------------
-def _notify_vendor_safe(row):
+def _notify_vendor_safe(row,cursor=None):
     """Email the order's vendor that a seat is waiting to be confirmed. The
     in-app notice is the vendor orders page badge (derived from approved,
     not-yet-booked orders). Never raises; no-op without a vendor contact."""
@@ -1904,7 +1947,7 @@ def _notify_vendor_safe(row):
             return
         base = _app_base_url()
         _send_email_safe(
-            v["contact_email"], "Ny bestilling afventer din bekræftelse", "vendor_new_order", None,
+            v["contact_email"], "Ny bestilling afventer din bekræftelse", "vendor_new_order", row.get("company_id"), cursor=cursor,
             dedupe_key="vendor_new_order:%s" % row.get("order_id"),
             vendor_name=v.get("vendor_name") or "", product_title=row.get("product_title") or "",
             variant_date=row.get("variant_date") or "", variant_location=row.get("variant_location") or "",
@@ -1913,6 +1956,8 @@ def _notify_vendor_safe(row):
         )
     except Exception as e:
         logger.debug("order_service: vendor notice skipped: %s", e)
+        if cursor is not None:
+            raise
     finally:
         try:
             if cur is not None:
@@ -1921,7 +1966,7 @@ def _notify_vendor_safe(row):
             pass
 
 
-def _send_hr_vendor_decline_email_safe(row, reason):
+def _send_hr_vendor_decline_email_safe(row, reason,cursor=None):
     """Email company managers that the vendor declined an order."""
     cid = _int_or_none((row or {}).get("company_id"))
     if not cid:
@@ -1929,8 +1974,96 @@ def _send_hr_vendor_decline_email_safe(row, reason):
     base = _app_base_url()
     for to_email in _manager_recipient_emails(cid):
         _send_email_safe(
-            to_email, "Udbyderen har afvist en bestilling", "order_cancelled", cid,
+            to_email, "Udbyderen har afvist en bestilling", "order_cancelled", cid, cursor=cursor,
             dedupe_key="vendor_declined:%s:%s" % (row.get("order_id"), to_email),
             product_title=row.get("product_title", ""), order_id=row.get("order_id"),
             reason=reason or "", order_url=(base + "/hr/order/%s/details" % row.get("order_id")) if base else "",
         )
+
+
+def _replace_order_terms(cur, ctx, row, quote):
+    """Apply an explicitly accepted reschedule and its budget delta in one transaction."""
+    import json
+    was_charged = bool(row.get('budget_charged'))
+    if was_charged:
+        _maybe_refund(cur,row)
+    cur.execute('UPDATE course_orders SET price=%s,variant_date=%s,variant_location=%s,budget_charged=0,updated_at=NOW() WHERE order_id=%s', (quote['price'],quote['variant_date'],quote['variant_location'],row['order_id']))
+    row.update(price=quote['price'],variant_date=quote['variant_date'],variant_location=quote['variant_location'],budget_charged=0)
+    if was_charged:
+        _maybe_charge(cur,row)
+    from order_fulfillment import _save_details
+    _save_details(cur,row)
+    cur.execute('UPDATE course_order_details SET session_id=%s,quote_json=%s WHERE order_id=%s',(quote['session_id'],json.dumps(quote,ensure_ascii=False),row['order_id']))
+
+
+def _replace_order_participant(cur, ctx, row, participant):
+    """Recheck membership at acceptance; move the commitment to the actual participant."""
+    cur.execute("SELECT cu.user_id,u.username,COALESCE(cu.full_name,u.username) AS name,COALESCE(cu.email,u.email) AS email,cu.department FROM company_users cu JOIN users u ON u.id=cu.user_id WHERE cu.company_id=%s AND cu.user_id=%s AND cu.status='active' FOR UPDATE", (row['company_id'],participant['user_id']))
+    person=cur.fetchone()
+    if not person:
+        raise ValueError('Den nye deltager er ikke længere aktiv i virksomheden.')
+    cur.execute("SELECT order_id FROM course_orders WHERE company_id=%s AND user_id=%s AND product_handle=%s AND status IN ('pending_approval','approved','booked') AND order_id<>%s",(row['company_id'],person['user_id'],row['product_handle'],row['order_id']))
+    if cur.fetchone():
+        raise ValueError('Den nye deltager har allerede en åben bestilling til kurset.')
+    was_charged=bool(row.get('budget_charged'))
+    if was_charged:
+        _maybe_refund(cur,row)
+    cur.execute('UPDATE course_orders SET user_id=%s,username=%s,user_name=%s,user_email=%s,department=%s,budget_charged=0,updated_at=NOW() WHERE order_id=%s',(person['user_id'],person['username'],person['name'],person['email'],person['department'],row['order_id']))
+    cur.execute('SELECT DISTINCT progress_id FROM learning_assignment_steps WHERE order_id=%s', (row['order_id'],))
+    original_paths = list(cur.fetchall() or [])
+    cur.execute("UPDATE learning_assignment_steps SET order_id=NULL,status='failed',last_error=%s WHERE order_id=%s",('Deltageren er ændret. Vælg en ny tilmelding til dette trin.',row['order_id']))
+    row.update(user_id=person['user_id'],username=person['username'],user_name=person['name'],user_email=person['email'],department=person['department'],budget_charged=0)
+    cur.execute('UPDATE course_order_details SET user_id=%s WHERE order_id=%s',(person['user_id'],row['order_id']))
+    cur.execute('DELETE FROM learning_outcome_reviews WHERE order_id=%s',(row['order_id'],))
+    from order_fulfillment import capture_baseline
+    capture_baseline(cur,row)
+    from learning_path_service import refresh_assignment
+    for path in original_paths:
+        refresh_assignment(cur,path['progress_id'],row['company_id'])
+    if was_charged:
+        _maybe_charge(cur,row)
+
+
+def _confirm_booking_details(cur, row, booking):
+    cur.execute('UPDATE course_orders SET variant_date=%s,variant_location=%s WHERE order_id=%s',
+                (booking['start_at'],booking['location'] or 'Online',row['order_id']))
+    row.update(variant_date=booking['start_at'],variant_location=booking['location'] or 'Online')
+
+
+def _queue_transition_emails(ctx,row,old,new,*,note=None,reason=None,cursor=None):
+    company_id = row.get("company_id")
+    order_id = row["order_id"]
+    to_email = row.get("user_email")
+    if to_email and ctx.actor_kind != "system":
+        link = order_url(order_id)
+        if new in (lc.APPROVED, lc.REJECTED):
+            decision = "afvist" if new == lc.REJECTED else "godkendt"
+            msg = ("Din bestilling blev desværre afvist." if new == lc.REJECTED
+                   else "Din bestilling er godkendt. Udbyderen bekræfter nu din plads, og du får besked, når den er booket.")
+            if new == lc.REJECTED and note:
+                msg += f" Begrundelse fra HR: {note}"
+            _send_email_safe(
+                to_email, f"Din kursusbestilling er {decision}", "order_approved", company_id, cursor=cursor,
+                product_title=row.get("product_title", ""), order_id=order_id,
+                decision=decision, message=msg, order_url=link,
+            )
+        elif new == lc.BOOKED:
+            _send_email_safe(
+                to_email, f"Din plads er booket — {row.get('product_title', '')}",
+                "order_booked", company_id, cursor=cursor,
+                product_title=row.get("product_title", ""), order_id=order_id,
+                variant_date=row.get("variant_date") or "",
+                variant_location=row.get("variant_location") or "", order_url=link,
+            )
+        elif new == lc.CANCELLED and "owner" not in actors_for(ctx, row):
+            _send_email_safe(
+                to_email, f"Din bestilling er annulleret — {row.get('product_title', '')}",
+                "order_cancelled", company_id, cursor=cursor,
+                product_title=row.get("product_title", ""), order_id=order_id,
+                reason=reason or "", order_url=link,
+            )
+
+    if new == lc.APPROVED and old == lc.PENDING_APPROVAL:
+        _notify_vendor_safe(row,cursor=cursor)
+    if new == lc.CANCELLED and ctx.actor_kind == "vendor":
+        _send_hr_vendor_decline_email_safe(row, reason,cursor=cursor)

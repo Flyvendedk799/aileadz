@@ -388,6 +388,7 @@ def enterprise_table_ddls():
                     booked_at DATETIME,
                     booked_by VARCHAR(255),
                     cancel_reason VARCHAR(255),
+                    cancellation_fee DECIMAL(10,2) NOT NULL DEFAULT 0,
                     request_notes TEXT,
                     group_order_id VARCHAR(50),
                     course_source VARCHAR(30) DEFAULT 'external',

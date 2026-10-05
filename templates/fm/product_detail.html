@@ -406,9 +406,10 @@
           {% set seats = variant.get('seats') %}
           {% set sold_out = seats is not none and seats <= 0 %}
           <label class="pd-var{{ ' is-sold' if sold_out }}"{% if loop.index0 >= 4 %} data-pd-extra{% endif %}>
-            <input type="radio" name="variant_index" value="{{ loop.index0 }}"{% if not anon %} form="pd-request-form"{% endif %}
+            <input type="radio" name="session_id" value="{{ variant.session_id }}"{% if not anon %} form="pd-request-form"{% endif %}
                    {% if loop.index0 == ns.sel %}checked{% endif %}
                    {% if sold_out or blocked %}disabled{% endif %}
+                   data-pd-quote="{{ variant.discounted_price if variant.discounted_price is defined else variant.price }}"
                    data-pd-date="{{ variant.date or 'Dato efter aftale' }}"
                    data-pd-where="{{ variant.location or variant.city or 'Online / efter aftale' }}"
                    data-pd-price="{{ variant.discounted_price_label or variant.price_label or product.price_label }}"
@@ -619,6 +620,7 @@
 {% if not anon %}
 <div class="pd-modal" id="pd-request" role="dialog" aria-modal="true" aria-labelledby="pd-request-title" hidden>
   <form class="pd-modal-card" id="pd-request-form" method="POST" action="{{ url_for('catalog.request_product', handle=product.handle) }}">
+    <input type="hidden" name="expected_price" id="pd-expected-price" value="{{ first.discounted_price if first and first.discounted_price is defined else (first.price if first else '') }}">
     <div class="pd-modal-head">
       <div style="flex:1 1 auto;min-width:0">
         <h3 id="pd-request-title">Anmod om tilmelding</h3>
@@ -672,12 +674,13 @@
     var w = input.getAttribute('data-pd-where') || '';
     var p = input.getAttribute('data-pd-price') || '';
     var was = input.getAttribute('data-pd-was') || '';
+    var quoted=document.getElementById('pd-expected-price'); if(quoted) quoted.value=input.getAttribute('data-pd-quote') || '';
     document.querySelectorAll('[data-pd-date]').forEach(function (el) { if (el.tagName !== 'INPUT') el.textContent = d; });
     document.querySelectorAll('[data-pd-where]').forEach(function (el) { if (el.tagName !== 'INPUT') el.textContent = w; });
     document.querySelectorAll('[data-pd-price]').forEach(function (el) { if (el.tagName !== 'INPUT') el.textContent = p; });
     document.querySelectorAll('[data-pd-was]').forEach(function (el) { el.textContent = was; el.hidden = !was; });
   }
-  var radios = Array.prototype.slice.call(document.querySelectorAll('input[name="variant_index"]'));
+  var radios = Array.prototype.slice.call(document.querySelectorAll('input[name="session_id"]'));
   function syncSelected() {
     /* Mirrors :checked onto the row for engines without :has(). */
     radios.forEach(function (r) {

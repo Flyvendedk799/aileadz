@@ -2,7 +2,7 @@
 {% block page_id %}hr{% endblock %}
 {% block title %}Tildel kursus til hold{% endblock %}
 {% block topbar_title %}Tildel kursus til hold{% endblock %}
-{% block topbar_sub %}Opret en ordre pr. medarbejder. Som HR godkendes de med det samme.{% endblock %}
+{% block topbar_sub %}Opret en ordre pr. medarbejder. Virksomhedens godkendelsesregler og aftalepriser bruges.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
   {% set active_hr_page = 'approvals' %}{% include 'fm/_hr_subnav.html' %}
@@ -18,8 +18,8 @@
     <p class="muted" style="margin:0 0 14px;font-size:13px">{{ product.vendor }} · {{ product.price_label }}</p>
     {% if product.variants|length > 1 %}
     <label class="fm-field"><span>Hold</span>
-      <select class="fm-input" name="variant_index">
-        {% for v in product.variants %}<option value="{{ loop.index0 }}">{{ v.date or 'Dato efter aftale' }} · {{ v.location or 'Sted efter aftale' }} · {{ v.price_label }}</option>{% endfor %}
+      <select class="fm-input" name="session_id">
+        {% for v in product.variants %}<option value="{{ v.session_id }}">{{ v.date or 'Dato efter aftale' }} · {{ v.location or 'Sted efter aftale' }} · {{ v.price_label }}</option>{% endfor %}
       </select>
     </label>
     {% endif %}
@@ -38,7 +38,7 @@
       {% else %}<p class="muted" style="padding:16px;margin:0">Der er ingen aktive medarbejdere endnu.</p>{% endif %}
     </div>
     <div class="fm-flex fm-gap8" style="margin-top:14px;flex-wrap:wrap">
-      <button class="btn btn-primary" type="submit"><i class="fa-solid fa-paper-plane"></i> Opret ordrer</button>
+      <button class="btn btn-primary" type="submit"><i class="fa-solid fa-paper-plane"></i> Gennemse pris og deltagere</button>
       <a class="btn btn-ghost" href="{{ url_for('hr_dashboard.pending_approvals') }}">Annuller</a>
     </div>
   </form>
@@ -51,7 +51,6 @@
     document.querySelector('form.fm-card').addEventListener('submit', function (e) {
       var n = cbs.filter(function (c) { return c.checked; }).length;
       if (!n) { e.preventDefault(); alert('Vælg mindst én medarbejder.'); return; }
-      if (!confirm('Opret ' + n + ' ordre' + (n === 1 ? '' : 'r') + ' nu?')) e.preventDefault();
     });
     upd();
   })();

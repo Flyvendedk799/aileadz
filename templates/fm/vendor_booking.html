@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="da">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1">
+        <title>Booking og opfølgning</title>
+        <link rel="stylesheet"
+              href="{{ url_for('static',filename='futurematch/assets/fm.css') }}">
+        <link rel="stylesheet"
+              href="{{ url_for('static',filename='futurematch/assets/fm-pages.css') }}">
+    </head>
+    <body>
+        <main style="max-width:900px;margin:30px auto;padding:20px">
+            <a href="{{ url_for('vendor.vendor_orders') }}">Tilbage til bestillinger</a>
+            {% for category,message in get_flashed_messages(with_categories=true) %}
+                <p role="status">{{ message }}</p>
+            {% endfor %}
+            {% include "fm/_booking_workflow.html" %}
+        </main>
+    </body>
+</html>

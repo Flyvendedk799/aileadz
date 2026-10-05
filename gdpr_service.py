@@ -801,6 +801,11 @@ def _build_where(spec, subject):
 # kind: delete | anonymise | pseudonymise.  set: SQL SET fragment ('%s' params
 # from ``set_params(subject)``); match: [(column, subject-field)], OR-ed.
 EXTRA_SPECS = [
+    dict(kind="anonymise", table="company_launch_checks", match=[("confirmed_by","user_id")], set="confirmed_by=NULL"),
+    dict(kind="delete", table="customer_requests", match=[("user_id","user_id")]),
+    dict(kind="delete", table="sales_enquiries", match=[("email","email")]),
+    dict(kind="delete", table="mail_outbox", match=[("to_email","email")]),
+    *[dict(kind="delete", table=t, match=[("user_id", "user_id")]) for t in ("learning_assignment_steps", "course_order_details", "course_order_changes", "learning_outcome_reviews")],
     # --- hard deletes (personal, no audit/financial value) ---------------
     dict(kind="delete", table="company_chat_messages",
          match=[("sender_member_id", "user_id_or_member"),
@@ -984,6 +989,12 @@ def _cov(disposition, note=""):
 
 
 COVERAGE = {
+    "customer_accounts": _cov("retain", "Company contract and professional account-contact configuration"),
+    "company_launch_checks": _cov("anonymise", "Company setup review audit; confirming actor id is removed"),
+    "customer_requests": _cov("delete"),
+    "sales_enquiries": _cov("delete"),
+    "mail_outbox": _cov("delete"),
+    **{t: _cov("delete") for t in ("learning_assignment_steps", "course_order_details", "course_order_changes", "learning_outcome_reviews")},
     # --- profile / AI state: hard delete (legacy username lists) ---------
     **{t: _cov("delete") for t in (
         "user_skills", "user_experience", "user_education", "user_completed_courses",

@@ -147,7 +147,7 @@
                   <div class="muted" style="font-size:12.5px">{{ a.steps|length }} trin{% if a.due_date %} · frist {{ a.due_date }}{% endif %} · <em>Tildelt af HR</em></div>
                 </div>
                 <span class="fm-badge {{ 'green' if a.status == 'completed' else 'teal' }}">{{ 'Gennemført' if a.status == 'completed' else ((a.progress_percentage|int|string) ~ '%') }}</span>
-                <a class="btn btn-ghost btn-sm" href="{{ url_for('futurematch.timeline') }}">Se bestillinger</a>
+                <a class="btn btn-ghost btn-sm" href="{{ url_for('learning.assignment',progress_id=a.id) }}">Åbn forløbet</a>
               </div>
               {% endfor %}
             </div></div>

@@ -96,7 +96,7 @@ STATUS_TONES = {  # fm badge colours
 # ── transitions ─────────────────────────────────────────────────────────────
 TRANSITIONS = {
     PENDING_APPROVAL: frozenset({APPROVED, REJECTED, CANCELLED}),
-    APPROVED: frozenset({BOOKED, COMPLETED, CANCELLED}),
+    APPROVED: frozenset({BOOKED, CANCELLED}),
     BOOKED: frozenset({COMPLETED, CANCELLED}),
     COMPLETED: frozenset(),
     REJECTED: frozenset(),

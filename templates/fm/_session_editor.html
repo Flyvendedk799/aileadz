@@ -1,0 +1,65 @@
+<input type="hidden" name="sessions_editor" value="1">
+<input type="hidden" name="revision" value="{{ revision }}">
+<h3>Hold, priser og ledige pladser</h3>
+<p>Et eksisterende hold beholder sit id, når du retter det. Slet ikke et hold for at rette en pris. Tomt antal pladser betyder, at kapaciteten skal bekræftes af udbyderen.</p>
+<div style="overflow-x:auto">
+    <table class="fm-table">
+        <thead>
+            <tr>
+                <th>Dato</th>
+                <th>Sted</th>
+                <th>Pris ekskl. moms</th>
+                <th>Ledige pladser</th>
+                <th>Fjern</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for v in session_rows %}
+                <tr>
+                    <td>
+                        <input type="hidden"
+                               name="session_id"
+                               value="{{ v.session_id or v.id or '' }}">
+                        <input class="fm-input"
+                               name="session_date"
+                               value="{{ v.date or '' }}"
+                               placeholder="2026-12-01 eller efter aftale"
+                               aria-label="Hold {{ loop.index }} dato">
+                    </td>
+                    <td>
+                        <input class="fm-input"
+                               name="session_location"
+                               value="{{ v.location or '' }}"
+                               aria-label="Hold {{ loop.index }} sted">
+                    </td>
+                    <td>
+                        <input class="fm-input"
+                               name="session_price"
+                               value="{{ v.price if v.price is not none else '' }}"
+                               inputmode="decimal"
+                               aria-label="Hold {{ loop.index }} pris">
+                    </td>
+                    <td>
+                        <input class="fm-input"
+                               name="session_seats"
+                               value="{{ v.seats if v.seats is not none else '' }}"
+                               inputmode="numeric"
+                               aria-label="Hold {{ loop.index }} pladser">
+                    </td>
+                    <td>
+                        {% if v.session_id or v.id %}
+                            <input type="checkbox"
+                                   name="remove_session"
+                                   value="{{ v.session_id or v.id }}"
+                                   aria-label="Fjern hold {{ loop.index }}">
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<label class="fm-field">
+    <span>Afbestillingsvilkår</span>
+    <textarea class="fm-input" name="cancellation_terms" maxlength="4000">{{ cancellation_terms or '' }}</textarea>
+</label>

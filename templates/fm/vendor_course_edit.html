@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="da">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1">
+        <title>Ret kursus og hold</title>
+        <link rel="stylesheet"
+              href="{{ url_for('static',filename='futurematch/assets/fm.css') }}">
+        <link rel="stylesheet"
+              href="{{ url_for('static',filename='futurematch/assets/fm-pages.css') }}">
+    </head>
+    <body>
+        <main style="max-width:1000px;margin:30px auto;padding:20px">
+            <a href="{{ url_for('vendor.vendor_dashboard') }}">Tilbage til leverandøroversigt</a>
+            <h1>{{ product.title }}</h1>
+            <p>Ændringerne sendes til gennemgang. Kunderne ser den publicerede version, indtil Futurematch godkender.</p>
+            {% for category,message in get_flashed_messages(with_categories=true) %}
+                <p role="alert">{{ message }}</p>
+            {% endfor %}
+            <form method="post" class="fm-card" style="padding:20px">
+                <label class="fm-field">
+                    <span>Kursustitel</span>
+                    <input class="fm-input"
+                           name="title"
+                           value="{{ product.title }}"
+                           maxlength="255"
+                           required>
+                </label>
+                <label class="fm-field">
+                    <span>Kort beskrivelse</span>
+                    <textarea class="fm-input" name="summary" maxlength="4000">{{ product.summary }}</textarea>
+                </label>
+                {% include "fm/_session_editor.html" %}
+                <button class="btn btn-primary">Indsend ændringer til godkendelse</button>
+            </form>
+        </main>
+    </body>
+</html>

@@ -23,6 +23,7 @@
 {% endblock %}
 
 {% block content %}
+<div class="fm-wrap"><a class="btn btn-primary" href="{{ url_for('fulfillment.order_workflow',order_id=order.order_id) }}">Booking, ændringer og kursusudbytte</a></div>
 <div class="fm-wrap">
   <div class="crumb"><a href="{{ url_for('futurematch.employee_home') }}">Min læring</a><i class="fa-solid fa-chevron-right"></i><a href="{{ url_for('futurematch.timeline') }}">Mine bestillinger</a><i class="fa-solid fa-chevron-right"></i><span>{{ order.order_id[:8] }}</span></div>
 
@@ -65,12 +66,12 @@
             {% endif %}
             {% if can_complete %}
             <form method="post" action="{{ url_for('futurematch.my_order_complete', order_id=order.order_id) }}">
-              <button class="btn btn-primary btn-sm" type="submit"><i class="fa-solid fa-circle-check"></i> Markér som gennemført</button>
+              <button class="btn btn-primary btn-sm" type="submit"><i class="fa-solid fa-circle-check"></i> Indsend deltagelse til bekræftelse</button>
             </form>
             {% endif %}
             {% if can_cancel %}
             <form method="post" action="{{ url_for('futurematch.my_order_cancel', order_id=order.order_id) }}" onsubmit="return confirm('Vil du annullere denne bestilling?');">
-              <button class="btn btn-ghost btn-sm" type="submit"><i class="fa-solid fa-ban"></i> Annullér</button>
+              <button class="btn btn-ghost btn-sm" type="submit"><i class="fa-solid fa-ban"></i> {{ 'Anmod om afbestilling' if status == 'booked' else 'Annullér' }}</button>
             </form>
             {% endif %}
             <a class="btn btn-ghost btn-sm" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comments"></i> Spørg AI'en om ordren</a>

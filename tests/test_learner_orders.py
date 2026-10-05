@@ -50,8 +50,8 @@ class DetailPageTests(Base):
     def test_owner_sees_status_and_actions(self):
         html = self.client_as("ada", 1).get("/min-ordre/ord-1").get_data(as_text=True)
         self.assertIn("Booket", html)
-        self.assertIn("Annullér", html)
-        self.assertIn("Markér som gennemført", html)
+        self.assertIn("Anmod om afbestilling", html)
+        self.assertIn("Indsend deltagelse til bekræftelse", html)
         self.assertIn("Tilføj til kalender", html)
         self.assertIn("Faktureres eksternt", html)
 
@@ -82,7 +82,13 @@ class ActionTests(Base):
         self.db.execute("UPDATE course_orders SET budget_charged = 1 WHERE order_id='ord-1'")
         resp = self.client_as("ada", 1).post("/min-ordre/ord-1/annuller", data={"reason": "Syg"})
         self.assertEqual(resp.status_code, 302)
-        self.assertEqual(self.db.one("SELECT status FROM course_orders")["status"], "cancelled")
+        self.assertEqual(self.db.one("SELECT status FROM course_orders")["status"], "booked")
+        self.assertEqual(self.db.one("SELECT spent FROM department_budgets")["spent"], 2500)
+        from order_fulfillment import resolve_change
+        with self.app.app_context():
+            change = self.db.one("SELECT id FROM course_order_changes")
+            result = resolve_change(svc.OrderContext(company_id=7,user_id=3,username='hr',company_role='hr_manager'),'ord-1',change['id'],True,note='Udbyderen har accepteret afbestillingen')
+            self.assertTrue(result['success'])
         self.assertEqual(self.db.one("SELECT spent FROM department_budgets")["spent"], 0)
 
     def test_colleague_cannot_cancel(self):
@@ -98,7 +104,10 @@ class ActionTests(Base):
                                       "course_title": "PRINCE2"}):
             resp = c.post("/min-ordre/ord-1/gennemfoert")
             self.assertEqual(resp.status_code, 302)
-            self.assertIn("completed=1", resp.headers["Location"])
+            self.assertNotIn("completed=1", resp.headers["Location"])
+            self.assertEqual(self.db.one("SELECT status FROM course_orders")["status"], "booked")
+            with self.app.app_context():
+                self.assertTrue(svc.complete_order(svc.OrderContext(company_id=7,user_id=3,username='hr',company_role='hr_manager'),'ord-1')['success'])
             html = c.get("/min-ordre/ord-1?completed=1").get_data(as_text=True)
         self.assertIn("Gennemført", html)
         self.assertIn("Det tager du med dig", html)

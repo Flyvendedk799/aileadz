@@ -1,0 +1,21 @@
+{% extends "fm_base.html" %}
+{% block title %}Interne kurser{% endblock %}
+{% block topbar_title %}Virksomhedens kurser{% endblock %}
+{% block content %}
+    <div class="fm-wrap">
+        <a href="{{ url_for('catalog.catalog_index') }}">Eksterne kurser</a>
+        <h1>Interne kurser</h1>
+        <p>Læring fra din egen virksomhed. Tilmelding følger virksomhedens godkendelser.</p>
+        {% for c in courses %}
+            <article class="fm-card" style="padding:20px;margin-bottom:12px">
+                <h2>
+                    <a href="{{ url_for('learning.internal_course',course_id=c.id) }}">{{ c.title }}</a>
+                </h2>
+                <p>{{ c.description|striptags|truncate(220) }}</p>
+                <p>{{ c.location or 'Sted efter aftale' }} · {{ c.duration_hours or '—' }} timer · {{ c.price or 0 }} kr.</p>
+            </article>
+        {% else %}
+            <p>Der er ingen aktive interne kurser endnu. Kontakt HR for at få oprettet et forløb.</p>
+        {% endfor %}
+    </div>
+{% endblock %}

@@ -4,7 +4,7 @@ The user asked for communication courses in Nordsjælland, then "ikke online,
 fysisk", then ordered one course and picked "16 september". Four things went wrong:
 
 1. The session picker compared dates as strings, so "16 september" never matched
-   the "15.-16. september 2026" session; the order stalled and the assistant
+   the "15.-16. september 2099" session; the order stalled and the assistant
    handed out a course link instead of a confirm card.
 2. prepare_course_order returned confirmation data but no confirm card, so the
    model said the order was "started" while nothing was booked.
@@ -25,8 +25,8 @@ FORTUNA = {
     "title": "Kursus i kommunikation og samarbejde",
     "vendor": "Fortuna Kurser",
     "variants": [
-        {"date": "10.-11. marts 2027", "location": "Vesterbrogade 1, 1620 København V", "price": 6500},
-        {"date": "15.-16. september 2026", "location": "Vesterbrogade 1, 1620 København V", "price": 7500},
+        {"date": "10.-11. marts 2098", "location": "Vesterbrogade 1, 1620 København V", "price": 6500},
+        {"date": "15.-16. september 2099", "location": "Vesterbrogade 1, 1620 København V", "price": 7500},
     ],
 }
 
@@ -37,21 +37,21 @@ class SessionDateMatchingTests(unittest.TestCase):
         return (variant or {}).get("date"), ambiguous
 
     def test_a_day_inside_a_multi_day_session_picks_it(self):
-        self.assertEqual(self._date("16 september"), ("15.-16. september 2026", False))
+        self.assertEqual(self._date("16 september"), ("15.-16. september 2099", False))
 
     def test_iso_and_full_danish_dates_pick_the_session(self):
-        self.assertEqual(self._date("2026-09-15")[0], "15.-16. september 2026")
-        self.assertEqual(self._date("15. september 2026")[0], "15.-16. september 2026")
+        self.assertEqual(self._date("2099-09-15")[0], "15.-16. september 2099")
+        self.assertEqual(self._date("15. september 2099")[0], "15.-16. september 2099")
 
     def test_a_month_alone_picks_the_only_session_that_month(self):
-        self.assertEqual(self._date("marts")[0], "10.-11. marts 2027")
+        self.assertEqual(self._date("marts")[0], "10.-11. marts 2098")
 
     def test_a_date_with_no_session_asks_again(self):
         self.assertEqual(self._date("1 december"), (None, True))
 
     def test_month_fallback_needs_a_single_session_that_month(self):
-        product = {"variants": [{"date": "3. september 2026", "price": 1},
-                                {"date": "24. september 2026", "price": 2}]}
+        product = {"variants": [{"date": "3. september 2099", "price": 1},
+                                {"date": "24. september 2099", "price": 2}]}
         self.assertEqual(_pick_variant(product, "16 september"), (None, True))
 
 
@@ -75,9 +75,9 @@ class PreparedOrderPreviewTests(unittest.TestCase):
         self.assertEqual(out["status"], "ready_for_confirmation")
         self.assertTrue(out["needs_confirmation"])
         self.assertEqual(out["confirm_tool"], "create_course_order")
-        self.assertEqual(out["details"]["variant"]["date"], "15.-16. september 2026")
-        self.assertEqual(out["price"], "7500")
-        self.assertIn("15.-16. september 2026", out["message_da"])
+        self.assertEqual(out["details"]["variant"]["date"], "15.-16. september 2099")
+        self.assertEqual(float(out["price"]), 7500)
+        self.assertIn("15.-16. september 2099", out["message_da"])
 
     def test_unresolved_session_gets_no_confirm_card(self):
         out = self._prepare({"product_handle": FORTUNA["handle"]})

@@ -29,7 +29,7 @@ For the AI internals see [ai-framework.md](ai-framework.md). For standing constr
 | `security_headers.py`, `html_sanitize.py`, `upload_guard.py`, `safe_http.py`, `rate_limit.py`, `security_audit.py` | defensive headers, render-time sanitising, upload checks, SSRF-safe HTTP, in-process rate limiter |
 | `error_pages.py`, `health.py` (`/healthz`, `/readyz`), `observability.py`, `feature_status.py` | error pages, probes, request ids / structured logs, degraded-subsystem status |
 | `perf_cache.py`, `response_compression.py`, `asset_version.py`, `performance_indexes.py` | TTL cache, gzip, content-hash `?v=` for static files, idempotent DB indexes |
-| `notification_service.py`, `email_service.py` | one notification table; branded transactional email (SMTP) |
+| `notification_service.py`, `email_service.py`, `mail_delivery.py`, `delivery_routes.py` | notifications, SMTP transport and durable business-mail delivery/recovery |
 | `scheduler.py`, `drain_worker.py`, `event_bus.py` | job registry + worker, webhook outbox |
 
 ### Learner experience
@@ -38,6 +38,7 @@ For the AI internals see [ai-framework.md](ai-framework.md). For standing constr
 | `futurematch_ui.py`, `templates/fm/` | main learner/HR/admin UI blueprint and the design gallery (`/ui`, admin only; renders any `templates/fm/<page>.html`) |
 | `futurematch_ui.py` (`/kollega-chat`), `templates/fm/company_chat.html`, `static/futurematch/assets/company-chat.js` | company member direct messages, separate from AI chat; active sender and recipient membership are checked on each request; messages are company-scoped and covered by GDPR export/erasure |
 | `catalog_service.py`, `catalog_routes.py`, `catalog_admin_routes.py`, `catalog_freshness.py`, `shopify_sync.py` | the ONE course catalog (source file `CATALOG_SOURCE_FILE`, vendor submissions, Shopify sync) |
+| `enrollment_service.py`, `order_fulfillment.py`, `fulfillment_routes.py`, `learning_routes.py` | canonical quotes, confirmed booking/change outcomes, attendance evidence and internal-course enrolment |
 | `learner_orders.py`, `learner_context.py`, `completion_service.py`, `competency.py`, `skill_history.py`, `learning_path_service.py`, `goal_sharing.py`, `goal_sharing_ui.py` | learner order detail, learner view of own HR data, completion moment, skills |
 | `cv_ingest.py`, `cv_parse_store.py` | CV / job-ad ingestion behind the profile page's CV import |
 | `profile_checkins.py` | weekly heartbeat: queues reasoned follow-ups (recent course, stale goal, unknown direction) the assistant may raise next time; `resolve_checkin` / `record_learning_outcome` tools |
@@ -47,6 +48,7 @@ For the AI internals see [ai-framework.md](ai-framework.md). For standing constr
 | Module | Role |
 |---|---|
 | `hr_dashboard/` (largest file), `hr_ext.py`, `hr_course_assign.py`, `compliance_*.py`, `deadline_service.py`, `cert_expiry_service.py`, `digest_service.py`, `department_service.py`, `team_order_policy.py`, `bulk_invite.py` | HR workspace, assignments, compliance, reminders, weekly digest |
+| `customer_success.py`, `customer_routes.py`, `launch_followup.py` | evidence-based onboarding, customer/account handover and stalled-work follow-up |
 | `companies/`, `settings_hub.py`, `enterprise_company_settings.py`, `branding_service.py`, `seat_governance.py` | company admin, settings hub (`/virksomhed/indstillinger`), white-label, seats |
 | `enterprise_api/`, `enterprise_sso/`, `scim_api.py`, `scim_groups.py`, `api_keys_ui.py` | public API v1 + OpenAPI, OIDC SSO, SCIM 2.0, API keys |
 | `enterprise_analytics/`, `multitenant_reports.py`, `report_query.py`, `report_exports.py`, `scheduled_reports.py`, `reports.py`, `admin_reports.py`, `benchmarking.py`, `insights_engine.py`, `kanon.py` | analytics and reporting; `kanon.py` enforces k-anonymity floors; `enterprise_analytics` is the ML "Avanceret" view linked from Læringsanalyse (`company.analytics_advanced`, env `ADVANCED_ANALYTICS_ENABLED`, aggregates only) |

@@ -745,6 +745,8 @@ OPENAI_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
+                    "session_id": {"type":"string","description":"Det valgte holds stabile id fra kataloget."},
+                    "expected_price": {"type":"number","description":"Prisen fra seneste bekræftelseskort; genbrug den uændret."},
                     "product_handle": {
                         "type": "string",
                         "description": "Kursets handle (f.eks. 'prince2-grundkursus'). Fås fra catalog_get_product."
@@ -1153,8 +1155,8 @@ OPENAI_TOOLS.extend([
         "function": {
             "name": "mark_course_complete",
             "description": (
-                "MUTATION: Markér et af brugerens kurser som gennemført. Kun når brugeren bekræfter tydeligt med 'ja'. "
-                "Opdaterer ordren, tilføjer kurset til brugerens gennemførte kurser og foreslår et næste kursus. "
+                "MUTATION: Indsend brugerens deltagelse til bekræftelse. Kun efter brugerens tydelige ja. "
+                "Selvrapportering afventer HR eller udbyderen og er ikke en bekræftet gennemførelse eller et kompetenceløft. "
                 "Brug ved 'jeg har gennemført', 'marker som færdig', 'fuldført kurset'. Kun brugerens egne kurser."
             ),
             "parameters": {
@@ -1652,6 +1654,10 @@ def _resolve_vendor_slug(value):
 
 
 def _find_catalog_product(handle="", title=""):
+    if str(handle).startswith('internal:'):
+        from enrollment_service import get_course
+        from flask import session
+        return get_course(handle, session.get('company_id'))
     handle = (handle or "").strip()
     title = (title or "").strip()
     if handle:
@@ -2637,7 +2643,9 @@ def _execute_check_course_readiness(args, username):
 
 
 def _execute_prepare_course_order(args, username):
-    product = catalog.get_product(args.get("product_handle", ""))
+    from enrollment_service import get_course
+    from flask import has_request_context, session
+    product = get_course(args.get("product_handle", ""), session.get('company_id') if has_request_context() else None)
     if not product:
         return json.dumps({"status": "not_found", "message": "Kurset blev ikke fundet."}, ensure_ascii=False)
     contact = resolve_user_contact(username, overrides={
@@ -2646,7 +2654,7 @@ def _execute_prepare_course_order(args, username):
         "phone": args.get("user_phone"),
     })
     missing = ["user_" + field for field in contact["missing_required"]]
-    variant, ambiguous = _pick_variant(product, args.get("variant_date", ""), args.get("variant_location", ""))
+    variant, ambiguous = _pick_variant(product, args.get("variant_date", ""), args.get("variant_location", ""), args.get("session_id"))
     if ambiguous:
         missing.append("variant")
     payload = {
@@ -2669,7 +2677,7 @@ def _execute_prepare_course_order(args, username):
             username,
         ))
         if not preview.get("needs_confirmation"):
-            preview = {}
+            return json.dumps({**preview, "creates_order": False}, ensure_ascii=False, default=str)
     return json.dumps({
         **preview,
         "status": "ready_for_confirmation" if not missing else "needs_info",
@@ -4889,6 +4897,10 @@ def _find_augmented_product(handle="", title=""):
     """Resolve an augmented product by exact handle, then by case-insensitive title."""
     handle = (handle or "").strip()
     title = (title or "").strip()
+    if handle.startswith('internal:'):
+        from enrollment_service import get_course
+        from flask import has_request_context, session
+        return get_course(handle, session.get('company_id') if has_request_context() else None)
     try:
         products = load_augmented_products() or []
     except Exception:
@@ -5522,7 +5534,7 @@ def _execute_mark_course_complete(args, username):
         return json.dumps({
             "status": "needs_confirmation",
             "creates_change": True,
-            "message": "Bekræft venligst med et tydeligt 'ja', før jeg markerer kurset som gennemført.",
+            "message": "Bekræft venligst med et tydeligt 'ja', før jeg indsender din deltagelse til bekræftelse.",
         }, ensure_ascii=False)
 
     handle = (args.get("handle") or "").strip()
@@ -5591,6 +5603,9 @@ def _execute_mark_course_complete(args, username):
             "status": "error",
             "message": outcome.get("message") or "Kunne ikke markere kurset som gennemført lige nu.",
         }, ensure_ascii=False)
+    if outcome.get('reported'):
+        return json.dumps({'status':'reported', 'completed':False, 'order_id':row.get('order_id'),
+                           'product_title':course_title, 'message':outcome['message']}, ensure_ascii=False)
     if outcome.get("already_completed"):
         return json.dumps({
             "status": "already_completed",
@@ -5625,7 +5640,8 @@ def _variant_options(product, limit=8):
     """Short, sortable list of a product's sessions for "which one?" questions."""
     out = []
     for v in (product.get("variants") or [])[:60]:
-        out.append({"date": v.get("date") or "", "location": v.get("location") or v.get("city") or "",
+        from enrollment_service import session_key
+        out.append({"session_id": session_key(v), "date": v.get("date") or "", "location": v.get("location") or v.get("city") or "",
                     "price": v.get("price"), "price_label": v.get("price_label") or ""})
     return out[:limit]
 
@@ -5689,7 +5705,7 @@ def _session_date_match(want, have):
     return best
 
 
-def _pick_variant(product, want_date="", want_location=""):
+def _pick_variant(product, want_date="", want_location="", session_id=None):
     """The session the user chose (N-3.1: price the CHOSEN variant, not variants[0]).
 
     Returns ``(variant_or_None, ambiguous)``. ``ambiguous`` is True when several
@@ -5700,6 +5716,10 @@ def _pick_variant(product, want_date="", want_location=""):
     "15.-16. september 2026" session, and "september" picks the only September one.
     """
     variants = [v for v in (product.get("variants") or []) if isinstance(v, dict)]
+    if session_id:
+        from enrollment_service import session_key
+        chosen = next((v for v in variants if session_key(v) == str(session_id)),None)
+        return chosen, chosen is None
     if not variants:
         return None, False
     wd, wl = (want_date or "").strip().lower(), (want_location or "").strip().lower()
@@ -5720,9 +5740,7 @@ def _pick_variant(product, want_date="", want_location=""):
         return None, True            # asked for something that does not exist: let the model re-ask
     if len(cands) == 1:
         return cands[0], False
-    prices = {v.get("price") for v in cands}
-    if len(prices) <= 1:
-        return cands[0], False       # same price whichever session: safe to book the first/selected
+    # Equal prices do not make different dates or venues interchangeable.
     return None, True
 
 
@@ -5752,7 +5770,7 @@ def _execute_create_order(args, username=None):
     CHOSEN session's price, and ``participants`` (colleagues) follow the company's
     team-order policy (linked orders / HR bulk-assign / not allowed).
     """
-    from flask import session as flask_session
+    from flask import session as flask_session, has_request_context
     from app1.order_handler import store_user_info_for_order
     from tool_confirm import needs_confirmation_payload
 
@@ -5779,13 +5797,14 @@ def _execute_create_order(args, username=None):
             ).strip(),
         }, ensure_ascii=False)
 
-    # Look up product in the one catalog (published courses only).
-    product = catalog.get_product(handle)
+    # Both internal and external courses use the canonical enrolment contract.
+    from enrollment_service import get_course
+    product = get_course(handle, (flask_session.get('company_id') if has_request_context() else None))
     if not product:
         return json.dumps({"status": "error", "message": f"Kursus '{handle}' ikke fundet eller ikke længere tilgængeligt."})
 
     vendor_name = product.get("vendor", "")
-    variant, ambiguous = _pick_variant(product, args.get("variant_date", ""), args.get("variant_location", ""))
+    variant, ambiguous = _pick_variant(product, args.get("variant_date", ""), args.get("variant_location", ""), args.get("session_id"))
     if ambiguous:
         mark_order_flow_open(handle, stage="needs_info")
         return json.dumps({
@@ -5803,23 +5822,14 @@ def _execute_create_order(args, username=None):
     else:
         price_str = str(product.get("price_min") if product.get("price_min") is not None else 0)
 
-    # Apply the negotiated supplier discount AT CAPTURE so the order is charged
-    # at the agreed price, not the list price.
-    discounted_price, _orig, _agr_name = apply_discount(price_str, vendor_name)
-    if discounted_price is None:
-        try:
-            company_id = flask_session.get("company_id")
-            if company_id and vendor_name:
-                discount_map = catalog.get_company_discount_map(company_id)
-                agreement = discount_map.get((vendor_name or "").lower())
-                if agreement:
-                    eff = catalog.apply_discount_to_price(price_str, agreement)
-                    if eff is not None:
-                        discounted_price = eff
-        except Exception:
-            discounted_price = None
-    if discounted_price is not None:
-        price_str = str(discounted_price)
+    from enrollment_service import quote_course
+    try:
+        quote = quote_course(handle,(flask_session.get('company_id') if has_request_context() else None),session_id=args.get('session_id'),
+                             variant_date=(variant or {}).get('date') or args.get('variant_date') or '',
+                             variant_location=(variant or {}).get('location') or args.get('variant_location') or '')
+        price_str = str(quote['price'])
+    except ValueError as exc:
+        return json.dumps({'status':'needs_info','message':str(exc)},ensure_ascii=False)
 
     product_data = {
         "handle": handle,
@@ -5830,7 +5840,7 @@ def _execute_create_order(args, username=None):
     }
 
     # Variant selection: the canonical session fields when we matched one.
-    variant_selection = {}
+    variant_selection = {"session_id":quote["session_id"], "expected_price":args.get("expected_price")}
     chosen_date = (variant or {}).get("date") or args.get("variant_date") or ""
     chosen_loc = (variant or {}).get("location") or args.get("variant_location") or ""
     if chosen_date:
@@ -5861,6 +5871,7 @@ def _execute_create_order(args, username=None):
                 + f" til {user_name} ({user_email})."
             ),
             confirm_tool="create_course_order",
+            confirmation_args={"expected_price":quote["price"],"session_id":quote["session_id"]},
             price=price_str,
             next_step=("Bekræftelseskortet vises nu under dit svar. Bed brugeren trykke Bekræft på kortet "
                        "(eller sige ja, så kalder du create_course_order igen med confirm=true). "
@@ -5953,6 +5964,12 @@ def _create_team_order(args, username, product, product_data, variant_selection,
         return json.dumps({"status": "needs_info", "missing_fields": ["participants"],
                            "message": "Jeg fandt ingen deltagere. Spørg, hvem kurset skal bestilles til."})
 
+    from enrollment_service import quote_course
+    try:
+        quote=quote_course(handle,company_id,session_id=variant_selection.get('session_id'),participants=len(people))
+        price_str=str(quote['price']);product_data['price']=price_str
+    except ValueError as exc:
+        return json.dumps({'status':'needs_info','message':str(exc)},ensure_ascii=False)
     names = [p["full_name"] or p["username"] for p in people]
     price_f = float(price_str) if str(price_str).replace(".", "", 1).isdigit() else 0.0
     if not bool(args.get("confirm")):
@@ -5965,6 +5982,7 @@ def _create_team_order(args, username, product, product_data, variant_selection,
                        f"({', '.join(names)}). Der oprettes én ordre pr. person, og hver følger godkendelse og budget.")
         return json.dumps(needs_confirmation_payload(
             action="create_course_order", summary_da=summary,
+            confirmation_args={"expected_price":quote["price"],"session_id":quote["session_id"]},
             details={"product_handle": handle, "product_title": product_data["title"], "price": price_str,
                      "participants": names, "policy": mode, "total": round(price_f * len(people), 2),
                      "variant": variant_selection},
@@ -5992,28 +6010,24 @@ def _create_team_order(args, username, product, product_data, variant_selection,
                            "message": "Opgaven er sendt til HR med kursus og deltagere udfyldt. De tildeler holdet."},
                           ensure_ascii=False)
 
-    from order_service import OrderContext, create_order
+    from order_service import OrderContext
+    from learning_path_service import assign_course_to_people
     requester = OrderContext.from_session(source="chat_team")
     group_id = _uuid.uuid4().hex
-    results = []
-    for p in people:
-        # A non-manager can never get a colleague's order auto-approved: orders for
-        # others always run as an employee request (approval + budget apply).
-        role = requester.company_role if requester.is_manager else "employee"
-        ctx = OrderContext(company_id=company_id, user_id=p["user_id"], username=p["username"],
-                           company_role=role, department=p.get("department") or "",
-                           source="chat_team", actor_label=requester.username)
-        res = create_order(
-            ctx, product_handle=handle, product_title=product_data["title"], price=price_str,
-            variant_date=variant_selection.get("date", ""), variant_location=variant_selection.get("location", ""),
-            user_email=p.get("email") or "", user_name=p.get("full_name") or p["username"], user_phone="",
-            extra={"group_order_id": group_id, "department": p.get("department") or "",
-                   "notes": f"Bestilt af {requester.username} til teamet via AI-assistenten",
-                   **chat_attribution(default_tool="create_course_order")})
-        results.append({"name": p["full_name"] or p["username"], "success": bool(res.get("success")),
-                        "order_id": res.get("order_id"), "status": res.get("status_label"),
-                        "needs_approval": bool(res.get("needs_approval")), "duplicate": bool(res.get("duplicate")),
-                        "error": None if res.get("success") else res.get("message")})
+    cur = app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    try:
+        batch = assign_course_to_people(cur,requester,company_id,handle,[p['user_id'] for p in people],
+                                       session_id=quote['session_id'],group_id=group_id,expected_price=args.get('expected_price'))
+    finally:
+        cur.close()
+    by_id={p['user_id']:p for p in people}
+    results=[]
+    for res in batch['results']:
+        person=by_id[res['user_id']]
+        results.append({'name':person['full_name'] or person['username'], 'success':bool(res.get('success')),
+                        'order_id':res.get('order_id'),'status':res.get('status_label'),
+                        'needs_approval':bool(res.get('needs_approval')),'duplicate':bool(res.get('duplicate')),
+                        'error':None if res.get('success') else res.get('message')})
     clear_order_flow()
     ok = [r for r in results if r["success"]]
     return json.dumps({
@@ -6311,7 +6325,8 @@ def _execute_manage_my_order(args, username):
         "status": "success",
         "order_id": order_id,
         "refunded": result.get("refunded"),
-        "message": "Din bestilling er annulleret." + (" Budgettet er refunderet." if result.get("refunded") else ""),
+        "pending": bool(result.get("pending")),
+        "message": result.get("message") or ("Din bestilling er annulleret." + (" Budgettet er refunderet." if result.get("refunded") else "")),
     }, default=str)
 
 

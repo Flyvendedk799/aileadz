@@ -1,6 +1,13 @@
 # Roadmap: open work only
 
-Everything from the 2026-09 completion plan (security tiers S-1 to S-5, functionality tiers N-0 to N-8), the HR value plan (19 initiatives), the unified profile/CV plan and the interactive CV plan has shipped on `main`; `git log` is the history. This file lists only what a code check on `main` still shows as undone. Standing constraints live in [DECISIONS.md](DECISIONS.md). Owner-only steps (accounts, servers, browser checks) live in [USER_ACTIONS.md](USER_ACTIONS.md).
+The older completion plans are in git history. The implemented launch journeys and their operational limits are documented in [runbooks/LAUNCH_WORKFLOWS.md](runbooks/LAUNCH_WORKFLOWS.md). A feature existing in code does not prove a deployed customer can complete it: run that acceptance checklist with a sandbox customer, actual SMTP recipients and a supplier before commercial launch. Standing product constraints live in [DECISIONS.md](DECISIONS.md); owner-only operational work lives in [USER_ACTIONS.md](USER_ACTIONS.md).
+
+## Commercial launch gate
+
+- Validate the deployed employee → HR → supplier → attendance → outcome journey.
+- Agree the actual customer offer, pilot success criteria, support ownership and supplier handling. Record them in the customer handover screen.
+- Confirm actual mail receipt and worker health; do not use an SMTP-success counter as inbox-delivery evidence.
+- Future supplier-specific live inventory/reservation integrations and binary certificate storage remain optional extensions, not claims made by the current UI.
 
 Sizes: **XS** under 1 h, **S** up to 1/2 day, **M** 1 to 3 days, **L** 1 to 2 weeks. Line numbers drift; search for the symbol.
 

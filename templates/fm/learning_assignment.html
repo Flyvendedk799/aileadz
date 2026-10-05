@@ -1,0 +1,49 @@
+{% extends "fm_base.html" %}
+{% block title %}{{ assignment.content_name }}{% endblock %}
+{% block topbar_title %}Mit læringsforløb{% endblock %}
+{% block content %}
+    <div class="fm-wrap">
+        <a href="{{ url_for('futurematch.employee_home') }}">Tilbage til min læring</a>
+        <h1>{{ assignment.content_name }}</h1>
+        <p>{{ assignment.progress_percentage|int }}% gennemført{% if assignment.due_date %} · Frist: {{ assignment.due_date }}{% endif %}
+        </p>
+        {% for step in assignment.steps %}
+            <section class="fm-card" style="padding:20px;margin-bottom:12px">
+                <h2>{{ step.position }}. {{ step.title }}</h2>
+                <p>Version {{ step.path_version }} · {{ {'completed':'Gennemført','skipped':'Sprunget over','ordered':'Bestilt','failed':'Kræver opfølgning','not_started':'Ikke startet'}.get(step.status,step.status) }}</p>
+                {% if step.last_error %}
+                    <p role="alert">{{ step.last_error }}</p>
+                {% endif %}
+                {% if step.order_id %}
+                    <a class="btn btn-ghost"
+                       href="{{ url_for('futurematch.my_order',order_id=step.order_id) }}">Se bestilling og status</a>
+                {% endif %}
+                {% if step.status not in ("completed","skipped") %}
+                    <form method="post"
+                          action="{{ url_for('learning.act_on_step',progress_id=assignment.id,step_id=step.id) }}">
+                        {% if step.step_type == "info" %}
+                            <input type="hidden" name="action" value="acknowledge">
+                            <button class="btn btn-primary">Markér vejledningstrinnet som gennemført</button>
+                        {% elif not step.order_id or step.order_status in ("cancelled","rejected") %}
+                            {% if step.variants %}
+                                <label class="fm-field">
+                                    <span>Vælg hold</span>
+                                    <select class="fm-select" name="session_id" required>
+                                        <option value="">Vælg dato og sted</option>
+                                        {% for v in step.variants %}
+                                            <option value="{{ v.session_id }}"
+                                                    {% if v.seats is not none and v.seats <= 0 %}disabled{% endif %}>{{ v.date or 'Dato efter aftale' }} · {{ v.location or 'Sted efter aftale' }} · {{ v.price_label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </label>
+                            {% endif %}
+                            <button class="btn btn-primary">Anmod om plads</button>
+                        {% endif %}
+                    </form>
+                {% endif %}
+            </section>
+        {% else %}
+            <p>Dette ældre forløb har endnu ingen gemte trin. Bed HR om at migrere tildelingen.</p>
+        {% endfor %}
+    </div>
+{% endblock %}

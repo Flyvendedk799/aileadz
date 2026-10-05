@@ -127,3 +127,20 @@ def audit_chat_mutation(
         )
     except Exception as exc:  # pragma: no cover - audit must never fail the op
         print(f"[TOOL_CONFIRM][audit] audit_log skipped ({action}): {exc}")
+
+
+def confirmed_arguments(tool_name, arguments, result):
+    """Carry server-computed quote facts into the single-use confirmation token.
+
+    Never merge arbitrary tool output into executable arguments. Only these
+    quote/version fields may augment the original call.
+    """
+    args = dict(arguments or {})
+    if tool_name not in ('create_course_order','create_order_for_employee','assign_learning_path_to_team'):
+        return args
+    preview = result.get('confirmation_args') or {}
+    for key in ('expected_price','session_id','expected_path_version'):
+        value=preview.get(key)
+        if value is not None and isinstance(value,(str,int,float)):
+            args[key]=value
+    return args

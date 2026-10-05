@@ -12,14 +12,15 @@ never stack identical cards (this replaces the old visible marker string that
 ``deadline_service`` embedded in message text).
 
 All writers take the caller's cursor so the notification commits atomically with
-the business change.  Every public function is guarded: a notification failure
-never breaks the caller.
+the business change. Ordinary notification errors are guarded; transaction-aborting
+MySQL lock errors propagate so the caller cannot commit a partial business change.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+from transaction_errors import propagate_transaction_abort
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,7 @@ def _resolve_identity(cur, username=None, user_id=None):
             uid = _row_get(r, "id")
             return username, int(uid) if uid is not None else None
     except Exception as e:
+        propagate_transaction_abort(e)
         logger.debug("notification identity lookup failed: %s", e)
     return username, user_id
 
@@ -98,6 +100,7 @@ def notify_user(cur, *, title, message="", username=None, user_id=None,
         )
         return getattr(cur, "lastrowid", None) or True
     except Exception as e:
+        propagate_transaction_abort(e)
         logger.debug("notify_user skipped: %s", e)
         return None
 
@@ -122,6 +125,7 @@ def role_recipients(cur, company_id, roles=None):
                 out.append({"user_id": _row_get(r, "user_id", 0), "username": uname})
         return out
     except Exception as e:
+        propagate_transaction_abort(e)
         logger.debug("role_recipients failed: %s", e)
         return []
 
@@ -218,6 +222,7 @@ def migrate_company_notifications(conn):
                     "title, message, is_urgent, is_read, created_at FROM company_notifications")
         rows = list(cur.fetchall() or [])
     except Exception as e:
+        propagate_transaction_abort(e)
         logger.info("no legacy company_notifications to migrate (%s)", e)
         cur.close()
         return 0

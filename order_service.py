@@ -26,6 +26,7 @@ import logging
 import datetime
 
 import order_lifecycle as lc
+from transaction_errors import is_retryable_lock_error, propagate_transaction_abort
 
 logger = logging.getLogger(__name__)
 
@@ -33,10 +34,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Cross-integration side effects (events / email / notifications).
 #
-# All best-effort and fully guarded: a failure here NEVER affects the order
-# transaction (they run AFTER commit, on their own connections) and NEVER raises
-# into the caller. This is the two-track integration spine — outbox events for
-# webhook fan-out + best-effort branded email + in-app notification rows.
+# Business mail and in-app notices are staged in the caller's transaction.
+# Transaction-aborting lock errors must propagate to its owner. Webhook fan-out
+# remains post-commit and best effort, never part of a retried order attempt.
 # ---------------------------------------------------------------------------
 def _emit_event_safe(company_id, event_type, payload):
     """Record an integration event in the outbox. Never raises."""
@@ -226,6 +226,7 @@ def _notify_company_admins_safe(cur, company_id, title, message, is_urgent=0,
             dedupe_key=dedupe_key, dedupe_hours=24 if dedupe_key else None,
         )
     except Exception as e:  # pragma: no cover - defensive
+        propagate_transaction_abort(e)
         logger.debug("order_service: company notification skipped: %s", e)
 
 
@@ -450,6 +451,7 @@ def _write_audit(cur, *, company_id, user_id, action, resource_id, description="
              description),
         )
     except Exception as e:  # pragma: no cover - audit must never fail the op
+        propagate_transaction_abort(e)
         logger.debug("order_service: audit_log skipped (%s): %s", action, e)
 
 
@@ -469,6 +471,7 @@ def _record_history(cur, row, *, kind, from_value, to_value, ctx, note=None):
              (note or None) and str(note)[:500]),
         )
     except Exception as e:  # pragma: no cover - history must never fail the op
+        propagate_transaction_abort(e)
         logger.debug("order_service: history skipped: %s", e)
 
 
@@ -515,6 +518,7 @@ def _resolve_approval_policy(cur, company_id, department):
         )
         row = cur.fetchone()
     except Exception as e:
+        propagate_transaction_abort(e)
         logger.warning("order_service: approval policy lookup failed: %s", e)
         return None
     if not row:
@@ -669,6 +673,7 @@ def _find_recent_duplicate(cur, ctx, product_handle, variant_date, variant_locat
         )
         return cur.fetchone()
     except Exception as e:
+        propagate_transaction_abort(e)
         logger.debug("order_service: duplicate check skipped: %s", e)
         return None
 
@@ -682,7 +687,26 @@ def _next_step_message(status, needs_approval):
             "booket. Fakturering sker uden for appen.")
 
 
-def create_order(ctx, *, product_handle, product_title, price,
+def create_order(ctx, **kwargs):
+    """Retry only a fully rolled-back standalone transaction, never half a batch.
+
+    MySQL gap locks can deadlock concurrent requests even when the participant
+    and budget locks are correct. All business mail is staged transactionally;
+    external events run only after a successful commit, so replaying an aborted
+    attempt cannot double-charge or send a second confirmation.
+    """
+    for attempt in range(3):
+        result = _create_order_once(ctx, **kwargs)
+        retryable = result.pop('_retryable_lock_error', False)
+        if not retryable or kwargs.get('deferred_events') is not None:
+            return result
+        if attempt < 2:
+            import time
+            time.sleep(0.025 * (attempt + 1))
+    return result
+
+
+def _create_order_once(ctx, *, product_handle, product_title, price,
                  variant_date="", variant_location="",
                  user_email="", user_name="", user_phone="",
                  status=None, extra=None, deferred_events=None):
@@ -1042,6 +1066,7 @@ def create_order(ctx, *, product_handle, product_title, price,
             pass
         return {
             "success": False,
+            "_retryable_lock_error": is_retryable_lock_error(e),
             "error": str(e),
             "message": "Der opstod en fejl ved oprettelse af ordren. Prøv venligst igen.",
         }

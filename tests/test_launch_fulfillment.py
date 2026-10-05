@@ -120,3 +120,42 @@ class FulfillmentLaunchTests(OrderFlowBase):
         self.assertTrue(values["start_at"].endswith("+01:00"))
         with self.assertRaises(ValueError):
             fulfillment.booking_values({}, {"start_at": "2099-01-01T12:00", "end_at": "2099-01-01T09:00", "location": "København"})
+
+    def test_deadlock_replays_only_after_full_rollback_and_creates_one_order(self):
+        import pymysql
+
+        original = orders._record_history
+        calls = 0
+
+        def history(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise pymysql.err.OperationalError(1213, "simulated transaction deadlock")
+            return original(*args, **kwargs)
+
+        with mock.patch.object(orders, "_record_history", side_effect=history), mock.patch("time.sleep"):
+            result = self.create()
+        self.assertTrue(result["success"], result)
+        self.assertEqual(calls, 2)
+        self.assertEqual(len(self.db.query("SELECT * FROM course_orders")), 1)
+        self.assertEqual(len(self.db.query("SELECT * FROM order_approvals")), 1)
+        self.assertEqual(len([e for e in self.emails if e[1] == "order_confirmation"]), 1)
+
+    def test_deadlock_does_not_replay_one_member_of_an_atomic_batch(self):
+        import pymysql
+
+        with mock.patch.object(orders, "_record_history", side_effect=pymysql.err.OperationalError(1213, "deadlock")) as record:
+            result = self.create(deferred_events=[])
+        self.assertFalse(result["success"])
+        self.assertEqual(record.call_count, 1)
+        self.assertEqual(self.db.query("SELECT * FROM course_orders"), [])
+
+    def test_best_effort_notification_does_not_hide_transaction_abort(self):
+        import pymysql
+        import notification_service
+
+        cur = mock.Mock()
+        cur.execute.side_effect = pymysql.err.OperationalError(1213, "deadlock")
+        with self.assertRaises(pymysql.err.OperationalError):
+            notification_service.notify_user(cur, user_id=1, username="ada", title="Order")

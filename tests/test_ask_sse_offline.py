@@ -729,6 +729,28 @@ class OrderTurnSSETests(_FreshAgentState, unittest.TestCase):
         self.assertEqual(cards[0]["action"], "create_course_order")
         self.assertEqual(cards[0]["price"], "12500")
 
+    def test_confirm_card_carries_the_course_being_booked(self):
+        """The card shows the one chosen course (same card as suggestions) without
+        a course_cards event, so the order turn still has no duplicate cards."""
+        events, _ = self._drive_order_turn()
+        card = _of_type(events, "confirm_card")[0]
+        self.assertEqual(card["course"]["handle"], "projektledelse-grund")
+        self.assertEqual(card["course"]["title"], "Projektledelse Grundkursus")
+        self.assertEqual(_of_type(events, "course_cards"), [])
+
+    def test_confirming_an_order_returns_a_written_confirmation(self):
+        events, client = self._drive_order_turn()
+        token = _of_type(events, "confirm_card")[0]["token"]
+        created = json.dumps({"status": "order_created", "order_id": "o-1",
+                              "order_status_label": "Afventer godkendelse",
+                              "needs_approval": True, "order_url": "/ordre/o-1"})
+        with patch("app1.tools.execute_tool", return_value=created),                 patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}):
+            body = client.post("/app1/confirm_tool_action", json={"token": token}).get_json()
+        self.assertEqual(body["status"], "order_created")
+        self.assertIn("Din bestilling", body["confirmation_text"])
+        self.assertIn("afventer godkendelse", body["confirmation_text"])
+        self.assertIn("(/ordre/o-1)", body["confirmation_text"])
+
     def test_prepared_order_confirms_through_create_course_order(self):
         events, client = self._drive_order_turn()
         token = _of_type(events, "confirm_card")[0]["token"]

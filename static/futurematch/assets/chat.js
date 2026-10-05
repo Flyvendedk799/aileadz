@@ -1050,10 +1050,23 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
       </div>
     `;
 
+    // The course being booked, in the same box as the suggestions. The card is
+    // for deciding, so the pick-a-session / order actions are left out.
+    if (data.course && data.course.title) {
+      const media = courseCard(data.course, false);
+      media.classList.add("in-confirm");
+      media.querySelectorAll(".course-exp, .course-foot, .course-chev").forEach((n) => n.remove());
+      card.insertBefore(media, card.querySelector(".confirm-card-body"));
+    }
+
     const okBtn = card.querySelector(".confirm-card-ok");
     const cancelBtn = card.querySelector(".confirm-card-cancel");
     const showResult = (cls, msg, link) => {
-      okBtn.disabled = true; cancelBtn.disabled = true;
+      // The decision is made: the result replaces the buttons (they would
+      // otherwise sit there, disabled, still reading "Bekræfter…").
+      card.querySelector(".confirm-card-actions").hidden = true;
+      const prev = card.querySelector(".confirm-card-result");
+      if (prev) prev.remove();
       const res = document.createElement("div");
       res.className = "confirm-card-result " + cls;
       res.textContent = msg;
@@ -1093,8 +1106,22 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
         } else {
           showResult("err", result.message_da || result.message || "Fejl");
         }
+        // The assistant confirms in writing too, as it does after any other answer.
+        if (result.confirmation_text) {
+          try {
+            const reply = document.createElement("div");
+            reply.className = "md";
+            reply.innerHTML = md(result.confirmation_text);
+            place(addBot(), "text", reply);
+            down();
+          } catch (e) { /* the card already says it */ }
+        }
       } catch (e) {
+        // Nothing is known to have been booked: let the user try again.
+        okBtn.disabled = false; cancelBtn.disabled = false;
+        okBtn.textContent = "Bekræft";
         showResult("err", "Netværksfejl — prøv igen");
+        card.querySelector(".confirm-card-actions").hidden = false;
       }
     });
 

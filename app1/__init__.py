@@ -1634,6 +1634,22 @@ def delete_memory(memory_id):
         return jsonify({"status": "error", "message": "Fejl ved sletning"}), 500
 
 
+def _record_assistant_message(username, sid, text):
+    """Append an assistant message to the stored transcript; never raises."""
+    try:
+        from app1 import conversation_state as _conv_state
+        stored = _conv_state.load(username, sid)
+        if not stored or not text:
+            return
+        _conv_state.save_turn(
+            username, sid, stored["mode"],
+            list(stored["messages"]) + [{"role": "assistant", "content": text}],
+            expected_rev=stored["rev"],
+        )
+    except Exception as exc:
+        logging.warning("could not record the order confirmation in the transcript: %s", exc)
+
+
 @app1_bp.route("/confirm_tool_action", methods=["POST"])
 def confirm_tool_action():
     """Re-execute a held side-effect tool after the user clicks Bekræft.
@@ -1711,6 +1727,14 @@ def confirm_tool_action():
             )
         except Exception:
             pass
+        if tool_name == "create_course_order" and scope != "hr" and isinstance(result, dict):
+            # Confirming runs the tool without a model turn, so the chat gets its
+            # written confirmation from here, and the transcript learns the order exists.
+            from app1.order_confirmation import order_confirmation_text
+            confirmation = order_confirmation_text(result, args)
+            if confirmation:
+                result["confirmation_text"] = confirmation
+                _record_assistant_message(logged_in_user, employee_sid, confirmation)
         return jsonify(result)
 
     except Exception as e:

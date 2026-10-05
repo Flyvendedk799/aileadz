@@ -490,6 +490,21 @@ PROFILING_MODES = ("assistant", "profiler")
 # shows the confirm card instead of course cards.
 _ORDER_TOOLS = frozenset({"check_course_readiness", "prepare_course_order", "create_course_order"})
 
+
+def _order_course_card(handle):
+    """The course card for the course an order confirmation is about, or None.
+
+    Best effort: a card that cannot be built must never block the confirm card."""
+    if not handle:
+        return None
+    try:
+        from app1.tools import resolve_products_for_ui
+        cards = serialize_course_cards(resolve_products_for_ui(single_handle=handle)[:1])
+        return cards[0] if cards else None
+    except Exception as exc:
+        print(f"[order_course_card] {handle}: {exc}")
+        return None
+
 # A course request inside the profiler: a learning-goal phrase that actually
 # names courses/training, not "jeg vil gerne blive projektleder".
 _COURSE_REQUEST_PATTERNS = _re.compile(
@@ -3104,6 +3119,14 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                                 "recipient_count": tool_result_dict.get("recipient_count"),
                                 "price": tool_result_dict.get("price"),
                             }
+                            # An order confirmation shows the one course being
+                            # booked, in the same card as the suggestions. It
+                            # rides inside the confirm card (not as a course_cards
+                            # event) so the order turn still has no duplicate cards.
+                            if _confirm_tool == "create_course_order" and isinstance(_details, dict):
+                                _order_course = _order_course_card(_details.get("product_handle"))
+                                if _order_course:
+                                    _confirm_payload["course"] = _order_course
                             buffered_profile_events.append(json.dumps(_confirm_payload, ensure_ascii=False, default=str))
                         except Exception as _ce:
                             print(f"[confirm_store error] {fn}: {_ce}")

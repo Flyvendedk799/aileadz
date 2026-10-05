@@ -1745,6 +1745,10 @@ body.chat-page .fm-main { background: var(--fm-surface); }
 .chatx .confirm-card-details, .chatx .confirm-card-meta { padding: 0 18px; font-size: 12.5px; color: var(--fm-ink-3); font-family: inherit; }
 .chatx .confirm-card-actions { padding: 12px 18px 16px; display: flex; gap: 6px; }
 .chatx .confirm-card-result { margin: 0 18px 16px; }
+.chatx .confirm-card-actions[hidden] { display: none; }
+/* The course being booked, at the top of the order card: the suggestion card without its actions. */
+.chatx .confirm-card .course.in-confirm { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; box-shadow: none; transform: none; animation: none; margin-bottom: 12px; }
+.chatx .confirm-card .course.in-confirm .course-h { grid-template-columns: 50px 1fr auto; cursor: default; }
 
 .chatx .ai-action-card { display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 14px; }
 .chatx .ai-action-ic { background: var(--fm-surface); color: var(--fm-ink-2); border-radius: 999px; }

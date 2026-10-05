@@ -132,6 +132,7 @@
   }
 
   /* ---- confirm card ---- */
+  var OK_STATUSES = ["success", "already_confirmed", "order_created", "team_orders_created", "handed_off_to_hr"];
   function confirmCard(container, data, opts) {
     opts = opts || {};
     var url = opts.confirmUrl || "/app1/confirm_tool_action";
@@ -148,10 +149,13 @@
       '<div class="fm-confirm-actions"><button type="button" class="fm-confirm-ok">Bekræft</button>' +
       '<button type="button" class="fm-confirm-cancel">Afvis</button></div>';
     var ok = card.querySelector(".fm-confirm-ok"), no = card.querySelector(".fm-confirm-cancel");
-    function result(cls, msg) {
-      ok.disabled = true; no.disabled = true;
+    function result(cls, msg, html) {
+      // The decision is made: the result replaces the buttons, so none is left
+      // disabled and still reading "Bekræfter…".
+      card.querySelector(".fm-confirm-actions").hidden = true;
       var r = document.createElement("div");
-      r.className = "fm-confirm-result " + cls; r.textContent = msg;
+      r.className = "fm-confirm-result " + cls;
+      if (html) r.innerHTML = md(msg); else r.textContent = msg;
       card.appendChild(r);
       if (opts.onResult) opts.onResult(cls, msg);
     }
@@ -161,8 +165,9 @@
         body: JSON.stringify({ token: data.token }) })
         .then(function (r) { return r.json().catch(function () { return {}; }); })
         .then(function (j) {
-          if (j.status === "success" || j.status === "already_confirmed" || j.success === true) {
-            result("ok", j.message_da || j.message || "Bekræftet.");
+          if (OK_STATUSES.indexOf(j.status) >= 0 || j.success === true) {
+            if (j.confirmation_text) result("ok", j.confirmation_text, true);
+            else result("ok", j.message_da || j.message || "Bekræftet.");
           } else {
             result("err", j.message_da || j.message || "Handlingen kunne ikke gennemføres.");
           }

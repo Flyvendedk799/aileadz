@@ -311,6 +311,12 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
   which compares dates as dates ("16 september" picks "15.-16. september 2026"; a bare
   month picks the only session that month). A turn that ran an order tool
   (`_ORDER_TOOLS` in `agent.py`) drops course cards: the confirm card is the UI.
+  The order confirm card carries the one course being booked as `course` (a
+  `serialize_course_cards` card, shown in the suggestion-card design without its
+  actions); it is not a `course_cards` event. Bekræft runs the tool without a model
+  turn, so `confirm_tool_action` adds `confirmation_text` (`app1/order_confirmation.py`,
+  Danish, only what the result says) for the chat to show as an assistant message, and
+  appends it to the stored transcript so the next turn knows the order exists.
 - **Profile writes:** additions save immediately with an inline **Fortryd** (undo);
   removals/edits keep the confirm card; several changes can share one card
   (`AI_PROFILE_AUTOSAVE=0` restores propose-then-confirm). Removing or editing

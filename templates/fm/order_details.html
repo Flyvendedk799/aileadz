@@ -35,7 +35,7 @@
   <div class="split"><div class="stack">
 
     <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-graduation-cap"></i></span><h3>Kursusdetaljer</h3>
-      <span class="fm-badge {{ status_tone }} dot" style="margin-left:auto">{{ status_label }}</span>
+      <span class="fm-badge {{ status_tone }} dot" style="margin-left:auto">{{ status_label }}</span>{% if status == 'approved' %}<span class="fm-badge teal">Klar til booking</span>{% endif %}
     </div>
     <div class="fm-card-body"><div class="info-list">
       <div class="kv"><span class="k">Ordre-ID</span><span class="v mono">{{ order.order_id }}</span></div>

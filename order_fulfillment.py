@@ -73,7 +73,7 @@ def booking_values(row, supplied):
         "end_at": end,
         "location": location,
         "join_url": join_url,
-        "reference": str(supplied.get("reference") or "")[:255],
+        "reference": str(supplied.get("reference") or "").strip()[:255] or None,
         "instructions": str(supplied.get("instructions") or "")[:4000],
         "cancellation_terms": str(supplied.get("cancellation_terms") or "")[:4000],
     }
@@ -108,7 +108,8 @@ def book(ctx, order_id, booking=None, note=None):
         if not allowed:
             return _error(message, code)
         values = booking_values(row, booking)
-        history_note = str(note or values["reference"] or "").strip()
+        values["confirmed_by_kind"] = "vendor" if "vendor" in actors else "hr"
+        history_note = str(note or "").strip()
         ordered = order_timing.differs_from_ordered_session(row, values["start_at"])
         if ordered:
             if str((booking or {}).get("confirm_date_change") or "").strip().lower() not in ("1", "true", "on", "yes"):
@@ -138,6 +139,50 @@ def book(ctx, order_id, booking=None, note=None):
     except ValueError as exc:
         conn.rollback()
         return _error(str(exc))
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.rollback()
+        cur.close()
+
+
+def add_reference(ctx, order_id, reference):
+    """Add or correct the supplier's booking reference on a booked order.
+
+    Only ``booking_json.reference`` changes: no status change, no money. HR, the
+    order's vendor and platform admins may do it; the history records it."""
+    reference = str(reference or "").strip()[:255]
+    if not reference:
+        return _error("Skriv udbyderens bookingreference.")
+    conn = orders._get_connection()
+    cur = orders._dict_cursor(conn)
+    try:
+        orders._lock_order(cur, ctx, order_id)
+        row = cur.fetchone()
+        actors = orders.actors_for(ctx, row) if row else set()
+        if not actors:
+            return _error("Bestillingen blev ikke fundet.", "not_found")
+        if not ({"manager", "admin", "vendor"} & actors):
+            return _error("Kun HR eller udbyderen kan tilføje en bookingreference.", "forbidden")
+        if row["status"] != lc.BOOKED:
+            return _error("En bookingreference kan kun tilføjes til en booket bestilling.")
+        booking = details(cur, order_id).get("booking_json") or {}
+        if booking.get("reference") == reference:
+            return {"success": True, "unchanged": True, "message": "Referencen er allerede gemt."}
+        booking["reference"] = reference
+        _save_details(cur, row, booking)
+        orders._record_history(cur, row, kind="change", from_value="reference", to_value="added", ctx=ctx, note=reference)
+        orders._write_audit(
+            cur,
+            company_id=orders._int_or_none(row.get("company_id")),
+            user_id=ctx.user_id,
+            action="order.reference_added",
+            resource_id=order_id,
+            description="booking reference set by %s" % ("vendor" if "vendor" in actors else "hr"),
+        )
+        conn.commit()
+        return {"success": True, "order_id": order_id, "status": lc.BOOKED, "message": "Bookingreferencen er gemt."}
     except Exception:
         conn.rollback()
         raise
@@ -277,7 +322,10 @@ def _rescheduled_booking(row, current, existing, *, new_reference="", new_start_
         "reference": str(new_reference or "").strip() or existing.get("reference") or "",
         "instructions": str(new_instructions or "").strip() or existing.get("instructions") or "",
     }
-    return booking_values({**row, **current}, supplied)
+    values = booking_values({**row, **current}, supplied)
+    if existing.get("confirmed_by_kind"):
+        values["confirmed_by_kind"] = existing["confirmed_by_kind"]
+    return values
 
 
 def resolve_change(ctx, order_id, change_id, accept, *, note="", fee=0, new_reference="", new_start_at="", new_instructions=""):

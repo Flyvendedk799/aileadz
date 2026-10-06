@@ -194,3 +194,85 @@ class OutcomeReviewFormTests(SectionBase):
         self.assertIn("Vælg niveau", html)
         self.assertNotRegex(html, r'<option value="1" selected')
         self.assertIn('name="level" required', html)
+
+
+class HrBooksByDefaultTests(SectionBase):
+    """HR books without inventing a reference; the vendor may add it later."""
+
+    def setUp(self):
+        super().setUp()
+        self.db.execute("INSERT INTO users (id, username, email) VALUES (4, 'hr2', 'hr2@f.dk')")
+        self.db.execute("INSERT INTO company_users (company_id, user_id, username, role, department, manager_user_id) "
+                        "VALUES (7, 4, 'hr2', 'hr_manager', 'HR', NULL)")
+        self.set_state("approved", booking=False)
+
+    def book_as_hr(self, **extra):
+        data = {"action": "book", "start_at": "2026-11-03T09:00", "location": "Kontoret", "reference": ""}
+        data.update(extra)
+        return self.hr().post("/ordre/ord-1/booking", data=data)
+
+    def booking(self):
+        return json.loads(self.db.one("SELECT booking_json FROM course_order_details")["booking_json"])
+
+    def test_hr_books_with_an_empty_reference_and_nothing_is_invented(self):
+        html = self.page(self.hr())
+        self.assertIn("Leverandørens bookingreference (hvis I har den)", html)
+        self.assertNotRegex(html, r'name="reference"[^>]*required')
+        self.book_as_hr()
+        self.assertEqual(self.db.one("SELECT status FROM course_orders")["status"], "booked")
+        booking = self.booking()
+        self.assertIsNone(booking["reference"])
+        self.assertEqual(booking["confirmed_by_kind"], "hr")
+        page = self.page(self.hr())
+        self.assertIn("Bekræftet af HR · ingen reference fra udbyderen endnu", page)
+        self.assertNotIn("Bekræftet i portalen", page)
+        note = self.db.one("SELECT note FROM order_status_history WHERE to_value='booked'")["note"]
+        self.assertEqual(note, "Booket af HR")
+
+    def test_a_reference_added_later_keeps_the_order_booked_and_is_audited(self):
+        self.book_as_hr()
+        resp = self.hr().post("/ordre/ord-1/booking", data={"action": "reference", "reference": "TI-77"})
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(self.db.one("SELECT status FROM course_orders")["status"], "booked")
+        self.assertEqual(self.booking()["reference"], "TI-77")
+        self.assertEqual(self.booking()["confirmed_by_kind"], "hr")
+        history = self.db.one("SELECT * FROM order_status_history WHERE kind='change' AND from_value='reference'")
+        self.assertEqual(history["note"], "TI-77")
+        self.assertIn("Reference: TI-77 · bekræftet af HR", self.page(self.hr()))
+
+    def test_the_learner_cannot_add_a_reference(self):
+        self.book_as_hr()
+        resp = self.learner().post("/ordre/ord-1/booking", data={"action": "reference", "reference": "x"})
+        self.assertEqual(resp.status_code, 302)
+        self.assertIsNone(self.booking()["reference"])
+        self.assertNotIn("data-reference-form", self.page(self.learner()))
+
+    def hr_notifications(self):
+        return {r["user_id"] for r in self.db.query("SELECT user_id FROM notifications WHERE title='Plads bekræftet'")}
+
+    def test_hr_is_not_notified_about_their_own_booking_but_colleagues_are(self):
+        self.book_as_hr()
+        self.assertEqual(self.hr_notifications(), {"hr2"})
+        titles = {r["title"] for r in self.db.query("SELECT title FROM notifications WHERE user_id='ada'")}
+        self.assertIn("Din plads er booket", titles)
+
+    def test_a_vendor_booking_notifies_the_learner_and_all_of_hr(self):
+        from tests.sqlite_platform import client_as
+
+        self.db.execute("INSERT INTO vendors (id, vendor_name, slug, contact_email, status) VALUES (11, 'Kursus ApS', 'kursus-aps', 'v@k.dk', 'active')")
+        self.db.execute("UPDATE course_orders SET vendor_id=11")
+        vendor = client_as(self.app, user_type="vendor", vendor_id=11, vendor_name="Kursus ApS")
+        resp = vendor.post("/vendor/orders/ord-1/booking", data={"action": "book", "start_at": "2026-11-03T09:00", "location": "Kontoret"})
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(self.db.one("SELECT status FROM course_orders")["status"], "booked")
+        self.assertEqual(self.booking()["confirmed_by_kind"], "vendor")
+        self.assertEqual(self.hr_notifications(), {"hr", "hr2"})
+        titles = {r["title"] for r in self.db.query("SELECT title FROM notifications WHERE user_id='ada'")}
+        self.assertIn("Din plads er booket", titles)
+        self.assertEqual(self.db.one("SELECT note FROM order_status_history WHERE to_value='booked'")["note"], "Booket af udbyderen")
+        self.assertIn("Bekræftet af udbyderen", self.page(self.hr()))
+
+    def test_approved_orders_are_marked_ready_for_booking_for_hr(self):
+        self.assertIn("Klar til booking", self.page(self.hr()))
+        resp = self.hr().get("/hr/order/ord-1/details")
+        self.assertIn("Klar til booking", resp.get_data(as_text=True))

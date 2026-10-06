@@ -42,6 +42,7 @@
       <button class="btn btn-ghost btn-sm" onclick="decideApproval({{ a.id }}, 'rejected')">Afvis</button>
       {% elif a.status == 'approved' %}
       <span class="fm-badge green dot">Godkendt</span>
+      {% if a.order_status == 'approved' %}<a class="fm-badge teal" href="{{ url_for('hr_dashboard.company_order_details', order_id=a.order_id) }}#booking" title="Bekræft pladsen hos udbyderen">Klar til booking</a>{% endif %}
       {% elif a.status == 'rejected' %}
       <span class="fm-badge red dot">Afvist</span>
       {% endif %}
@@ -164,7 +165,7 @@ function sendDecision(approvalId, decision, notes) {
       const row = document.getElementById('approval-row-' + approvalId);
       const cell = row.querySelector('[data-action-cell]');
       cell.innerHTML = decision === 'approved'
-        ? '<span class="fm-badge green dot">Godkendt</span>'
+        ? '<span class="fm-badge green dot">Godkendt</span> <span class="fm-badge teal">Klar til booking</span>'
         : '<span class="fm-badge red dot">Afvist</span>';
       const cb = row.querySelector('.appr-check'); if (cb) cb.remove();
       refreshBulk();

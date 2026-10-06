@@ -20,6 +20,7 @@ fulfillment_bp = Blueprint("fulfillment", __name__)
 # Where the page scrolls to after each action.
 ACTION_ANCHORS = {
     "book": "booking",
+    "reference": "booking",
     "change": "aendring",
     "resolve": "aendring",
     "report": "deltagelse",
@@ -67,6 +68,8 @@ def perform_action(ctx, order_id, form, *, vendor=False):
             new_start_at=form.get("new_start_at", ""),
             new_instructions=form.get("new_instructions", ""),
         )
+    elif action == "reference":
+        result = service.add_reference(ctx, order_id, form.get("reference"))
     elif action == "verify" and {"manager", "admin", "vendor"} & actors:
         result = orders.complete_order(ctx, order_id, note=form.get("note"))
     elif action == "report" and "owner" in actors:
@@ -220,6 +223,7 @@ def order_sections(ctx, row, *, vendor=False, post_url=None):
         "completion_state": completion_state,
         "can_report": can_report,
         "can_verify": can_verify,
+        "can_add_reference": status == orders.lc.BOOKED and bool({"vendor", "manager", "admin"} & actors),
         "may_review": may_review,
         "book_defaults": book_defaults,
         "approval_url": approval_url,

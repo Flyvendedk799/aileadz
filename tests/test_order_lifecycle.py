@@ -278,7 +278,7 @@ class PermissionBoundaryTests(OrderFlowBase):
         self.assertTrue(svc.book_order(self.hr(), self.oid)["success"])
         h = self.db.one("SELECT actor_kind, note FROM order_status_history WHERE to_value='booked'")
         self.assertEqual(h["actor_kind"], "manager")
-        self.assertIn("på leverandørens vegne", h["note"])
+        self.assertEqual(h["note"], "Booket af HR")
 
     def test_platform_admin_can_book_any_company(self):
         svc.set_status(self.hr(), self.oid, "approved")

@@ -1361,10 +1361,9 @@ def _apply_transition(cur, ctx, row, new, actors, *, note=None, reason=None):
         charged = _maybe_charge(cur, row)
 
     history_note = note or reason
-    if ctx.is_platform_admin and new == lc.BOOKED and "vendor" not in actors:
-        history_note = ("Booket af admin på leverandørens vegne" + (f": {history_note}" if history_note else ""))
-    elif "manager" in actors and new == lc.BOOKED and "vendor" not in actors:
-        history_note = ("Booket af HR på leverandørens vegne" + (f": {history_note}" if history_note else ""))
+    if new == lc.BOOKED:
+        booker = "udbyderen" if "vendor" in actors else ("admin" if ctx.is_platform_admin and "manager" not in actors else "HR")
+        history_note = "Booket af %s" % booker + (f": {history_note}" if history_note else "")
     _record_history(cur, row, kind="status", from_value=old, to_value=new, ctx=ctx, note=history_note)
 
     _write_audit(
@@ -1388,6 +1387,18 @@ def _apply_transition(cur, ctx, row, new, actors, *, note=None, reason=None):
                         action_url=order_url(order_id, absolute=False),
                         dedupe_key="order:%s:%s" % (order_id, new), dedupe_hours=None)
         cid = _int_or_none(row.get("company_id"))
+        if cid and new == lc.BOOKED:
+            # HR hears about a booking too, except the HR person who made it.
+            from notification_service import role_recipients
+            booker = "Udbyderen" if "vendor" in actors else "HR"
+            for rcpt in role_recipients(cur, cid, HR_ROLES):
+                if ctx.actor_kind != "vendor" and ctx.user_id is not None and _int_or_none(rcpt.get("user_id")) == ctx.user_id:
+                    continue
+                notify_user(cur, title="Plads bekræftet",
+                            message=f"{booker} har bekræftet pladsen på “{row.get('product_title')}” til {row.get('user_name') or row.get('username') or 'medarbejderen'}.",
+                            username=rcpt["username"], user_id=rcpt["user_id"], company_id=cid, kind="order",
+                            action_url="/hr/order/%s/details" % order_id,
+                            dedupe_key="order-booked-hr:%s" % order_id, dedupe_hours=None)
         if cid and new == lc.CANCELLED and ("vendor" in actors or "owner" in actors):
             who = "Udbyderen" if "vendor" in actors else (row.get("username") or "Medarbejderen")
             notify_roles(cur, cid, HR_ROLES,

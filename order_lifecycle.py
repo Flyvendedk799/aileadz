@@ -114,8 +114,10 @@ CHANGE_KIND_LABELS = {
     "cancel": "Afbestilling",
     "reschedule": "Ombooking",
     "substitute": "Deltagerskift",
+    "reference": "Bookingreference",
 }
 CHANGE_OUTCOME_LABELS = {
+    "added": "tilføjet",
     "requested": "anmodet",
     "accepted": "accepteret",
     "rejected": "afvist",

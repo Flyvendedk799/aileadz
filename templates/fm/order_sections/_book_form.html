@@ -1,6 +1,6 @@
 {% set defaults = sections.book_defaults %}
 <form method="post" action="{{ sections.post_url }}" class="fm-card os-card" id="booking" data-section="book_form" data-ordered-day="{{ defaults.ordered_day }}">
-    <h2>Bekræft plads og praktiske oplysninger</h2>
+    <h2>Bekræft plads og praktiske oplysninger {% if not sections.vendor_mode %}<span class="fm-badge teal">Klar til booking</span>{% endif %}</h2>
     {% if defaults.ordered_label %}
         <p class="muted">Bestilt session: {{ defaults.ordered_label|dkdate(style='long') }}. Datoen er udfyldt fra bestillingen; ret klokkeslættet, hvis det er fastlagt.</p>
     {% endif %}
@@ -22,8 +22,8 @@
         <input class="fm-input" type="url" name="join_url">
     </label>
     <label class="fm-field">
-        <span>Bookingreference eller bekræftelse</span>
-        <input class="fm-input" name="reference" maxlength="255" required>
+        <span>Leverandørens bookingreference (hvis I har den)</span>
+        <input class="fm-input" name="reference" maxlength="255">
     </label>
     <label class="fm-field">
         <span>Praktisk information</span>

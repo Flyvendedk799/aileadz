@@ -942,7 +942,7 @@ def create_hr_dashboard_blueprint():
         try:
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
             cur.execute("""
-                SELECT oa.*, co.product_title, co.price, co.product_handle,
+                SELECT oa.*, co.product_title, co.price, co.product_handle, co.status AS order_status,
                        co.variant_date, co.variant_location, co.user_email, co.user_name,
                        u.username AS requester_username,
                        cu.department, cu.job_title

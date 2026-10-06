@@ -5,6 +5,7 @@
 {% block topbar_title %}Katalogadmin{% endblock %}
 {% block topbar_sub %}Importer CSV, styr leverandører og kategorisér kataloget med AI-kladdetrin.{% endblock %}
 {% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/vendor/fontawesome/css/brands.min.css') }}?v={{ asset_version('futurematch/vendor/fontawesome/css/brands.min.css') }}" />
 <style>
   .cat-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
   .cat-progress { height: 8px; border-radius: 999px; background: var(--fm-surface-3); overflow: hidden; margin-top: 14px; display: none; }

@@ -162,6 +162,14 @@ def create_hr_dashboard_blueprint():
         return (company or {}).get('department') or ''
 
     def get_company_context():
+        """The current user's company context, read once per GET request."""
+        import request_memo
+
+        key = ('hr_company_context', session.get('user'), session.get('admin_acting_company_id'))
+        result = request_memo.memo(key, _load_company_context)
+        return dict(result) if isinstance(result, dict) else result
+
+    def _load_company_context():
         """Get current user's company context.
 
         Admin impersonation: when a platform admin has an
@@ -174,6 +182,13 @@ def create_hr_dashboard_blueprint():
         if 'user' not in session:
             return None
 
+        import request_memo
+
+        def _remember(row):
+            # Branding and the feature lookup reuse this row instead of re-reading it.
+            request_memo.prime_company_row(row)
+            return row
+
         acting = session.get('admin_acting_company_id')
         if session.get('role') == 'admin' and acting:
             try:
@@ -182,6 +197,7 @@ def create_hr_dashboard_blueprint():
                 row = cur.fetchone()
                 cur.close()
                 if row:
+                    _remember(row)
                     if session.get('company_id') != row['id']:
                         session['company_id'] = row['id']
                     row['user_role'] = 'company_admin'
@@ -203,7 +219,7 @@ def create_hr_dashboard_blueprint():
             """, (session['user'],))
             result = cur.fetchone()
             cur.close()
-            return result
+            return _remember(result)
         except Exception as e:
             current_app.logger.error(f"Error getting company context: {e}")
             return None

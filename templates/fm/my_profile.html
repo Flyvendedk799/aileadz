@@ -5,6 +5,7 @@
 {% block topbar_title %}Profil &amp; CV{% endblock %}
 {% block topbar_sub %}Din kompetenceprofil — jo mere udfyldt, jo bedre anbefalinger.{% endblock %}
 {% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/vendor/fontawesome/css/brands.min.css') }}?v={{ asset_version('futurematch/vendor/fontawesome/css/brands.min.css') }}" />
 <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/profile-cv.css') }}?v={{ asset_version('futurematch/assets/profile-cv.css') }}" />
 <style>
   /* level palette (progression heat) */

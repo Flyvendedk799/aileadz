@@ -296,10 +296,19 @@ def _normalize_location(loc_input):
     return _LOCATION_ALIASES.get(loc, loc)
 
 
-def _location_matches(query_loc, variant_loc_raw):
-    """Check if a normalized query location matches a variant location string."""
-    variant_loc = variant_loc_raw.lower()
+def _location_matches(query_loc, variant_loc_raw, *, exact_city=False):
+    """Check if a normalized query location matches a variant location string.
+
+    exact_city=True (L04 "kun København"): require the actual city token, no metro
+    expansion and no region-town broadening.
+    """
+    variant_loc = (variant_loc_raw or "").lower()
     normalized = _normalize_location(query_loc)
+    city = extract_city_name(variant_loc_raw) or ""
+    city_l = city.lower().strip()
+
+    if exact_city:
+        return bool(normalized) and (normalized == city_l or normalized in variant_loc.split())
 
     # Direct substring match
     if normalized in variant_loc:
@@ -883,7 +892,11 @@ OPENAI_TOOLS.extend([
                     "price_max": {"type": "number", "description": "Maximum price in DKK."},
                     "language": {"type": "string", "description": "Teaching language: 'dansk' or 'engelsk'. Use when the user asks for a specific language."},
                     "difficulty": {"type": "string", "enum": ["beginner", "intermediate", "advanced"], "description": "Difficulty level when the user specifies one."},
-                    "limit": {"type": "integer", "description": "Max products to return. Default 4."}
+                    "limit": {"type": "integer", "description": "Max products to return. Default 4."},
+                    "exact_title": {"type": "string", "description": "Require this exact course title. On no match return no_results with no cards."},
+                    "strict_match": {"type": "boolean", "description": "If true, do not fall back to partial/RAG alternatives."},
+                    "allow_alternatives": {"type": "boolean", "description": "If false, suppress alternative/best-match cards when there is no exact hit."},
+                    "exact_city": {"type": "boolean", "description": "If true, only sessions in the exact city (no metro/nearby expansion)."}
                 },
                 "required": []
             }
@@ -898,7 +911,10 @@ OPENAI_TOOLS.extend([
                 "type": "object",
                 "properties": {
                     "handle": {"type": "string", "description": "Product handle if known."},
-                    "title": {"type": "string", "description": "Product title or partial title if handle is not known."}
+                    "title": {"type": "string", "description": "Product title or partial title if handle is not known."},
+                    "exact_title": {"type": "string", "description": "Require this exact title; no partial/search fallback."},
+                    "strict_match": {"type": "boolean", "description": "If true, do not resolve to a different title."},
+                    "allow_alternatives": {"type": "boolean", "description": "If false, return not_found instead of a near match."}
                 },
                 "required": []
             }
@@ -1653,24 +1669,39 @@ def _resolve_vendor_slug(value):
     return value_slug
 
 
-def _find_catalog_product(handle="", title=""):
+def _find_catalog_product(handle="", title="", *, strict_match=False, allow_alternatives=True):
+    """Resolve a catalog product by handle and/or title.
+
+    L10: strict_match / allow_alternatives=False never falls back to a different
+    title (partial or first search hit). An invalid handle also stays unresolved
+    instead of silently becoming another course.
+    """
     if str(handle).startswith('internal:'):
         from enrollment_service import get_course
         from flask import session
         return get_course(handle, session.get('company_id'))
     handle = (handle or "").strip()
     title = (title or "").strip()
+    allow_alt = bool(allow_alternatives) and not bool(strict_match)
     if handle:
         product = catalog.get_product(handle)
         if product:
+            if title and strict_match and (product.get("title") or "").lower() != title.lower():
+                return None
             return product
+        if strict_match or not allow_alt:
+            # Do not resolve a bad handle to an unrelated title match.
+            if not title:
+                return None
     if title:
         title_lower = title.lower()
         products = catalog.get_products()
-        exact = next((p for p in products if p["title"].lower() == title_lower), None)
+        exact = next((p for p in products if (p.get("title") or "").lower() == title_lower), None)
         if exact:
             return exact
-        partial = next((p for p in products if title_lower in p["title"].lower()), None)
+        if not allow_alt:
+            return None
+        partial = next((p for p in products if title_lower in (p.get("title") or "").lower()), None)
         if partial:
             return partial
         search = catalog.search_products({"q": title}, page=1, per_page=1)
@@ -1911,8 +1942,15 @@ def _execute_catalog_search(args, username=None):
     # A region ("Nordsjælland") is matched town by town here, not by the catalog's
     # substring facet, which knows no regions.
     region = location if _normalize_location(location) in _REGION_TOWNS else ""
+    exact_city = bool(args.get("exact_city") or args.get("strict_location"))
+    strict_match = bool(args.get("strict_match") or args.get("exact_title"))
+    allow_alternatives = args.get("allow_alternatives")
+    if allow_alternatives is None:
+        allow_alternatives = not strict_match
+    allow_alternatives = bool(allow_alternatives)
+    exact_title = (args.get("exact_title") or "").strip()
     filters = {
-        "q": args.get("query") or "",
+        "q": exact_title or (args.get("query") or ""),
         "category": _resolve_category_slug(args.get("category") or ""),
         "vendor": _resolve_vendor_slug(args.get("vendor") or ""),
         "format": fmt,
@@ -1922,14 +1960,24 @@ def _execute_catalog_search(args, username=None):
         "sort": "relevance",
     }
     limit = int(args.get("limit") or 4)
+    loc_for_match = region or filters["location"]
+
+    def _product_has_city(product, loc_q, *, exact):
+        if not loc_q:
+            return True
+        locs = list(product.get("locations") or [])
+        for v in product.get("variants") or []:
+            if isinstance(v, dict):
+                locs.extend(x for x in (v.get("option1"), v.get("location"), v.get("city")) if x)
+        return any(_location_matches(loc_q, loc, exact_city=exact) for loc in locs if loc)
 
     def _post_filter(items):
         return _dedupe_results([
             p for p in items
             if _matches_delivery(p, delivery)
-            and (not region or any(_location_matches(region, loc) for loc in (p.get("locations") or [])))
+            and (not loc_for_match or _product_has_city(p, loc_for_match, exact=exact_city))
         ])
-    query = (args.get("query") or "").strip()
+    query = (exact_title or args.get("query") or "").strip()
     # Metadata-backed facets (honoured on the augmented/RAG products that carry
     # structured_metadata; a no-op for catalog rows that lack it, so they are
     # never wrongly excluded).
@@ -1951,7 +1999,21 @@ def _execute_catalog_search(args, username=None):
     if not products and candidates:
         products = [p for p in candidates if p.get("vendor") not in _current_blocked_vendors]
 
-    use_rag = query and (len(products) < max(1, limit // 2) or (result.get("total", 0) or 0) <= 1)
+    # L10: strict / no-alternatives searches must not invent "best match" cards.
+    if exact_title or strict_match:
+        title_l = (exact_title or query).lower()
+        exact_hits = [p for p in products if (p.get("title") or "").lower() == title_l]
+        if exact_hits:
+            products = exact_hits
+        elif not allow_alternatives:
+            products = []
+    use_rag = (
+        allow_alternatives
+        and not exact_title
+        and not strict_match
+        and query
+        and (len(products) < max(1, limit // 2) or (result.get("total", 0) or 0) <= 1)
+    )
     if use_rag:
         # value-5: scale the RETRIEVAL candidate pool with profile richness.
         # A logged-in user with many target skills/goals pulls a wider (still
@@ -2015,6 +2077,10 @@ def _execute_catalog_search(args, username=None):
                 compact = _demote_completed_results(compact, completed_titles, completed_handles)
                 compact = _mark_previously_shown(compact)
                 _annotate_match_reasons(compact, query, profile_boost)
+                compact = _annotate_session_facts(
+                    compact, rag_products[:limit],
+                    location=region or filters["location"], exact_city=exact_city,
+                )
                 debug = detailed.get("debug") or {}
                 extra = {}
                 if filters_relaxed:
@@ -2039,30 +2105,68 @@ def _execute_catalog_search(args, username=None):
     # marked previously_shown, matching the legacy search path.
     compact = _mark_previously_shown(compact)
     _annotate_match_reasons(compact, query, profile_boost)
-    return _model_tool_json(
-        status="success" if compact else "no_results",
+    compact = _annotate_session_facts(
+        compact, products[:limit], location=loc_for_match, exact_city=exact_city,
+    )
+    status = "success" if compact else "no_results"
+    payload = dict(
+        status=status,
         count=len(compact),
         total=result.get("total", len(compact)),
         confidence=confidence,
         search_mode="catalog",
         filters={k: v for k, v in {**filters, "location": region or filters["location"],
-                                   "delivery": delivery}.items() if v not in ("", None)},
+                                   "delivery": delivery,
+                                   "exact_city": exact_city or None,
+                                   "strict_match": strict_match or None}.items() if v not in ("", None, False)},
         results=compact,
         catalog_url="/catalog",
         search_debug={"embedding_skipped": True},
     )
+    if status == "no_results" and (strict_match or exact_title or not allow_alternatives):
+        payload["suppress_cards"] = True
+        payload["message"] = (
+            f"Ingen kursus med den nøjagtige titel '{exact_title or query}'."
+            if (exact_title or strict_match) else
+            "Ingen kurser matchede de stillede krav."
+        )
+    return _model_tool_json(**payload)
 
 
 def _execute_catalog_get_product(args):
-    product = _find_catalog_product(args.get("handle", ""), args.get("title", ""))
+    strict = bool(args.get("strict_match") or args.get("exact_title"))
+    allow_alt = args.get("allow_alternatives")
+    if allow_alt is None:
+        allow_alt = not strict
+    title = args.get("title", "") or ""
+    if args.get("exact_title") and not title:
+        title = args.get("exact_title")
+    product = _find_catalog_product(
+        args.get("handle", ""), title,
+        strict_match=strict, allow_alternatives=bool(allow_alt),
+    )
     if not product:
-        return json.dumps({"status": "not_found", "message": "Produktet blev ikke fundet i Futurematch kataloget."}, ensure_ascii=False)
+        return json.dumps({
+            "status": "not_found",
+            "message": "Produktet blev ikke fundet i Futurematch kataloget.",
+            "suppress_cards": True,
+            "requested_title": title or None,
+            "strict_match": strict,
+        }, ensure_ascii=False)
     vendor_state = _supplier_state_for_vendor(product.get("vendor"))
+    from app1.course_facts import course_fact_bundle
+    bundle = course_fact_bundle(product)
+    compact = _catalog_compact_fields(product)
+    compact["availability_sessions"] = [
+        {"date": s.get("date"), "city": s.get("city"), "availability": s.get("availability")}
+        for s in (bundle.get("sessions") or [])[:6]
+    ]
     return _model_tool_json(
         status="success",
-        product=_catalog_compact_fields(product),
+        product=compact,
         supplier_state=vendor_state,
         variants=product.get("variants", [])[:4],
+        fact_bundle=bundle,
     )
 
 
@@ -6117,66 +6221,195 @@ def _execute_analyze_skill_gaps(args):
 
 
 def _execute_check_approval_status(args):
-    """Check approval status for an order or list pending approvals."""
+    """Check approval/order status for an owned order, or list pending approvals.
+
+    L09: exact authorized order first (same loader as learner order routes).
+    Never answer a specific-ID request from a generic pending list, and never
+    substitute a different order via LIKE prefix. Echo requested + resolved IDs.
+    """
     from flask import session as flask_session, current_app
     import MySQLdb.cursors
+    import order_lifecycle as lc
+    from order_service import OrderContext, get_order
 
     user_id = flask_session.get('user_id')
     company_id = flask_session.get('company_id')
     if not company_id:
         return json.dumps({"status": "error", "message": "Denne funktion er kun for virksomhedsbrugere."})
 
-    order_id_prefix = args.get("order_id", "").strip()
+    requested_order_id = (args.get("order_id") or "").strip()
     conn = current_app.mysql.connection
     cur = conn.cursor(MySQLdb.cursors.DictCursor)
 
-    if order_id_prefix:
-        # Look up specific order
-        cur.execute("""
-            SELECT oa.status, oa.notes, oa.requested_at, oa.decided_at,
-                   co.product_title, co.price, co.order_id
-            FROM order_approvals oa
-            JOIN course_orders co ON oa.order_id = co.order_id
-            WHERE oa.company_id = %s AND co.order_id LIKE %s
-            ORDER BY oa.requested_at DESC LIMIT 1
-        """, (company_id, f"{order_id_prefix}%"))
-        row = cur.fetchone()
+    if requested_order_id:
+        # Reject ambiguous short prefixes — require enough of the UUID.
+        if len(requested_order_id) < 8:
+            cur.close()
+            return json.dumps({
+                "status": "error",
+                "message": "Angiv det fulde ordre-id (eller mindst 8 tegn).",
+                "requested_order_id": requested_order_id,
+            }, ensure_ascii=False)
+
+        ctx = OrderContext.from_session(source="chat")
+        # Exact ID first when it looks complete; otherwise one owned prefix match.
+        row = None
+        resolved_id = None
+        if len(requested_order_id) >= 32:
+            row = get_order(ctx, requested_order_id)
+            resolved_id = requested_order_id if row else None
+        else:
+            cur.execute(
+                """
+                SELECT order_id FROM course_orders
+                WHERE company_id = %s AND order_id LIKE %s
+                ORDER BY created_at DESC LIMIT 2
+                """,
+                (company_id, f"{requested_order_id}%"),
+            )
+            hits = cur.fetchall() or []
+            if len(hits) > 1:
+                cur.close()
+                return json.dumps({
+                    "status": "ambiguous",
+                    "message": "Ordre-id'et matcher flere ordrer — angiv det fulde id.",
+                    "requested_order_id": requested_order_id,
+                    "match_count": len(hits),
+                }, ensure_ascii=False)
+            if len(hits) == 1:
+                resolved_id = hits[0]["order_id"] if isinstance(hits[0], dict) else hits[0][0]
+                row = get_order(ctx, resolved_id)
+
+        if not row or not resolved_id:
+            cur.close()
+            return json.dumps({
+                "status": "not_found",
+                "message": f"Ingen ordre fundet for id {requested_order_id}.",
+                "requested_order_id": requested_order_id,
+                "resolved_order_id": None,
+            }, ensure_ascii=False)
+
+        if resolved_id != requested_order_id and len(requested_order_id) >= 32:
+            cur.close()
+            return json.dumps({
+                "status": "mismatch",
+                "message": "Ordre-id matcher ikke den fundne ordre.",
+                "requested_order_id": requested_order_id,
+                "resolved_order_id": resolved_id,
+            }, ensure_ascii=False)
+
+        # Optional approval row — absence must not invent another order.
+        cur.execute(
+            """
+            SELECT status, notes, requested_at, decided_at
+            FROM order_approvals
+            WHERE company_id = %s AND order_id = %s
+            ORDER BY requested_at DESC LIMIT 1
+            """,
+            (company_id, resolved_id),
+        )
+        approval = cur.fetchone()
         cur.close()
-        if not row:
-            return json.dumps({"status": "not_found", "message": f"Ingen godkendelsesanmodning fundet for ordre {order_id_prefix}."})
-        status_map = {'pending': 'Afventer godkendelse', 'approved': 'Godkendt', 'rejected': 'Afvist'}
-        return json.dumps({
+
+        order_status = lc.normalize_status(row.get("status"))
+        payload = {
             "status": "ok",
-            "approval_status": row['status'],
-            "approval_status_text": status_map.get(row['status'], row['status']),
-            "course": row['product_title'],
-            "price": str(row['price']),
-            "requested_at": str(row['requested_at']),
-            "decided_at": str(row['decided_at']) if row['decided_at'] else None,
-            "notes": row['notes'],
-        })
-    else:
-        # List all pending for this user
-        cur.execute("""
-            SELECT oa.status, oa.requested_at, co.product_title, co.price, co.order_id
-            FROM order_approvals oa
-            JOIN course_orders co ON oa.order_id = co.order_id
-            WHERE oa.company_id = %s AND oa.requester_user_id = %s AND oa.status = 'pending'
-            ORDER BY oa.requested_at DESC LIMIT 10
-        """, (company_id, user_id))
-        rows = cur.fetchall()
-        cur.close()
-        if not rows:
-            return json.dumps({"status": "ok", "message": "Du har ingen afventende godkendelser.", "pending": []})
-        pending = []
-        for r in rows:
-            pending.append({
-                "order_id_short": r['order_id'][:8],
-                "course": r['product_title'],
-                "price": str(r['price']),
-                "requested_at": str(r['requested_at']),
+            "requested_order_id": requested_order_id,
+            "resolved_order_id": resolved_id,
+            "order_id": resolved_id,
+            "course": row.get("product_title"),
+            "product_handle": row.get("product_handle"),
+            "price": str(row.get("price")),
+            "order_status": order_status,
+            "order_status_text": lc.status_label(order_status),
+            "created_at": str(row.get("created_at")) if row.get("created_at") else None,
+        }
+        if approval:
+            status_map = {
+                "pending": "Afventer godkendelse",
+                "approved": "Godkendt",
+                "rejected": "Afvist",
+            }
+            a_status = approval["status"] if isinstance(approval, dict) else approval[0]
+            payload.update({
+                "approval_status": a_status,
+                "approval_status_text": status_map.get(a_status, a_status),
+                "requested_at": str(approval["requested_at"] if isinstance(approval, dict) else approval[2]),
+                "decided_at": (
+                    str(approval["decided_at"]) if isinstance(approval, dict) and approval.get("decided_at")
+                    else (str(approval[3]) if not isinstance(approval, dict) and approval[3] else None)
+                ),
+                "notes": approval["notes"] if isinstance(approval, dict) else approval[1],
+                "approval_row_present": True,
             })
-        return json.dumps({"status": "ok", "pending_count": len(pending), "pending": pending})
+        else:
+            payload.update({
+                "approval_status": None,
+                "approval_status_text": None,
+                "approval_row_present": False,
+                "message": (
+                    "Ordren er fundet. Der er ingen separat godkendelsesanmodning — "
+                    "brug order_status_text som den kanoniske status."
+                ),
+            })
+        return json.dumps(payload, ensure_ascii=False, default=str)
+
+    # No ID: list pending for this user (never used as a stand-in for a specific ID).
+    cur.execute("""
+        SELECT oa.status, oa.requested_at, co.product_title, co.price, co.order_id, co.status AS order_status
+        FROM order_approvals oa
+        JOIN course_orders co ON oa.order_id = co.order_id
+        WHERE oa.company_id = %s AND oa.requester_user_id = %s AND oa.status = 'pending'
+        ORDER BY oa.requested_at DESC LIMIT 50
+    """, (company_id, user_id))
+    pending_rows = cur.fetchall()
+    # Also surface owned non-pending orders so "ingen godkendte" is never claimed
+    # from an empty approval lookup alone (L09 completeness).
+    cur.execute("""
+        SELECT order_id, product_title, price, status, created_at
+        FROM course_orders
+        WHERE company_id = %s AND (user_id = %s OR username = %s)
+        ORDER BY created_at DESC LIMIT 50
+    """, (company_id, user_id, flask_session.get("user")))
+    owned = cur.fetchall() or []
+    cur.close()
+
+    pending = []
+    for r in pending_rows or []:
+        oid = r["order_id"] if isinstance(r, dict) else r[4]
+        pending.append({
+            "order_id": oid,
+            "order_id_short": oid[:8],
+            "course": r["product_title"] if isinstance(r, dict) else r[2],
+            "price": str(r["price"] if isinstance(r, dict) else r[3]),
+            "requested_at": str(r["requested_at"] if isinstance(r, dict) else r[1]),
+        })
+    orders = []
+    for r in owned:
+        st = lc.normalize_status(r["status"] if isinstance(r, dict) else r[3])
+        orders.append({
+            "order_id": r["order_id"] if isinstance(r, dict) else r[0],
+            "course": r["product_title"] if isinstance(r, dict) else r[1],
+            "price": str(r["price"] if isinstance(r, dict) else r[2]),
+            "order_status": st,
+            "order_status_text": lc.status_label(st),
+            "created_at": str(r["created_at"] if isinstance(r, dict) else r[4]),
+        })
+    approved = [o for o in orders if o["order_status"] in (lc.APPROVED, lc.BOOKED, lc.COMPLETED)]
+    message = None
+    if not pending and not approved:
+        message = "Du har ingen afventende godkendelser og ingen godkendte/bookede ordrer."
+    elif not pending:
+        message = f"Du har ingen afventende godkendelser. Du har {len(approved)} godkendt/booket/gennemført ordre(r)."
+    return json.dumps({
+        "status": "ok",
+        "pending_count": len(pending),
+        "pending": pending,
+        "owned_orders": orders,
+        "approved_or_booked_count": len(approved),
+        "read_complete": True,
+        "message": message,
+    }, ensure_ascii=False, default=str)
 
 
 def _execute_get_department_budget(args):

@@ -293,11 +293,24 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
     const card = document.createElement("div");
     card.className = "course" + (featured ? " featured" : "");
     const meta = c.meta.map((m) => `<span class="cpill${m[2] ? " rating" : ""}"><i class="fa-solid ${icon(m[0])}"></i>${esc(m[1])}</span>`).join("");
+    const seatLabel = (v) => {
+      if (v.availability_label) return v.availability_label;
+      if (v.availability === "unknown" || v.seats == null || v.seats === "") return "Tilgængelighed ikke oplyst";
+      const n = Number(v.seats);
+      if (!Number.isFinite(n)) return "Tilgængelighed ikke oplyst";
+      if (n <= 0) return "0 pladser";
+      if (n <= 3) return n + " pladser";
+      return "Ledig";
+    };
+    const seatLow = (v) => {
+      const n = Number(v.seats);
+      return Number.isFinite(n) && n >= 0 && n <= 3;
+    };
     const variants = (c.variants || []).map((v) => `
       <div class="variant">
         <div class="vdate"><i class="fa-solid fa-calendar-day"></i>${esc(v.date)}</div>
         <div class="vloc">${esc(v.loc)}</div>
-        <div class="vseats${v.seats <= 3 ? " low" : ""}">${v.seats <= 3 ? v.seats + " pladser" : "Ledig"}</div>
+        <div class="vseats${seatLow(v) ? " low" : ""}">${esc(seatLabel(v))}</div>
         <button class="vbook">Vælg</button>
       </div>`).join("");
     card.innerHTML = `
@@ -1111,6 +1124,12 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
           showResult("ok", result.message_da || result.message || "Bekræftet");
         } else if (result.status === "already_confirmed") {
           showResult("ok", "Allerede bekræftet");
+        } else if (result.status === "expired") {
+          showResult("err", "Bekræftelsen er udløbet");
+        } else if (result.status === "rejected") {
+          showResult("err", "Afvist");
+        } else if (result.status === "unknown_token") {
+          showResult("err", "Bekræftelsen er ikke længere gyldig");
         } else {
           showResult("err", result.message_da || result.message || "Fejl");
         }
@@ -1133,8 +1152,27 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
       }
     });
 
-    cancelBtn.addEventListener("click", () => {
-      showResult("err", "Afvist");
+    cancelBtn.addEventListener("click", async () => {
+      okBtn.disabled = true; cancelBtn.disabled = true;
+      try {
+        const resp = await fetch("/app1/reject_tool_action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: data.token }),
+        });
+        const result = await resp.json().catch(() => ({}));
+        if (result.status === "rejected" || result.status === "already_rejected") {
+          showResult("err", "Afvist");
+        } else if (result.status === "expired") {
+          showResult("err", "Bekræftelsen er udløbet");
+        } else if (result.status === "already_confirmed") {
+          showResult("ok", "Allerede bekræftet");
+        } else {
+          showResult("err", result.message_da || result.message || "Afvist");
+        }
+      } catch (e) {
+        showResult("err", "Afvist");
+      }
     });
 
     place(body, "ask", card);

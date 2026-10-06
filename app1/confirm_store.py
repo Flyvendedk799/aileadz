@@ -164,6 +164,7 @@ def pop_pending(session_id: str, token: str):
             return None  # wrong session: do NOT consume the owner's entry
         if entry["expires_at"] < time.time():
             _STORE.pop(token, None)
+            _record_outcome(token, "expired")
             return None
         _STORE.pop(token, None)
         return entry
@@ -208,6 +209,7 @@ def _db_pop(mysql, session_id, token):
         if not deleted:
             return None  # a concurrent caller already consumed it
         if float(expires_at) < time.time():
+            _record_outcome(token, "expired")
             return None
         try:
             args = json.loads(args_json or "{}")
@@ -227,6 +229,146 @@ def _db_pop(mysql, session_id, token):
         return None
 
 
+
+# Terminal outcomes kept after pop/reject so the UI can distinguish expired,
+# rejected, consumed-success and unknown (QA S01). Keys are tokens.
+_OUTCOMES: dict = {}
+_OUTCOME_LOCK = threading.Lock()
+
+
+def _record_outcome(token: str, status: str, **extra):
+    if not token:
+        return
+    with _OUTCOME_LOCK:
+        _OUTCOMES[token] = {"status": status, "at": time.time(), **extra}
+        # Bound memory in long-lived workers.
+        if len(_OUTCOMES) > 2000:
+            oldest = sorted(_OUTCOMES.items(), key=lambda kv: kv[1].get("at", 0))[:500]
+            for k, _ in oldest:
+                _OUTCOMES.pop(k, None)
+
+
+def get_outcome(token: str):
+    """Return the last recorded outcome for a token, or None."""
+    if not token:
+        return None
+    with _OUTCOME_LOCK:
+        return dict(_OUTCOMES.get(token) or {}) or None
+
+
+def peek_pending(session_id: str, token: str):
+    """Inspect a pending token without consuming it.
+
+    Returns (entry_or_None, status) where status is one of:
+    pending | expired | wrong_session | unknown | rejected | consumed
+    """
+    if not token:
+        return None, "unknown"
+    outcome = get_outcome(token)
+    if outcome and outcome.get("status") in ("rejected", "consumed", "failed", "expired"):
+        return None, outcome["status"] if outcome["status"] != "consumed" else "consumed"
+
+    with _LOCK:
+        entry = _STORE.get(token)
+        if entry is not None:
+            if entry["session_id"] != session_id:
+                return None, "wrong_session"
+            if entry["expires_at"] < time.time():
+                _STORE.pop(token, None)
+                _record_outcome(token, "expired")
+                return None, "expired"
+            return dict(entry), "pending"
+
+    # DB path: SELECT without DELETE
+    mysql = _mysql()
+    if mysql is not None and _ensure_table(mysql):
+        try:
+            import json
+            cur = mysql.connection.cursor()
+            cur.execute(
+                "SELECT session_id, scope, tool_name, args_json, expires_at "
+                "FROM ai_confirm_tokens WHERE token = %s",
+                (token,),
+            )
+            row = cur.fetchone()
+            cur.close()
+            if not row:
+                return None, (outcome.get("status") if outcome else "unknown")
+            if isinstance(row, dict):
+                sess, scope, tool_name, args_json, expires_at = (
+                    row["session_id"], row["scope"], row["tool_name"],
+                    row["args_json"], row["expires_at"],
+                )
+            else:
+                sess, scope, tool_name, args_json, expires_at = row
+            if str(sess) != str(session_id):
+                return None, "wrong_session"
+            if float(expires_at) < time.time():
+                _record_outcome(token, "expired")
+                return None, "expired"
+            try:
+                args = json.loads(args_json or "{}")
+            except Exception:
+                args = {}
+            return {
+                "session_id": str(sess), "scope": scope, "tool_name": tool_name,
+                "args": args, "expires_at": float(expires_at),
+            }, "pending"
+        except Exception:
+            pass
+    return None, (outcome.get("status") if outcome else "unknown")
+
+
+def reject_pending(session_id: str, token: str) -> str:
+    """Revoke a pending confirmation. Returns status string for the client."""
+    if not token:
+        return "unknown"
+    outcome = get_outcome(token)
+    if outcome and outcome.get("status") == "rejected":
+        return "already_rejected"
+    if outcome and outcome.get("status") == "consumed":
+        return "already_confirmed"
+    if outcome and outcome.get("status") == "expired":
+        return "expired"
+
+    entry, status = peek_pending(session_id, token)
+    if status == "expired":
+        # Ensure it is gone.
+        pop_pending(session_id, token)
+        _record_outcome(token, "expired")
+        return "expired"
+    if status in ("unknown", "wrong_session"):
+        return "unknown" if status == "unknown" else "unknown"
+    if status == "consumed":
+        return "already_confirmed"
+    if status == "rejected":
+        return "already_rejected"
+
+    # Consume/delete then mark rejected (never execute).
+    popped = pop_pending(session_id, token)
+    if popped is None:
+        # Race: another worker confirmed or rejected.
+        outcome = get_outcome(token)
+        if outcome and outcome.get("status") == "consumed":
+            return "already_confirmed"
+        if outcome and outcome.get("status") == "rejected":
+            return "already_rejected"
+        return "unknown"
+    _record_outcome(token, "rejected", tool_name=popped.get("tool_name"))
+    return "rejected"
+
+
+def mark_consumed(token: str, *, ok: bool, tool_name: str = "", receipt: dict | None = None):
+    """Record that a popped token finished executing (success or failure)."""
+    _record_outcome(
+        token,
+        "consumed" if ok else "failed",
+        tool_name=tool_name,
+        receipt=receipt or {},
+    )
+
+
+
 def pending_count() -> int:
     """Return current in-process pending count (test helper)."""
     with _LOCK:
@@ -237,3 +379,5 @@ def clear_all():
     """Clear all in-process pending entries (test helper — never call in production)."""
     with _LOCK:
         _STORE.clear()
+    with _OUTCOME_LOCK:
+        _OUTCOMES.clear()

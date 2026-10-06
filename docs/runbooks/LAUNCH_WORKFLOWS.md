@@ -9,18 +9,28 @@ not proof of inbox delivery.
 
 | Journey | Canonical implementation | Human entry point |
 |---|---|---|
-| Assign a course from HR, AI or API | `learning_path_service.assign_course_to_people`, `enrollment_service.create_order` | `/hr/assign-course` |
-| Assign/version a learning path | `learning_path_service.assign_path`, `learning_assignment_steps` | existing HR learning-path editor; learner `/min-laering/forloeb/<id>` |
+| Assign a course from HR, AI or API | `learning_path_service.assign_course_to_people`, `enrollment_service.create_order` | `/hr/assign-course` (review page `fm/_assignment_review.html`: orders, total, department budget before/after; over-budget needs an explicit yes) |
+| Assign/version a learning path (review first: `/hr/learning-paths/<id>/tildel/gennemse` via `learning_path_service.preview_path_assignment`; the confirm posts the reviewed path version and total, a stale one is refused) | `learning_path_service.assign_path`, `learning_assignment_steps` | HR step editor `/hr/learning-paths/<id>/trin` (courses picked via `/hr/learning-paths/catalog-search?q=`, structured `step_type[]`/`course_handle[]`/`title[]` fields, errors re-render the editor); learner `/min-laering/forloeb/<id>` |
 | Internal learning | tenant-scoped `company_courses`, `internal:<id>` handles | `/interne-kurser` |
 | Renew an expiring requirement | `compliance_assign.has_open_or_done` | existing compliance assignment action |
-| Confirm a booking | `order_fulfillment.book` | `/ordre/<order_id>/booking`; vendor `/vendor/orders/<order_id>/booking` |
-| Cancel, reschedule or substitute | `request_change` / `resolve_change` | booking workflow |
+| Confirm a booking (HR by default, reference optional; vendor may confirm in the portal) | `order_fulfillment.book`, `add_reference` | the role's one order page: learner `/min-ordre/<order_id>`, HR `/hr/order/<order_id>/details`, vendor `/vendor/orders/<order_id>/booking` |
+| Cancel, reschedule or substitute | `request_change` / `resolve_change` | the change sections of the same order pages (`#aendring`) |
 | Quote/charge a course | `enrollment_service.quote_course`, `order_service` | current stable session ID and server-computed quote |
-| Report/verify attendance and assess outcome | `report_completion`, `complete_order`, `outcome_review` | booking workflow; `/hr/ordre/<order_id>/udbytte` |
-| Recover delivery failures | `mail_delivery`, `scheduled_reports` | `/hr/leveringer` (company-scoped for HR, global for platform admin) |
-| Review customer readiness | `customer_success.readiness` | `/hr/kom-i-gang` |
+| Report/verify attendance and assess outcome | `report_completion`, `complete_order`, `outcome_review` | the attendance and outcome sections of the order pages (`#deltagelse`, `#udbytte`) |
+| Recover delivery failures | `mail_delivery`, `scheduled_reports` | `/hr/leveringer` (company-scoped for HR, global for platform admin; filters on status, period and recipient/subject, 50 per page; retry only for failed and uncertain mails; order mails link to their order through `mail_outbox.order_id`; a banner appears when a pending mail has been due for more than 10 minutes) |
+| Review customer readiness ("Kom i gang") | `customer_success.readiness`, `onboarding_card` | `/hr/kom-i-gang` (shared checklist macro `fm/_checklist.html`, one action label per check); the HR dashboard card disappears at 8/8 and leaves "Opstart gennemført" for 14 days (`schema_meta` key `onboarding_completed:<company_id>`) |
 | Review supplier edits and branding | canonical catalogue draft approval; `branding_service` | existing vendor/admin catalogue and branding editors |
 | Sales/customer handover | `customer_routes`, `customer_accounts`, `customer_requests` | `/for-virksomheder`, `/admin/kundeforloeb`, `/virksomhed/kundeforloeb` |
+
+Each role has exactly one order page. They all render the partials under
+`templates/fm/order_sections/` from `fulfillment_routes.order_sections()` and post
+to one action handler (`fulfillment_routes.perform_action`): learner
+`POST /min-ordre/<id>/handling`, HR `POST /ordre/<id>/handling`, vendor
+`POST /vendor/orders/<id>/booking`. The old console URLs `/ordre/<id>/booking` and
+`/hr/ordre/<id>/udbytte` only redirect each role to its page (an old POST is still
+handled for one release, then remove it). Notification and mail links go straight
+to the page and section: `/hr/order/<id>/details#aendring`, `/min-ordre/<id>#aendring`,
+`/vendor/orders/<id>/booking#aendring`.
 
 ## Deployment prerequisites
 

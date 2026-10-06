@@ -35,6 +35,7 @@ def _fm_pages():
 HR_TAB_BY_ENDPOINT = {
     'hr_dashboard.dashboard': 'dashboard',
     'hr_dashboard.team_cockpit': 'team',
+    'customer_success.readiness': 'onboarding',
     'companies.employees': 'employees',
     'companies.add_employee': 'employees',
     'companies.edit_employee': 'employees',
@@ -45,8 +46,9 @@ HR_TAB_BY_ENDPOINT = {
     'hr_dashboard.departments': 'departments',
     'hr_dashboard.pending_approvals': 'approvals',
     'hr_dashboard.company_order_details': 'approvals',
-    'course_assign.assign_course': 'approvals',
     'hr_dashboard.approval_policies': 'approval_policies',
+    'course_assign.assign_course': 'assign_course',
+    'mail_delivery.deliveries': 'mail',
     'hr_dashboard.department_budgets': 'budgets',
     'hr_dashboard.billing_overview': 'billing',
     'hr_dashboard.learning_analytics': 'learning_analytics',
@@ -59,6 +61,8 @@ HR_TAB_BY_ENDPOINT = {
     'hr_ext.ai_quality': 'ai_quality',
     'hr_ext.training_plan': 'training_plan',
     'hr_dashboard.learning_paths': 'learning_paths',
+    'hr_dashboard.learning_path_steps': 'learning_paths',
+    'hr_dashboard.learning_path_assignment_review': 'learning_paths',
     'hr_dashboard.bulk_assign_form': 'learning_paths',
     'hr_dashboard.internal_courses': 'internal_courses',
     'hr_dashboard.add_internal_course': 'internal_courses',
@@ -71,41 +75,71 @@ HR_TAB_BY_ENDPOINT = {
     'multitenant_reports.reports': 'reports',
 }
 
-# HR sub-nav tab -> the sidebar section (``hr.<section>``) that owns it.
-HR_TAB_SECTION = {
-    'dashboard': 'dashboard',
-    'team': 'team',
-    'employees': 'employees', 'employee_progress': 'employees', 'departments': 'employees',
-    'approvals': 'approvals', 'approval_policies': 'approvals', 'budgets': 'approvals',
-    'billing': 'approvals',
-    'learning_analytics': 'analytics', 'roi': 'analytics', 'funnel': 'analytics',
-    'retention': 'analytics', 'benchmarking': 'analytics', 'skill_gaps': 'analytics',
-    'engagement': 'analytics', 'ai_quality': 'analytics',
+# HR sub-nav tab -> its group (the first row of fm/_hr_subnav.html). Six groups:
+# "Organisation" (people and departments) is a group of its own rather than part of
+# "Overblik", so the overview stays three tabs wide and a department head's one
+# organisational page (Afdelinger) does not hide behind an HR-manager-only entry.
+HR_TAB_GROUP = {
+    'dashboard': 'overview', 'team': 'overview', 'onboarding': 'overview',
+    'employees': 'organisation', 'departments': 'organisation',
+    'approvals': 'orders', 'approval_policies': 'orders', 'assign_course': 'orders', 'mail': 'orders',
     'training_plan': 'training', 'learning_paths': 'training', 'internal_courses': 'training',
-    'compliance': 'compliance',
-    'procurement': 'procurement', 'suppliers': 'procurement',
-    'reports': 'reports',
+    'compliance': 'training', 'skill_gaps': 'training',
+    'budgets': 'finance', 'billing': 'finance', 'procurement': 'finance', 'suppliers': 'finance',
+    'learning_analytics': 'insight', 'roi': 'insight', 'funnel': 'insight', 'retention': 'insight',
+    'benchmarking': 'insight', 'engagement': 'insight', 'ai_quality': 'insight',
+    'employee_progress': 'insight', 'reports': 'insight',
+}
+
+# The groups, in display order. ``targets`` is ((capability, endpoint), ...): the
+# group's chip opens the first endpoint whose capability the viewer holds and is
+# hidden when none is held. Label and icon are the sidebar entry's (fm_base.html;
+# tests/test_site_cohesion.py pins the match).
+HR_GROUPS = (
+    {'id': 'overview', 'label': 'Overblik', 'icon': 'fa-gauge',
+     'targets': (('company.workspace', 'hr_dashboard.dashboard'),)},
+    {'id': 'organisation', 'label': 'Organisation', 'icon': 'fa-sitemap',
+     'targets': (('company.employees', 'companies.employees'),
+                 ('company.workspace', 'hr_dashboard.departments'))},
+    {'id': 'orders', 'label': 'Bestillinger', 'icon': 'fa-circle-check',
+     'targets': (('company.approvals', 'hr_dashboard.pending_approvals'),
+                 ('company.employees', 'course_assign.assign_course'))},
+    {'id': 'training', 'label': 'Læring', 'icon': 'fa-list-check',
+     'targets': (('company.workspace', 'hr_ext.training_plan'),)},
+    {'id': 'finance', 'label': 'Økonomi', 'icon': 'fa-wallet',
+     'targets': (('company.workspace', 'hr_dashboard.department_budgets'),)},
+    {'id': 'insight', 'label': 'Indsigt', 'icon': 'fa-chart-line',
+     'targets': (('company.analytics', 'hr_dashboard.learning_analytics'),)},
+)
+
+# HR sub-nav tab -> the sidebar section (``hr.<section>``) that owns it: the tab's
+# group, except the two pages that have a sidebar entry of their own.
+HR_TAB_SECTION = {
+    **HR_TAB_GROUP,
+    'onboarding': 'onboarding',
+    'mail': 'mail',
 }
 
 # Capability that shows a section's sidebar entry (must match the `can(...)` around
 # that entry in fm_base.html). When the viewer lacks it, e.g. a department head on
-# "Afdelinger", the section's entry is hidden, so "Oversigt" lights up instead.
+# "Afdelinger", the section's entry is hidden, so "Overblik" lights up instead.
 HR_SECTION_CAPABILITY = {
-    'dashboard': 'company.workspace',
-    'team': 'company.team',
-    'employees': 'company.employees',
-    'approvals': 'company.approvals',
-    'analytics': 'company.analytics',
+    'overview': 'company.workspace',
+    'organisation': 'company.employees',
+    'orders': 'company.approvals',
     'training': 'company.workspace',
-    'compliance': 'company.analytics',
-    'procurement': 'company.workspace',
-    'reports': 'company.analytics',
+    'finance': 'company.workspace',
+    'insight': 'company.analytics',
+    'onboarding': 'company.employees',
+    'mail': 'company.employees',
 }
 
 # Platform-admin sub-nav tab per endpoint (keys = fm/_admin_subnav.html `_ap`
 # values; the sidebar entry is ``admin.<tab>``).
 ADMIN_TAB_BY_ENDPOINT = {
     'admin_dashboard.admin_home': 'home',
+    'customer_success.accounts': 'accounts',
+    'customer_success.manage_account': 'accounts',
     'companies.admin_companies_list': 'companies',
     'companies.admin_company_detail': 'companies',
     'admin_dashboard.user_list': 'users',
@@ -133,6 +167,7 @@ ADMIN_TAB_BY_ENDPOINT = {
     'gdpr.admin_console': 'gdpr',
     'futurematch.showcase_index': 'ui',
     'futurematch.showcase': 'ui',
+    'mail_delivery.deliveries': 'mail',
 }
 
 # Sidebar entry for everything outside the two sub-nav sections.
@@ -171,10 +206,10 @@ SIDEBAR_BY_ENDPOINT = {
 
 # Legacy ``page_id`` values -> sidebar entry (fallback when the endpoint is unknown).
 PAGE_ID_ALIASES = {
-    'hr': 'hr.dashboard', 'team': 'hr.team', 'compliance': 'hr.compliance',
-    'benchmark': 'hr.analytics', 'engagement': 'hr.analytics', 'ai_quality': 'hr.analytics',
-    'company': 'hr.analytics', 'training_plan': 'hr.training', 'assign_path': 'hr.training',
-    'procurement': 'hr.procurement', 'creports': 'hr.reports',
+    'hr': 'hr.overview', 'team': 'hr.overview', 'compliance': 'hr.training',
+    'benchmark': 'hr.insight', 'engagement': 'hr.insight', 'ai_quality': 'hr.insight',
+    'company': 'hr.insight', 'training_plan': 'hr.training', 'assign_path': 'hr.training',
+    'procurement': 'hr.finance', 'creports': 'hr.insight',
     'csettings': 'hr.settings', 'webhooks': 'hr.settings', 'sso': 'hr.settings',
     'analytics': 'usage', 'account-2fa': 'settings',
     'admin': 'admin.home', 'acompanies': 'admin.companies', 'ausers': 'admin.users',
@@ -209,19 +244,63 @@ def nav_state(page_id='', hr_tab='', admin_tab=''):
     if endpoint in SIDEBAR_BY_ENDPOINT:
         side = SIDEBAR_BY_ENDPOINT[endpoint]
     elif hr:
-        section = HR_TAB_SECTION.get(hr, 'dashboard')
+        section = HR_TAB_SECTION.get(hr, 'overview')
         try:
             import capabilities
             if not capabilities.can(HR_SECTION_CAPABILITY.get(section, 'company.workspace')):
-                section = 'dashboard'
+                section = 'overview'
         except Exception:
-            section = 'dashboard'
+            section = 'overview'
         side = 'hr.' + section
+        if admin and not session.get('company_id'):
+            # A platform admin outside any company opens a shared page (the mail
+            # console) through the admin navigation, not the company sidebar.
+            side = 'admin.' + admin
     elif admin:
         side = 'admin.' + admin
     else:
         side = PAGE_ID_ALIASES.get(page, page)
     return {'side': side, 'hr': hr, 'admin': admin}
+
+
+@futurematch_bp.app_template_global('show_design_gallery')
+def show_design_gallery():
+    """The design gallery is a developer showcase: its navigation link is shown in
+    the sandbox (``SANDBOX=1``) or when ``SHOW_DESIGN_GALLERY`` is set. The route
+    itself stays admin-only everywhere (it renders ``templates/fm/*.html``)."""
+    import os
+    return os.environ.get('SANDBOX') == '1' or os.environ.get('SHOW_DESIGN_GALLERY', '').strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+@futurematch_bp.app_template_global('hr_tab_group')
+def hr_tab_group(tab):
+    """The HR group (first row of the HR sub-nav) a tab belongs to, or ''."""
+    return HR_TAB_GROUP.get(tab or '', '')
+
+
+@futurematch_bp.app_template_global('hr_nav_groups')
+def hr_nav_groups():
+    """The HR groups the viewer may open: ``[{id, label, icon, url}]``.
+
+    ``url`` is the group's first destination the viewer's capabilities allow, so a
+    department head's "Organisation" opens Afdelinger and an HR manager's opens
+    Medarbejdere; a group with no allowed destination is left out.
+    """
+    try:
+        import capabilities
+    except Exception:
+        return []
+    groups = []
+    for group in HR_GROUPS:
+        for capability, endpoint in group['targets']:
+            if capabilities.can(capability):
+                try:
+                    groups.append({'id': group['id'], 'label': group['label'],
+                                   'icon': group['icon'], 'url': url_for(endpoint)})
+                except Exception:
+                    pass
+                break
+    return groups
 
 
 @futurematch_bp.route('/chat')
@@ -305,7 +384,7 @@ def company_chat():
 def _chat_cfg():
     """Role + team-order policy for the course cards (N-5.2): "Bestil til team" is
     only offered to company members when the company policy allows team orders."""
-    cfg = {'teamOrders': False, 'primaryLabel': 'Anmod om plads'}
+    cfg = {'teamOrders': False, 'primaryLabel': 'Anmod om plads', 'loggedIn': bool(session.get('user'))}
     try:
         cid = session.get('company_id')
         if session.get('user') and cid:
@@ -379,6 +458,10 @@ def _home_skill_completeness(profile):
         return pct, sections, bool(skills)
 
 
+RECOMMENDATION_PROFILE = 'profile'
+RECOMMENDATION_POPULAR = 'popular'
+
+
 def _home_recommendations(profile, company_id, limit=_HOME_REC_LIMIT):
     """Cheap, non-LLM course recommendations for the learner home.
 
@@ -393,6 +476,7 @@ def _home_recommendations(profile, company_id, limit=_HOME_REC_LIMIT):
     profile = profile or {}
     skills = profile.get('skills') or []
     why = 'Populært i kataloget lige nu'
+    source = RECOMMENDATION_POPULAR
     products = []
     try:
         import catalog_service
@@ -401,6 +485,7 @@ def _home_recommendations(profile, company_id, limit=_HOME_REC_LIMIT):
             q = (skills[0].get('name') or '').strip()
             if q:
                 why = f'Matcher din kompetence: {q}'
+                source = RECOMMENDATION_PROFILE
         result = catalog_service.search_products(
             filters={'q': q} if q else {},
             page=1, per_page=limit, company_id=company_id,
@@ -412,6 +497,7 @@ def _home_recommendations(profile, company_id, limit=_HOME_REC_LIMIT):
                 filters={}, page=1, per_page=limit, company_id=company_id) or {}
             products = catalog_service.exclude_stale(result.get('products') or [])
             why = 'Populært i kataloget lige nu'
+            source = RECOMMENDATION_POPULAR
     except Exception as e:  # pragma: no cover - defensive
         current_app.logger.warning("home recommendations: %s", e)
         return []
@@ -426,8 +512,17 @@ def _home_recommendations(profile, company_id, limit=_HOME_REC_LIMIT):
             'price_label': p.get('price_label'),
             'format': p.get('format') or '',
             'why': why,
+            'source': source,
         })
     return recs
+
+
+def recommendation_source(recs):
+    """``'profile'`` when the learner's own skills drove the recommendations, else
+    ``'popular'`` (the catalogue's default ordering). The home header says which."""
+    if recs and all(r.get('source') == RECOMMENDATION_PROFILE for r in recs):
+        return RECOMMENDATION_PROFILE
+    return RECOMMENDATION_POPULAR
 
 
 @futurematch_bp.route('/min-laering')
@@ -572,6 +667,7 @@ def employee_home():
         show_welcome=show_welcome,
         orders=orders,
         recommendations=recommendations,
+        recommendation_source=recommendation_source(recommendations),
         hr_assignments=hr_assignments,
         skills_groups=skills_groups,
         skills_total=len(profile.get('skills') or []),
@@ -671,6 +767,7 @@ for _legacy, _canon in _lc.LEGACY_ALIASES.items():
 
 # Coarse state buckets used by the timeline UI for grouping/colouring.
 _ORDER_STATE = dict(_lc.LEARNER_BUCKETS)
+_ASSIGNMENT_APPROVAL_NOTE = _lc.ASSIGNMENT_APPROVAL_NOTE
 for _legacy, _canon in _lc.LEGACY_ALIASES.items():
     _ORDER_STATE[_legacy] = _lc.LEARNER_BUCKETS[_canon]
 
@@ -715,15 +812,30 @@ def timeline():
                 SELECT co.order_id, co.product_title, co.price, co.status,
                        co.created_at, co.completion_deadline, co.completion_date,
                        co.completion_status, co.variant_date, co.variant_location,
-                       oa.status AS approval_status, oa.decided_at AS approval_decided_at
+                       co.request_notes,
+                       oa.status AS approval_status, oa.decided_at AS approval_decided_at,
+                       oa.notes AS approval_notes,
+                       COALESCE(NULLIF(TRIM(acu.full_name), ''), au.username) AS approver_name
                 FROM course_orders co
                 LEFT JOIN order_approvals oa ON oa.order_id = co.order_id
+                LEFT JOIN users au ON au.id = oa.approver_user_id
+                LEFT JOIN company_users acu ON acu.user_id = oa.approver_user_id AND acu.company_id = co.company_id
                 WHERE (co.username = %s OR (co.user_id IS NOT NULL AND co.user_id = %s))
                 ORDER BY co.created_at DESC
                 """,
                 (username, user_id),
             )
             rows = cur.fetchall() or []
+            pending_changes = set()
+            order_ids = [r.get('order_id') for r in rows if r.get('order_id')]
+            if order_ids:
+                # One grouped lookup for every order with an open change request.
+                cur.execute(
+                    "SELECT DISTINCT order_id FROM course_order_changes "
+                    "WHERE status = 'pending' AND order_id IN (%s)" % ",".join(["%s"] * len(order_ids)),
+                    tuple(order_ids),
+                )
+                pending_changes = {c.get('order_id') for c in (cur.fetchall() or [])}
             cur.close()
 
             now = datetime.datetime.now()
@@ -750,9 +862,17 @@ def timeline():
                     'status_label': _ORDER_STATUS_LABELS.get(raw_status, raw_status),
                     'state': state,
                     'approval_status': r.get('approval_status'),
-                    'approval_label': _ORDER_STATUS_LABELS.get(
-                        r.get('approval_status'), r.get('approval_status')
-                    ) if r.get('approval_status') else None,
+                    # The approval decision is only news while the order awaits it;
+                    # afterwards the order status already says it.
+                    'approval_label': (
+                        _lc.approval_label(r.get('approval_status')) or None
+                    ) if raw_status == _lc.PENDING_APPROVAL else None,
+                    'change_pending': r.get('order_id') in pending_changes,
+                    # "Tildelt af {navn} · godkendt": assigned by HR/a manager (approved at assignment).
+                    'assigned_by': (r.get('approver_name') if r.get('approval_notes') == _ASSIGNMENT_APPROVAL_NOTE
+                                    else ((r.get('request_notes') or '')[len('Tildelt af '):].strip()
+                                          if (r.get('request_notes') or '').startswith('Tildelt af ') else None)),
+                    'assigned_approved': r.get('approval_notes') == _ASSIGNMENT_APPROVAL_NOTE,
                     'deadline': deadline,
                     'completion_date': completion_date,
                     'overdue': overdue,

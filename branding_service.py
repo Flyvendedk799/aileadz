@@ -143,39 +143,75 @@ def _row_to_branding(row: dict, slug: str = '', *, preview=False) -> dict:
     }
 
 
+_BRANDING_COMPANY_KEYS = (
+    'id', 'company_name', 'company_slug', 'company_tagline', 'company_logo', 'logo_url',
+    'primary_color', 'brand_primary_color', 'secondary_color', 'brand_secondary_color',
+    'accent_color', 'font_family', 'features',
+)
+_BRANDING_SETTINGS_KEYS = (
+    'company_display_name', 'company_description', 'company_website', 'support_email',
+    'support_phone', 'background_color', 'text_color', 'font_size_base', 'border_radius',
+    'custom_css', 'custom_js', 'enable_white_label', 'hide_platform_branding', 'language',
+    'timezone', 'branding_status', 'branding_draft',
+)
+
+
 def _fetch_branding_row(conn, company_id: int) -> Optional[dict]:
-    cur = conn.cursor(MySQLdb.cursors.DictCursor)
-    cur.execute(
-        """
-        SELECT c.id, c.company_name, c.company_slug, c.company_tagline,
-               c.company_logo, c.logo_url, c.primary_color, c.brand_primary_color,
-               c.secondary_color, c.brand_secondary_color, c.accent_color, c.font_family,
-               c.features,
-               cs.company_display_name, cs.company_description, cs.company_website,
-               cs.support_email, cs.support_phone,
-               cs.primary_color AS cs_primary_color,
-               cs.secondary_color AS cs_secondary_color,
-               cs.accent_color AS cs_accent_color,
-               cs.background_color, cs.text_color, cs.font_family AS cs_font_family,
-               cs.font_size_base, cs.border_radius, cs.logo_url AS cs_logo_url,
-               cs.favicon_url AS cs_favicon_url, cs.custom_css, cs.custom_js,
-               cs.enable_white_label, cs.hide_platform_branding,
-               cs.language, cs.timezone, cs.branding_status, cs.branding_draft,
-               (SELECT file_path FROM company_brand_assets
-                WHERE company_id = c.id AND asset_type = 'company_logo_primary'
-                  AND is_primary = TRUE LIMIT 1) AS asset_logo,
-               (SELECT file_path FROM company_brand_assets
-                WHERE company_id = c.id AND asset_type = 'company_favicon'
-                  AND is_primary = TRUE LIMIT 1) AS asset_favicon
-        FROM companies c
-        LEFT JOIN company_settings cs ON cs.company_id = c.id
-        WHERE c.id = %s
-        """,
-        (company_id,),
-    )
-    row = cur.fetchone()
-    cur.close()
-    return row
+    """The company row plus its settings and primary brand assets, as one flat dict.
+
+    The company row comes from ``request_memo.company_row`` (one ``companies`` query
+    per request, shared with the feature lookup and the HR context); the assembled
+    row is memoised too, because ``get_branding``, ``has_custom_branding_feature``
+    and ``is_whitelabel_active`` each ask for it during one page render."""
+    import request_memo
+
+    def load():
+        company = request_memo.company_row(company_id)
+        if not company:
+            return None
+        row = {k: company.get(k) for k in _BRANDING_COMPANY_KEYS}
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        try:
+            cur.execute(
+                """
+                SELECT company_display_name, company_description, company_website,
+                       support_email, support_phone,
+                       primary_color AS cs_primary_color,
+                       secondary_color AS cs_secondary_color,
+                       accent_color AS cs_accent_color,
+                       background_color, text_color, font_family AS cs_font_family,
+                       font_size_base, border_radius, logo_url AS cs_logo_url,
+                       favicon_url AS cs_favicon_url, custom_css, custom_js,
+                       enable_white_label, hide_platform_branding,
+                       language, timezone, branding_status, branding_draft
+                FROM company_settings
+                WHERE company_id = %s
+                """,
+                (company_id,),
+            )
+            settings = cur.fetchone() or {}
+            cur.execute(
+                """
+                SELECT asset_type, file_path FROM company_brand_assets
+                WHERE company_id = %s AND is_primary = TRUE
+                  AND asset_type IN ('company_logo_primary', 'company_favicon')
+                """,
+                (company_id,),
+            )
+            assets = {}
+            for asset in cur.fetchall() or []:
+                assets.setdefault(asset['asset_type'], asset['file_path'])
+        finally:
+            cur.close()
+        for key in _BRANDING_SETTINGS_KEYS + ('cs_primary_color', 'cs_secondary_color', 'cs_accent_color',
+                                              'cs_font_family', 'cs_logo_url', 'cs_favicon_url'):
+            row[key] = settings.get(key)
+        row['asset_logo'] = assets.get('company_logo_primary')
+        row['asset_favicon'] = assets.get('company_favicon')
+        return row
+
+    row = request_memo.memo(('branding_row', company_id), load)
+    return dict(row) if row else None
 
 
 def has_custom_branding_feature(company_id: int) -> bool:

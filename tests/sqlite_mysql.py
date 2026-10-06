@@ -47,12 +47,12 @@ CREATE TABLE company_supplier_agreements (id INTEGER PRIMARY KEY AUTOINCREMENT,c
 CREATE TABLE company_supplier_preferences (id INTEGER PRIMARY KEY AUTOINCREMENT,company_id INTEGER,vendor_name TEXT,is_active INTEGER DEFAULT 1,notes TEXT);
 CREATE TABLE company_courses (id INTEGER PRIMARY KEY AUTOINCREMENT,company_id INTEGER,title TEXT,description TEXT,price REAL DEFAULT 0,external_url TEXT,location TEXT,skill_tags TEXT,is_active INTEGER DEFAULT 1,instructor TEXT,format TEXT,duration_hours REAL,department TEXT);
 CREATE TABLE user_learning_paths (id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT,title TEXT,goal TEXT,steps TEXT,total_cost INTEGER,total_duration_days INTEGER,source TEXT DEFAULT 'ai',status TEXT DEFAULT 'aktiv',created_at TEXT DEFAULT CURRENT_TIMESTAMP,updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE customer_accounts (company_id INTEGER PRIMARY KEY,account_owner TEXT,account_email TEXT,offer_name TEXT,included_services TEXT,success_criteria TEXT,pilot_end TEXT,renewal_date TEXT,next_review TEXT,stage TEXT DEFAULT 'onboarding',notes TEXT,updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE customer_accounts (company_id INTEGER PRIMARY KEY,account_owner TEXT,owner_user_id INTEGER,account_email TEXT,offer_name TEXT,included_services TEXT,success_criteria TEXT,pilot_end TEXT,renewal_date TEXT,next_review TEXT,stage TEXT DEFAULT 'onboarding',notes TEXT,updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE company_launch_checks (company_id INTEGER,check_key TEXT,note TEXT,confirmed_by INTEGER,confirmed_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(company_id,check_key));
 CREATE TABLE customer_requests (id INTEGER PRIMARY KEY AUTOINCREMENT,company_id INTEGER,user_id INTEGER,kind TEXT,note TEXT,quantity INTEGER,status TEXT DEFAULT 'open',resolution TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP,resolved_at TEXT);
-CREATE TABLE sales_enquiries (id TEXT PRIMARY KEY,name TEXT,email TEXT,company_name TEXT,message TEXT,status TEXT DEFAULT 'new',owner_note TEXT,company_id INTEGER,created_at TEXT DEFAULT CURRENT_TIMESTAMP,updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE sales_enquiries (id TEXT PRIMARY KEY,name TEXT,email TEXT,company_name TEXT,message TEXT,status TEXT DEFAULT 'new',owner_note TEXT,owner_user_id INTEGER,company_id INTEGER,created_at TEXT DEFAULT CURRENT_TIMESTAMP,updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
 
-CREATE TABLE mail_outbox (id TEXT PRIMARY KEY,company_id INTEGER,to_email TEXT,subject TEXT,payload_json TEXT,dedupe_key TEXT UNIQUE,report_schedule_id INTEGER,delivery_group TEXT,state TEXT DEFAULT 'pending',attempts INTEGER DEFAULT 0,available_at TEXT,locked_until TEXT,claim_id TEXT,last_error TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP,sent_at TEXT);
+CREATE TABLE mail_outbox (id TEXT PRIMARY KEY,company_id INTEGER,to_email TEXT,subject TEXT,payload_json TEXT,dedupe_key TEXT UNIQUE,report_schedule_id INTEGER,delivery_group TEXT,order_id TEXT,state TEXT DEFAULT 'pending',attempts INTEGER DEFAULT 0,available_at TEXT,locked_until TEXT,claim_id TEXT,last_error TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP,sent_at TEXT);
 
 CREATE TABLE course_order_changes (id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER,order_id TEXT,company_id INTEGER,kind TEXT,requested_by INTEGER,requested_kind TEXT,payload_json TEXT,status TEXT DEFAULT 'pending',decision_note TEXT,resolved_by TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP,resolved_at TEXT);
 CREATE TABLE learning_outcome_reviews (order_id TEXT PRIMARY KEY,company_id INTEGER,user_id INTEGER,manager_user_id INTEGER,status TEXT DEFAULT 'open',baseline_json TEXT,reflection TEXT,review_note TEXT,reviewed_by INTEGER,created_at TEXT DEFAULT CURRENT_TIMESTAMP,reviewed_at TEXT);
@@ -105,7 +105,8 @@ CREATE TABLE user_completed_courses (id INTEGER PRIMARY KEY AUTOINCREMENT, usern
 CREATE TABLE employee_learning_progress (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
   company_id INTEGER, learning_path_id INTEGER, course_handle TEXT, content_type TEXT, content_id INTEGER,
   content_name TEXT, status TEXT DEFAULT 'not_started', progress_percentage REAL DEFAULT 0,
-  started_at TEXT, completed_at TEXT, due_date TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+  started_at TEXT, completed_at TEXT, due_date TEXT, ordering_mode TEXT DEFAULT 'all_at_once',
+  assigned_by_user_id INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE employee_skills_matrix (id INTEGER PRIMARY KEY AUTOINCREMENT, employee_id INTEGER,
   company_id INTEGER, skill_name TEXT, current_level INTEGER, target_level INTEGER,
   UNIQUE(employee_id, company_id, skill_name));

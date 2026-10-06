@@ -70,3 +70,37 @@ A stale value can live up to its TTL per worker. That is intended.
 | `CATALOG_SIGNATURE_TTL_SECONDS` | 5 | how long the catalog file-signature stat is reused |
 | `REDIS_URL` | unset | shared cache backend for `perf_cache` |
 | `ENTERPRISE_TABLE_SYNC_TTL_SECONDS` | 21600 | reuse window of the "tables ensured" boot stamp |
+
+## 5. Icons and per-request memo (page weight and duplicate queries)
+
+**Font Awesome is self-hosted** under `static/futurematch/vendor/fontawesome/` (Font Awesome Free 6.5.1:
+icons CC BY 4.0, fonts SIL OFL 1.1, code MIT; the licence header stays in each CSS file). No page loads the
+icon set from cdnjs any more.
+
+- `css/fa-core.min.css` is the base + solid + regular sets in one file (the ttf fallbacks are dropped, woff2
+  only). It is linked from `fm_base.html` and every standalone page (login, register, vendor pages, SSO login,
+  widget) with `?v={{ asset_version(...) }}`, so it is cached for a year and busted by content hash.
+- `css/brands.min.css` (+ `webfonts/fa-brands-400.woff2`) is linked only where a brand icon is drawn:
+  `login.html`, `my_profile.html`, `admin_catalog.html` and `settings_sso.html` (the SSO presets in
+  `settings_hub.py`). Add the same link to any new page that uses `fa-brands`.
+- To upgrade: replace the files from the same cdnjs path with the new version, rebuild `fa-core.min.css` as
+  fontawesome + solid + regular, and re-check `rg "fa-brands" templates static *.py`.
+- `chat.js` is loaded only by `templates/fm/chat.html` (guarded by `tests/test_request_memo.py`); `fm_base.html`
+  never includes it.
+
+**One company row per request.** `request_memo.py` memoises on `flask.g` (GET/HEAD only; writes always reload):
+`company_row(company_id)` is the single `SELECT * FROM companies`, used by branding (`_fetch_branding_row`,
+itself memoised because `get_branding`, `has_custom_branding_feature` and `is_whitelabel_active` all ask for
+it), the feature-flag lookup in `auth_decorators`, and `hr_dashboard.get_company_context`, which also hands
+over the row it already joined (`prime_company_row`). Branding no longer joins `companies` with
+`company_settings`; it reads the settings and the two primary brand assets as separate small queries.
+
+| Measure | Before | After |
+|---|---|---|
+| `FROM companies` statements on `GET /hr/approvals` (`tests/test_request_memo.py`, branding not patched) | 3 | 1 |
+| Icon CSS on every page | `all.min.css` from cdnjs, 102,641 B | `fa-core.min.css` first-party, 81,841 B, immutable-cached |
+| Brand icon CSS and font | in `all.min.css`, glyph font 117 KB on demand | `brands.min.css` (19,307 B) only on 4 pages |
+
+Not measured here (no browser in the build environment): transferred bytes of the home page and total SQL
+statements per page in production. Record them from the browser network panel and the
+`ai_agent_runs`/request log after the first deploy and add them to this table.

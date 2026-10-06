@@ -55,7 +55,7 @@
 <div class="fm-wrap">
         {% set active_hr_page = 'dashboard' %}{% include 'fm/_hr_subnav.html' %}
 
-        {% if can('company.employees') %}<section class="fm-card" style="padding:20px;margin-bottom:18px"><h2>Fra opsætning til første kursusudbytte</h2><p>Gennemgå jeres opsætning, og følg den første rigtige medarbejderrejse.</p><a class="btn btn-primary" href="{{ url_for('customer_success.readiness') }}">Åbn jeres opstartsforløb</a> <a class="btn btn-ghost" href="{{ url_for('customer_success.account') }}">Jeres aftale og kundeansvarlige</a></section>{% endif %}
+        {% include 'fm/_onboarding_card.html' %}
 
         {% set m = hr_metrics or {} %}
         {% set lm = learning_metrics or {} %}

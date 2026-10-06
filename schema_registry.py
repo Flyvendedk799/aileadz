@@ -34,6 +34,7 @@ REGISTRY_DDL = [
     f"""CREATE TABLE IF NOT EXISTS customer_accounts (
         company_id INT PRIMARY KEY,
         account_owner VARCHAR(255) NULL,
+        owner_user_id INT NULL,
         account_email VARCHAR(255) NULL,
         offer_name VARCHAR(255) NULL,
         included_services TEXT NULL,
@@ -74,6 +75,7 @@ REGISTRY_DDL = [
         message TEXT NULL,
         status VARCHAR(20) NOT NULL DEFAULT 'new',
         owner_note TEXT NULL,
+        owner_user_id INT NULL,
         company_id INT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -88,6 +90,7 @@ REGISTRY_DDL = [
         dedupe_key VARCHAR(64) NOT NULL,
         report_schedule_id INT NULL,
         delivery_group VARCHAR(64) NULL,
+        order_id VARCHAR(50) NULL,
         state VARCHAR(20) NOT NULL DEFAULT 'pending',
         attempts INT NOT NULL DEFAULT 0,
         available_at DATETIME NOT NULL,
@@ -566,6 +569,28 @@ SKILL_HISTORY_BACKFILL_SQL = (
 )
 
 
+def migrate_iso_variant_dates(cur):
+    """Rewrite ``course_orders.variant_date`` values that are ISO timestamps
+    ("2026-12-03T09:00:00+01:00", written by older bookings) as the long Danish
+    label ("3. december 2026"). The booked timestamp stays in ``booking_json``.
+    Idempotent: a rewritten row no longer matches. Returns the number of rows."""
+    import order_timing
+
+    cur.execute(
+        "SELECT order_id, variant_date FROM course_orders WHERE variant_date LIKE %s",
+        ("____-__-__T%",),
+    )
+    rows = cur.fetchall() or []
+    changed = 0
+    for row in rows:
+        order_id, value = (row["order_id"], row["variant_date"]) if isinstance(row, dict) else (row[0], row[1])
+        label = order_timing.format_date(value, style="long")
+        if label and label != value:
+            cur.execute("UPDATE course_orders SET variant_date = %s WHERE order_id = %s", (label, order_id))
+            changed += 1
+    return changed
+
+
 def run_data_migrations(conn):
     """Apply the idempotent one-shot data fixes. Returns the list of keys run."""
     ran = []
@@ -617,6 +642,14 @@ def run_data_migrations(conn):
                 _set_flag(cur, "skill_history_user_ids_v1")
                 conn.commit()
                 ran.append("skill_history_user_ids_v1")
+            if not _flag_done(cur, "variant_date_human_v1"):
+                try:
+                    logger.info("variant_date human labels: %s rows", migrate_iso_variant_dates(cur))
+                except Exception as e:
+                    logger.warning("variant_date migration skipped: %s", e)
+                _set_flag(cur, "variant_date_human_v1")
+                conn.commit()
+                ran.append("variant_date_human_v1")
             try:
                 from notification_service import migrate_company_notifications
                 if not _flag_done(cur, "notifications_unified_v1"):

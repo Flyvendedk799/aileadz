@@ -7,7 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+<link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" sizes="any" />
+<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/vendor/fontawesome/css/fa-core.min.css') }}?v={{ asset_version('futurematch/vendor/fontawesome/css/fa-core.min.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/vendor/fontawesome/css/brands.min.css') }}?v={{ asset_version('futurematch/vendor/fontawesome/css/brands.min.css') }}" />
 <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm.css') }}?v={{ asset_version('futurematch/assets/fm.css') }}" />
 <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm-pages.css') }}?v={{ asset_version('futurematch/assets/fm-pages.css') }}" />
 <style>
@@ -72,7 +74,7 @@
         <div><div class="n" style="font-size:17px;line-height:1.2">HR-indsigt</div><div class="l">Rapporter &amp; overblik</div></div>
       </div>
     </div>
-    <div class="ab-foot">© 2026 Futurematch · ISO 27001 · GDPR-compliant</div>
+    <div class="ab-foot">© 2026 Futurematch</div>
   </div>
 
   <div class="auth-form">
@@ -102,7 +104,7 @@
         </div>
         <div class="fm-field">
           <label for="p">Adgangskode</label>
-          <div class="input-wrap"><i class="fa-solid fa-lock"></i><input class="fm-input" id="p" name="password" type="password" placeholder="••••••••" autocomplete="current-password" required /><button type="button" class="eye" onclick="const p=document.getElementById('p');p.type=p.type==='password'?'text':'password';this.querySelector('i').classList.toggle('fa-eye');this.querySelector('i').classList.toggle('fa-eye-slash')"><i class="fa-solid fa-eye"></i></button></div>
+          <div class="input-wrap"><i class="fa-solid fa-lock"></i><input class="fm-input" id="p" name="password" type="password" placeholder="••••••••" autocomplete="current-password" required /><button type="button" class="eye" aria-label="Vis adgangskode" aria-controls="p" onclick="const p=document.getElementById('p');const show=p.type==='password';p.type=show?'text':'password';this.setAttribute('aria-label',show?'Skjul adgangskode':'Vis adgangskode');this.querySelector('i').classList.toggle('fa-eye');this.querySelector('i').classList.toggle('fa-eye-slash')"><i class="fa-solid fa-eye"></i></button></div>
         </div>
         <div class="form-row">
           <label class="remember"><input type="checkbox" name="remember" checked /> Husk mig</label>
@@ -118,6 +120,7 @@
       </div>
 
       <div class="fc-foot">Har du ikke en konto? <a href="{{ url_for('auth.register') }}">Opret konto</a></div>
+      <div class="fc-foot" style="margin-top:10px">Ny her? <a href="{{ url_for('home') }}">Se hvad Futurematch kan</a> · <a href="{{ url_for('customer_success.sales') }}">For virksomheder</a></div>
     </div>
   </div>
 </div>

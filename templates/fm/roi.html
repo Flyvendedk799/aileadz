@@ -89,9 +89,9 @@
     <div class="fm-card-body" style="padding-top:6px">
       <div class="muted" style="font-size:12.5px;color:var(--fm-ink-3);margin-bottom:10px">Kursusordrer afgivet efter en AI-anbefaling de seneste {{ ar.days|default(90) }} dage.</div>
       <div class="kpi-row" style="margin-top:0">
-        <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-sack-dollar"></i></span><div><div class="kl">Omsætning fra AI</div><div class="kv tnum">{{ '{:,.0f}'.format(ar.revenue|default(0)|float).replace(',','.') }}</div><div class="kd">kr</div></div></div>
+        <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-sack-dollar"></i></span><div><div class="kl">Omsætning fra AI</div><div class="kv tnum">{{ (ar.revenue|default(0))|dknum(0) }}</div><div class="kd">kr</div></div></div>
         <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-cart-shopping"></i></span><div><div class="kl">AI-drevne ordrer</div><div class="kv tnum">{{ ar.orders|default(0) }}</div><div class="kd">{{ ar.sessions|default(0) }} samtaler</div></div></div>
-        <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-receipt"></i></span><div><div class="kl">Gns. ordreværdi</div><div class="kv tnum">{{ '{:,.0f}'.format(ar.avg_order_value|default(0)|float).replace(',','.') }}</div><div class="kd">kr pr. ordre</div></div></div>
+        <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-receipt"></i></span><div><div class="kl">Gns. ordreværdi</div><div class="kv tnum">{{ (ar.avg_order_value|default(0))|dknum(0) }}</div><div class="kd">kr pr. ordre</div></div></div>
       </div>
     </div>
   </div>
@@ -139,11 +139,11 @@
   <div class="fm-card" style="margin-top:16px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-wallet"></i></span><h3>Budgetudnyttelse ({{ r.fiscal_year or fiscal_year }})</h3></div>
     <div class="fm-card-body" style="padding-top:8px">
       <div class="fm-spread" style="margin-bottom:8px">
-        <span class="mono" style="font-size:12.5px;color:var(--fm-ink-2)">{{ '{:,.0f}'.format(r.budget_spent|default(0)|float).replace(',','.') }} kr brugt af {{ '{:,.0f}'.format(r.budget_total|default(0)|float).replace(',','.') }} kr</span>
+        <span class="mono" style="font-size:12.5px;color:var(--fm-ink-2)">{{ (r.budget_spent|default(0))|dkmoney }} brugt af {{ (r.budget_total|default(0))|dkmoney }}</span>
         <span class="fm-badge" style="background:color-mix(in srgb,{{ util_col }} 16%,transparent);color:{{ util_col }}">{{ util|dknum }}%</span>
       </div>
       <div class="fm-prog thin"><span style="width:{{ [util,100]|min }}%;background:{{ util_col }}"></span></div>
-      <div class="muted" style="font-size:12px;color:var(--fm-ink-3);margin-top:8px">{{ '{:,.0f}'.format(r.budget_remaining|default(0)|float).replace(',','.') }} kr resterende på tværs af afdelinger.</div>
+      <div class="muted" style="font-size:12px;color:var(--fm-ink-3);margin-top:8px">{{ (r.budget_remaining|default(0))|dkmoney }} resterende på tværs af afdelinger.</div>
     </div>
   </div>
   {% endif %}
@@ -158,9 +158,9 @@
       <div class="fm-spread" style="padding:10px 0;border-bottom:1px solid var(--fm-line)">
         <div>
           <div style="font-weight:650;font-size:13.5px">{{ o.department }}</div>
-          <div class="muted mono" style="font-size:11.5px;color:var(--fm-ink-3)">{{ '{:,.0f}'.format(o.spent|float).replace(',','.') }} kr brugt · budget {{ '{:,.0f}'.format(o.annual_budget|float).replace(',','.') }} kr</div>
+          <div class="muted mono" style="font-size:11.5px;color:var(--fm-ink-3)">{{ (o.spent)|dkmoney }} brugt · budget {{ (o.annual_budget)|dkmoney }}</div>
         </div>
-        <span class="fm-badge red">+{{ '{:,.0f}'.format(o.overrun|float).replace(',','.') }} kr ({{ o.overrun_pct|dknum }}%)</span>
+        <span class="fm-badge red">+{{ (o.overrun)|dkmoney }} ({{ o.overrun_pct|dknum }}%)</span>
       </div>
       {% endfor %}
     </div>
@@ -174,11 +174,11 @@
     {% for d in r.department_roi %}
     <tr>
       <td style="font-weight:650">{{ d.department }}</td>
-      <td class="mono">{{ '{:,.0f}'.format(d.spend|float).replace(',','.') }} kr</td>
+      <td class="mono">{{ (d.spend)|dkmoney }}</td>
       <td>{{ d.employees }}</td>
       <td>{{ d.completed }} / {{ d.total_orders }}</td>
       <td style="min-width:140px"><div class="fm-prog thin" style="margin-bottom:4px"><span style="width:{{ d.completion_rate }}%;background:var(--fm-success)"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">{{ d.completion_rate|dknum }}%</span></td>
-      <td class="mono">{{ '{:,.0f}'.format(d.cost_per_completion|float).replace(',','.') }} kr</td>
+      <td class="mono">{{ (d.cost_per_completion)|dkmoney }}</td>
     </tr>
     {% endfor %}
   </tbody></table></div>
@@ -200,7 +200,7 @@
       </p>
       <div class="kpi-row" style="margin-top:4px">
         <div class="kpi-tile"><div class="kl">Estimeret afkast (ROI)</div><div class="kv tnum" style="color:var(--fm-ink-2)">{{ s.estimated_roi_percentage|dknum }}<span style="font-size:14px">%</span></div><div class="kd">estimat</div></div>
-        <div class="kpi-tile"><div class="kl">Estimeret skabt værdi</div><div class="kv tnum" style="color:var(--fm-ink-2)">{{ '{:,.0f}'.format(s.estimated_value_generated|float).replace(',','.') }}</div><div class="kd">kr · estimat</div></div>
+        <div class="kpi-tile"><div class="kl">Estimeret skabt værdi</div><div class="kv tnum" style="color:var(--fm-ink-2)">{{ (s.estimated_value_generated)|dknum(0) }}</div><div class="kd">kr · estimat</div></div>
         <div class="kpi-tile"><div class="kl">Antaget produktivitetsgevinst</div><div class="kv tnum" style="color:var(--fm-ink-2)">{{ s.estimated_productivity_gain_pct|dknum }}<span style="font-size:14px">%</span></div><div class="kd">antagelse</div></div>
       </div>
     </div>

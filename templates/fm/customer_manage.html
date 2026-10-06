@@ -1,4 +1,5 @@
 {% extends "fm_base.html" %}
+{% from 'fm/_checklist.html' import checklist %}
 {% block title %}{{ company.company_name }} · Kundeforløb{% endblock %}
 {% block topbar_title %}Kundeopfølgning{% endblock %}
 {% block content %}
@@ -11,7 +12,17 @@
         <form method="post" class="fm-card" style="padding:22px">
             <div class="fm-grid"
                  style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
-                {% for key,label in [('account_owner','Kundeansvarlig'),('account_email','Kontaktmail'),('offer_name','Aftalens navn')] %}
+                <label class="fm-field">
+                    <span>Kundeansvarlig</span>
+                    <select class="fm-select" name="owner_user_id">
+                        <option value="">Ikke tildelt</option>
+                        {% for u in admin_users %}
+                            <option value="{{ u.id }}" {% if account.get('owner_user_id') == u.id %}selected{% endif %}>{{ u.username }}</option>
+                        {% endfor %}
+                    </select>
+                    {% if not account.get('owner_user_id') and account.get('account_owner') %}<small>Tidligere angivet: {{ account.account_owner }}</small>{% endif %}
+                </label>
+                {% for key,label in [('account_email','Kontaktmail'),('offer_name','Aftalens navn')] %}
                     <label class="fm-field">
                         <span>{{ label }}</span>
                         <input class="fm-input"
@@ -50,9 +61,7 @@
             <button class="btn btn-primary">Gem kundeforløb</button>
         </form>
         <h2>Faktiske milepæle</h2>
-        {% for c in readiness.checks %}
-            <p>{{ '✓' if c.done else '○' }} {{ c.label }}: {{ c.detail }}</p>
-        {% endfor %}
+        {{ checklist(readiness.checks, readiness.complete, readiness.total, 'milepæle') }}
         <h2>Henvendelser</h2>
         {% for r in requests %}
             <article class="fm-card" style="padding:20px;margin-bottom:12px">

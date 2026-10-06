@@ -1,0 +1,33 @@
+{% set review = sections.review %}
+<section class="fm-card os-card" id="udbytte" data-section="outcome_review">
+    <h2>Vurder kompetenceudbyttet</h2>
+    <p>Vurderingen knyttes til denne bestilling. Niveauer ved booking: {% for skill,level in review.baseline.items() %}{{ skill }}: {{ level }}/5{% if not loop.last %}, {% endif %}{% else %}Ingen tidligere vurdering registreret.{% endfor %}</p>
+    {% if review.status == "completed" %}
+        <p>{{ review.review_note }}</p>
+    {% else %}
+        <form method="post" action="{{ sections.post_url }}">
+            <input type="hidden" name="action" value="review">
+            <p class="muted">Kompetencerne er hentet fra kurset. Ryd navnet på dem, der ikke er relevante, eller tilføj egne.</p>
+            {% for r in sections.outcome_rows %}
+                <label class="fm-field">
+                    <span>Kompetence {{ loop.index }}{% if not r.required %} (valgfri){% endif %}</span>
+                    <input class="fm-input" name="skill_name" value="{{ r.name }}" {% if r.required %}required{% endif %} maxlength="100">
+                </label>
+                <label class="fm-field">
+                    <span>Bekræftet niveau for kompetence {{ loop.index }}</span>
+                    <select class="fm-select" name="level" {% if r.required %}required{% endif %}>
+                        <option value="" selected>Vælg niveau</option>
+                        {% for n in range(1,6) %}
+                            <option value="{{ n }}">{{ n }}/5</option>
+                        {% endfor %}
+                    </select>
+                </label>
+            {% endfor %}
+            <label class="fm-field">
+                <span>Hvad er blevet bedre, og hvad skal følges op?</span>
+                <textarea class="fm-input" name="note" required maxlength="4000"></textarea>
+            </label>
+            <button class="btn btn-primary">Gem kursusudbytte</button>
+        </form>
+    {% endif %}
+</section>

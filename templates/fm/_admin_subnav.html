@@ -5,8 +5,8 @@
        {% set active_admin_page = 'users' %}{% include 'fm/_admin_subnav.html' %} #}
 {% set _ap = (active_admin_page | default('')) or (nav_state().admin if nav_state is defined else '') %}
 <nav class="pg-subnav" aria-label="Admin-navigation">
-  <a class="pg-tab" href="{{ url_for('customer_success.accounts') }}">Kundeforløb</a>
   <a class="pg-tab {{ 'active' if _ap == 'home' }}" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Adminoversigt</a>
+  <a class="pg-tab {{ 'active' if _ap == 'accounts' }}" href="{{ url_for('customer_success.accounts') }}"><i class="fa-solid fa-briefcase"></i> Kundeforløb</a>
   <a class="pg-tab {{ 'active' if _ap == 'companies' }}" href="{{ url_for('companies.admin_companies_list') }}"><i class="fa-solid fa-building"></i> Virksomheder</a>
   <a class="pg-tab {{ 'active' if _ap == 'users' }}" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a>
   <a class="pg-tab {{ 'active' if _ap == 'credits' }}" href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i> Kreditter</a>
@@ -27,6 +27,7 @@
   <a class="pg-tab {{ 'active' if _ap == 'notifications' }}" href="{{ url_for('admin_notifications.notifications_dashboard') }}"><i class="fa-solid fa-bullhorn"></i> Send notifikationer</a>
   <a class="pg-tab {{ 'active' if _ap == 'log' }}" href="{{ url_for('admin_dashboard.admin_audit_log') }}"><i class="fa-solid fa-clock-rotate-left"></i> Aktivitetslog</a>
   <a class="pg-tab {{ 'active' if _ap == 'health' }}" href="{{ url_for('admin_dashboard.admin_system_health') }}"><i class="fa-solid fa-heart-pulse"></i> Systemstatus</a>
+  <a class="pg-tab {{ 'active' if _ap == 'mail' }}" href="{{ url_for('mail_delivery.deliveries') }}"><i class="fa-solid fa-envelope"></i> Mail og leveringer</a>
   <a class="pg-tab {{ 'active' if _ap == 'gdpr' }}" href="{{ url_for('gdpr.admin_console') }}"><i class="fa-solid fa-user-shield"></i> GDPR / datasletning</a>
-  <a class="pg-tab {{ 'active' if _ap == 'ui' }}" href="{{ url_for('futurematch.showcase_index') }}"><i class="fa-solid fa-swatchbook"></i> Designgalleri</a>
+  {% if show_design_gallery is defined and show_design_gallery() %}<a class="pg-tab {{ 'active' if _ap == 'ui' }}" href="{{ url_for('futurematch.showcase_index') }}"><i class="fa-solid fa-swatchbook"></i> Designgalleri</a>{% endif %}
 </nav>

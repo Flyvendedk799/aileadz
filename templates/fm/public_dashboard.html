@@ -1,0 +1,102 @@
+{% extends "fm_base.html" %}
+{% block page_id %}public-home{% endblock %}
+{% block title %}Futurematch – find det rigtige kursus{% endblock %}
+{% block extra_head %}
+<style>
+  .pd-wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 48px; display: grid; gap: 28px; }
+  .pd-hero { padding: 36px 28px; border-radius: var(--r-card); border: 1px solid var(--fm-line); background: var(--fm-surface); box-shadow: var(--sh-sm); position: relative; overflow: hidden; }
+  .pd-hero::after { content: ""; position: absolute; inset: 0; background: radial-gradient(80% 120% at 100% 0%, var(--fm-primary-tint), transparent 60%); pointer-events: none; }
+  .pd-hero > * { position: relative; }
+  .pd-hero h1 { font-size: clamp(26px, 4vw, 40px); letter-spacing: -.03em; margin: 8px 0 10px; max-width: 22ch; }
+  .pd-hero p { color: var(--fm-ink-2); max-width: 56ch; }
+  .pd-search { display: flex; gap: 8px; margin-top: 20px; max-width: 560px; }
+  .pd-search .fm-input { flex: 1; min-width: 0; height: 44px; }
+  .pd-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+  .pd-sec h2 { font-size: 20px; letter-spacing: -.02em; margin-bottom: 12px; }
+  .pd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+  .pd-card { display: flex; flex-direction: column; gap: 6px; padding: 16px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-sm); text-decoration: none; color: inherit; }
+  .pd-card:hover { border-color: var(--fm-line-2); box-shadow: var(--sh-md); }
+  .pd-kick { font-family: var(--ff-mono); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--fm-ink-3); }
+  .pd-card h3 { font-size: 15.5px; font-weight: 700; line-height: 1.3; }
+  .pd-price { margin-top: auto; padding-top: 8px; font-family: var(--ff-display); font-weight: 700; }
+  .pd-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .pd-chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 999px; background: var(--fm-surface-3); color: var(--fm-ink-2); font-size: 13px; font-weight: 600; text-decoration: none; }
+  .pd-chip:hover { color: var(--fm-ink); }
+  .pd-duo { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .pd-panel { padding: 22px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); }
+  .pd-panel p { color: var(--fm-ink-2); margin: 6px 0 14px; }
+</style>
+{% endblock %}
+{% block topbar_title %}Velkommen til Futurematch{% endblock %}
+{% block content %}
+<div class="pd-wrap">
+  <section class="pd-hero">
+    <p class="fm-eyebrow">Kurser og kompetenceudvikling</p>
+    <h1>Find det rigtige kursus – og få det godkendt hurtigere</h1>
+    <p>Søg i kataloget, få sparring af AI-rådgiveren, og bed om en plads. Er din virksomhed med, følger godkendelse og booking automatisk.</p>
+    <form class="pd-search" action="{{ url_for('catalog.catalog_index') }}" method="get" role="search">
+      <input class="fm-input" type="search" name="q" placeholder="Søg efter kursus, emne eller leverandør" aria-label="Søg i kursuskataloget">
+      <button class="btn btn-primary" type="submit"><i class="fa-solid fa-magnifying-glass"></i> Søg</button>
+    </form>
+    <div class="pd-actions">
+      <a class="btn btn-ghost" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comment-dots"></i> Spørg AI-rådgiveren</a>
+      <a class="btn btn-ghost" href="{{ url_for('auth.login') }}">Log ind</a>
+      <a class="btn btn-ghost" href="{{ url_for('auth.register') }}">Opret konto</a>
+    </div>
+  </section>
+
+  {% if popular %}
+  <section class="pd-sec">
+    <h2>Populære kurser</h2>
+    <div class="pd-grid">
+      {% for c in popular %}
+      <a class="pd-card" href="{{ url_for('catalog.product_detail', handle=c.handle) }}">
+        <span class="pd-kick">{{ c.vendor }}</span>
+        <h3>{{ c.title }}</h3>
+        {% if c.format %}<span class="pd-kick">{{ c.format }}</span>{% endif %}
+        <span class="pd-price">{{ c.price_label }}</span>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if categories %}
+  <section class="pd-sec">
+    <h2>Find kurser efter emne</h2>
+    <div class="pd-chips">
+      {% for cat in categories %}
+      <a class="pd-chip" href="{{ url_for('catalog.catalog_index', category=cat.slug) }}">{{ cat.name }} <span class="pd-kick">{{ cat.count }}</span></a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if sessions %}
+  <section class="pd-sec">
+    <h2>Kommende hold</h2>
+    <div class="pd-grid">
+      {% for s in sessions %}
+      <a class="pd-card" href="{{ url_for('catalog.product_detail', handle=s.handle) }}">
+        <span class="pd-kick">{{ s.date_label }}{% if s.city %} · {{ s.city }}{% endif %}</span>
+        <h3>{{ s.title }}</h3>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="pd-duo">
+    <div class="pd-panel">
+      <h2>AI-rådgiveren</h2>
+      <p>Beskriv et behov eller en rolle, så finder rådgiveren kurser og sammenligner dem. Log ind for anbefalinger, der bygger på din profil.</p>
+      <a class="btn btn-primary" href="{{ url_for('futurematch.chat') }}">Start en samtale</a>
+    </div>
+    <div class="pd-panel">
+      <h2>For virksomheder</h2>
+      <p>Samlet overblik over godkendelser, budgetter og opfølgning på kompetencer. Se hvordan det virker i en demo.</p>
+      <a class="btn btn-primary" href="{{ url_for('customer_success.sales') }}#demo">Bed om en demo</a>
+    </div>
+  </section>
+</div>
+{% endblock %}

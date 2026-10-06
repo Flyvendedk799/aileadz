@@ -1,0 +1,276 @@
+{% extends "fm_base.html" %}
+{% from 'fm/_macros.html' import crumbs %}
+{# The design gallery (/ui/<page>) renders this without a route: fall back to an example path. #}
+{% set path = path|default({'id': 0, 'path_name': 'Eksempelforløb', 'version': 1}) %}
+{% set rows = rows|default([]) %}{% set errors = errors|default({}) %}
+{% set note = note|default('') %}{% set text_fallback = text_fallback|default('') %}
+{% set ordering_mode = ordering_mode|default('all_at_once') %}
+{% block page_id %}hr{% endblock %}
+{% block title %}Trin · {{ path.path_name }}{% endblock %}
+{% block topbar_title %}Trin i forløbet{% endblock %}
+{% block topbar_sub %}{{ path.path_name }} · version {{ path.version or 1 }}{% endblock %}
+{% block extra_head %}
+<style>
+  .lps-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .lps-row { display: grid; grid-template-columns: 34px 1fr auto; gap: 12px; align-items: start; padding: 12px 14px; border: 1px solid var(--fm-line); border-radius: 12px; background: var(--fm-surface); }
+  .lps-row.has-error { border-color: var(--fm-danger); background: color-mix(in srgb, var(--fm-danger) 6%, var(--fm-surface)); }
+  .lps-num { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--fm-primary-tint); color: var(--fm-primary); font-weight: 700; font-size: 13px; }
+  .lps-title { font-weight: 650; font-size: 14.5px; }
+  .lps-meta { font-size: 12.5px; color: var(--fm-ink-2); margin-top: 2px; display: flex; gap: 6px 12px; flex-wrap: wrap; }
+  .lps-label { margin-top: 8px; display: grid; gap: 4px; font-size: 12px; color: var(--fm-ink-2); }
+  .lps-err { margin-top: 8px; color: var(--fm-danger); font-size: 13px; font-weight: 600; }
+  .lps-tools { display: flex; gap: 4px; }
+  .lps-search { position: relative; }
+  .lps-results { margin: 8px 0 0; padding: 0; list-style: none; border: 1px solid var(--fm-line); border-radius: 12px; background: var(--fm-surface); max-height: 320px; overflow: auto; }
+  .lps-results li { display: flex; gap: 12px; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--fm-line); }
+  .lps-results li:last-child { border-bottom: 0; }
+  .lps-empty { color: var(--fm-ink-3); font-size: 13px; padding: 10px 2px; }
+  @media (max-width: 640px) { .lps-row { grid-template-columns: 28px 1fr; } .lps-tools { grid-column: 2; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+{% set active_hr_page = 'learning_paths' %}{% include 'fm/_hr_subnav.html' %}
+{{ crumbs([('Læringsforløb', url_for('hr_dashboard.learning_paths')), (path.path_name, None)]) }}
+
+  <form method="post" action="{{ url_for('hr_dashboard.learning_path_steps', path_id=path.id) }}" id="stepsForm">
+    <div class="fm-card" style="padding:20px;margin-bottom:16px">
+      <div class="fm-spread" style="margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div>
+          <h2 class="fm-section-title" style="margin:0">Trin i rækkefølge</h2>
+          <p class="muted" style="margin:4px 0 0;font-size:13px">Vælg kurser fra kataloget og tilføj vejledning. Hver gem opretter en ny version; igangværende tildelinger ændres ikke.</p>
+        </div>
+      </div>
+
+      {% if errors %}<div class="lps-err" role="alert" style="margin:0 0 12px"><i class="fa-solid fa-triangle-exclamation"></i> Trinene blev ikke gemt. Ret de markerede trin; alt andet du har skrevet er bevaret.</div>{% endif %}
+
+      <ol class="lps-list" id="stepList">
+        {% for r in rows %}
+        <li class="lps-row{{ ' has-error' if r.error }}" data-type="{{ r.step_type }}">
+          <span class="lps-num">{{ loop.index }}</span>
+          <div>
+            <input type="hidden" name="step_type[]" value="{{ r.step_type }}">
+            <input type="hidden" name="course_handle[]" value="{{ r.course_handle }}">
+            {% if r.step_type == 'catalog' %}
+              {% if r.info %}
+              <div class="lps-title">{{ r.info.title }}{% if r.info.internal %} <span class="fm-badge teal">Internt kursus</span>{% endif %}</div>
+              <div class="lps-meta">
+                {% if r.info.vendor and not r.info.internal %}<span><i class="fa-solid fa-building"></i> {{ r.info.vendor }}</span>{% endif %}
+                {% if r.info.price_label %}<span><i class="fa-solid fa-tag"></i> {{ r.info.price_label }}</span>{% endif %}
+                <span><i class="fa-regular fa-calendar"></i> {{ ('Næste hold ' ~ r.info.next_session) if r.info.next_session else 'Ingen kommende hold' }}</span>
+                {% if r.info.format %}<span>{{ r.info.format }}</span>{% endif %}
+              </div>
+              {% else %}
+              <div class="lps-title">{{ r.course_handle or 'Intet kursus valgt' }}</div>
+              {% endif %}
+              <label class="lps-label">Visningsnavn for medarbejderen (valgfrit)
+                <input class="fm-input" name="title[]" value="{{ r.label }}" placeholder="{{ r.info.title if r.info else 'Kursets egen titel bruges' }}" maxlength="255">
+              </label>
+            {% else %}
+              <div class="lps-title"><i class="fa-solid fa-circle-info" style="color:var(--fm-primary)"></i> Vejledning</div>
+              <label class="lps-label">Tekst til medarbejderen
+                <textarea class="fm-input" name="title[]" rows="2" maxlength="255" placeholder="Fx: Aftal med din leder, hvordan du bruger det på arbejdet.">{{ r.title }}</textarea>
+              </label>
+            {% endif %}
+            {% if r.error %}<div class="lps-err" role="alert">{{ r.error }}</div>{% endif %}
+          </div>
+          <div class="lps-tools">
+            <button type="button" class="fm-icon-btn" data-act="up" title="Flyt op" aria-label="Flyt trinnet op"><i class="fa-solid fa-arrow-up"></i></button>
+            <button type="button" class="fm-icon-btn" data-act="down" title="Flyt ned" aria-label="Flyt trinnet ned"><i class="fa-solid fa-arrow-down"></i></button>
+            <button type="button" class="fm-icon-btn" data-act="remove" title="Fjern" aria-label="Fjern trinnet" style="color:var(--fm-danger)"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+        </li>
+        {% endfor %}
+      </ol>
+      <p class="lps-empty" id="stepEmpty" {% if rows %}hidden{% endif %}>Ingen trin endnu. Tilføj et kursus eller en vejledning nedenfor.</p>
+
+      <div class="fm-flex fm-gap8" style="margin-top:14px;flex-wrap:wrap">
+        <button type="button" class="btn btn-soft btn-sm" id="addCourseBtn"><i class="fa-solid fa-magnifying-glass"></i> Tilføj kursus</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="addInfoBtn"><i class="fa-solid fa-circle-info"></i> Tilføj vejledning</button>
+      </div>
+
+      <div class="lps-search" id="picker" hidden style="margin-top:12px">
+        <label class="fm-field"><span>Søg i kataloget og jeres interne kurser</span>
+          <input class="fm-input" type="search" id="pickerQ" placeholder="Fx PRINCE2, Excel eller ledelse" autocomplete="off">
+        </label>
+        <div class="lps-empty" id="pickerStatus" role="status">Skriv mindst to bogstaver.</div>
+        <ul class="lps-results" id="pickerResults" hidden></ul>
+      </div>
+    </div>
+
+    <div class="fm-card" style="padding:20px;margin-bottom:16px">
+      <fieldset style="border:0;margin:0 0 16px;padding:0">
+        <legend style="font-weight:650;font-size:14px;margin-bottom:8px">Sådan bestilles kurserne</legend>
+        <label style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">
+          <input type="radio" name="ordering_mode" value="all_at_once" {{ 'checked' if ordering_mode != 'sequential' }}>
+          <span><strong>Bestil alle kurser ved tildeling</strong><br><span class="muted" style="font-size:12.5px">Alle kurser i forløbet bestilles og trækkes på budgettet med det samme.</span></span>
+        </label>
+        <label style="display:flex;gap:10px;align-items:flex-start">
+          <input type="radio" name="ordering_mode" value="sequential" {{ 'checked' if ordering_mode == 'sequential' }}>
+          <span><strong>Bestil ét kursus ad gangen</strong><br><span class="muted" style="font-size:12.5px">Næste bestilles, når det forrige er gennemført. Budgettet trækkes kun for de kurser, der er bestilt. Igangværende tildelinger beholder den måde, de blev tildelt på.</span></span>
+        </label>
+      </fieldset>
+      <label class="fm-field"><span>Note til versionen (valgfri)</span>
+        <input class="fm-input" name="note" value="{{ note }}" maxlength="255" placeholder="Fx: Byttede Excel ud med Power BI">
+      </label>
+      {% if text_fallback or not rows %}
+      <details style="margin-top:12px" {% if text_fallback %}open{% endif %}>
+        <summary style="cursor:pointer;font-size:13px">Uden JavaScript: skriv trin som tekst</summary>
+        <textarea class="fm-input" name="steps" rows="4" style="width:100%;margin-top:8px" placeholder="prince2-grundkursus | PRINCE2 Foundation&#10;# Sæt tid af til øvelser med din leder">{{ text_fallback }}</textarea>
+        <p class="muted" style="font-size:12px;margin:4px 0 0">En linje pr. trin: kursus-handle, evt. efterfulgt af | og et visningsnavn. Start med # for vejledning.</p>
+      </details>
+      {% endif %}
+      <div class="fm-flex fm-gap8" style="margin-top:16px;justify-content:flex-end">
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('hr_dashboard.learning_paths') }}">Annuller</a>
+        <button class="btn btn-primary btn-sm" type="submit"><i class="fa-solid fa-floppy-disk"></i> Gem trin som ny version</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<template id="tplCourse">
+  <li class="lps-row" data-type="catalog">
+    <span class="lps-num"></span>
+    <div>
+      <input type="hidden" name="step_type[]" value="catalog">
+      <input type="hidden" name="course_handle[]" value="">
+      <div class="lps-title"><span data-f="title"></span> <span class="fm-badge teal" data-f="internal" hidden>Internt kursus</span></div>
+      <div class="lps-meta"><span data-f="vendor"></span><span data-f="price"></span><span data-f="session"></span><span data-f="format"></span></div>
+      <label class="lps-label">Visningsnavn for medarbejderen (valgfrit)
+        <input class="fm-input" name="title[]" value="" maxlength="255">
+      </label>
+    </div>
+    <div class="lps-tools">
+      <button type="button" class="fm-icon-btn" data-act="up" title="Flyt op" aria-label="Flyt trinnet op"><i class="fa-solid fa-arrow-up"></i></button>
+      <button type="button" class="fm-icon-btn" data-act="down" title="Flyt ned" aria-label="Flyt trinnet ned"><i class="fa-solid fa-arrow-down"></i></button>
+      <button type="button" class="fm-icon-btn" data-act="remove" title="Fjern" aria-label="Fjern trinnet" style="color:var(--fm-danger)"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+  </li>
+</template>
+<template id="tplInfo">
+  <li class="lps-row" data-type="info">
+    <span class="lps-num"></span>
+    <div>
+      <input type="hidden" name="step_type[]" value="info">
+      <input type="hidden" name="course_handle[]" value="">
+      <div class="lps-title"><i class="fa-solid fa-circle-info" style="color:var(--fm-primary)"></i> Vejledning</div>
+      <label class="lps-label">Tekst til medarbejderen
+        <textarea class="fm-input" name="title[]" rows="2" maxlength="255" placeholder="Fx: Aftal med din leder, hvordan du bruger det på arbejdet."></textarea>
+      </label>
+    </div>
+    <div class="lps-tools">
+      <button type="button" class="fm-icon-btn" data-act="up" title="Flyt op" aria-label="Flyt trinnet op"><i class="fa-solid fa-arrow-up"></i></button>
+      <button type="button" class="fm-icon-btn" data-act="down" title="Flyt ned" aria-label="Flyt trinnet ned"><i class="fa-solid fa-arrow-down"></i></button>
+      <button type="button" class="fm-icon-btn" data-act="remove" title="Fjern" aria-label="Fjern trinnet" style="color:var(--fm-danger)"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+  </li>
+</template>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+(function () {
+  var SEARCH_URL = {{ url_for('hr_dashboard.learning_path_catalog_search')|tojson }};
+  var list = document.getElementById('stepList');
+  var empty = document.getElementById('stepEmpty');
+  var picker = document.getElementById('picker');
+  var q = document.getElementById('pickerQ');
+  var status = document.getElementById('pickerStatus');
+  var results = document.getElementById('pickerResults');
+  var timer = null, seq = 0;
+
+  function renumber() {
+    Array.prototype.forEach.call(list.children, function (li, i) {
+      li.querySelector('.lps-num').textContent = i + 1;
+    });
+    empty.hidden = list.children.length > 0;
+  }
+  function addRow(tplId) {
+    var node = document.getElementById(tplId).content.firstElementChild.cloneNode(true);
+    list.appendChild(node);
+    renumber();
+    return node;
+  }
+  function setText(root, field, text) {
+    var el = root.querySelector('[data-f="' + field + '"]');
+    if (el) { el.textContent = text || ''; }
+  }
+  function addCourse(c) {
+    var row = addRow('tplCourse');
+    row.querySelector('input[name="course_handle[]"]').value = c.handle;
+    row.querySelector('input[name="title[]"]').placeholder = c.title;
+    setText(row, 'title', c.title);
+    setText(row, 'vendor', c.internal ? '' : c.vendor);
+    setText(row, 'price', c.price_label);
+    setText(row, 'session', c.next_session ? 'Næste hold ' + c.next_session : 'Ingen kommende hold');
+    setText(row, 'format', c.format);
+    row.querySelector('[data-f="internal"]').hidden = !c.internal;
+    row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
+  list.addEventListener('click', function (e) {
+    var btn = e.target.closest('button[data-act]');
+    if (!btn) { return; }
+    var li = btn.closest('li');
+    var act = btn.getAttribute('data-act');
+    if (act === 'remove') { li.remove(); }
+    else if (act === 'up' && li.previousElementSibling) { list.insertBefore(li, li.previousElementSibling); }
+    else if (act === 'down' && li.nextElementSibling) { list.insertBefore(li.nextElementSibling, li); }
+    renumber();
+  });
+
+  document.getElementById('addInfoBtn').addEventListener('click', function () {
+    addRow('tplInfo').querySelector('textarea').focus();
+  });
+  document.getElementById('addCourseBtn').addEventListener('click', function () {
+    picker.hidden = !picker.hidden;
+    if (!picker.hidden) { q.focus(); }
+  });
+
+  function render(items) {
+    results.textContent = '';
+    if (!items.length) {
+      results.hidden = true;
+      status.textContent = 'Ingen kurser matcher søgningen.';
+      return;
+    }
+    status.textContent = items.length + ' kurser fundet.';
+    items.forEach(function (c) {
+      var li = document.createElement('li');
+      var info = document.createElement('div');
+      var t = document.createElement('div');
+      t.className = 'lps-title';
+      t.textContent = c.title + (c.internal ? ' (internt kursus)' : '');
+      var m = document.createElement('div');
+      m.className = 'lps-meta';
+      [c.internal ? '' : c.vendor, c.price_label, c.next_session ? 'Næste hold ' + c.next_session : 'Ingen kommende hold', c.format]
+        .filter(Boolean).forEach(function (part) {
+          var s = document.createElement('span'); s.textContent = part; m.appendChild(s);
+        });
+      info.appendChild(t); info.appendChild(m);
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'btn btn-soft btn-sm'; b.textContent = 'Tilføj';
+      b.addEventListener('click', function () { addCourse(c); });
+      li.appendChild(info); li.appendChild(b);
+      results.appendChild(li);
+    });
+    results.hidden = false;
+  }
+
+  q.addEventListener('input', function () {
+    clearTimeout(timer);
+    var term = q.value.trim();
+    if (term.length < 2) { results.hidden = true; status.textContent = 'Skriv mindst to bogstaver.'; return; }
+    timer = setTimeout(function () {
+      var mine = ++seq;
+      status.textContent = 'Søger...';
+      fetch(SEARCH_URL + '?q=' + encodeURIComponent(term), { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (data) { if (mine === seq) { render(data.results || []); } })
+        .catch(function () { if (mine === seq) { status.textContent = 'Søgningen mislykkedes. Prøv igen.'; } });
+    }, 250);
+  });
+  q.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); } });
+  renumber();
+})();
+</script>
+{% endblock %}

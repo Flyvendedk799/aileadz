@@ -13,7 +13,11 @@
   // prevent breakout. Falls back to a neutral icon when empty/invalid.
   const icon = (s) => (String(s == null ? "" : s).replace(/[^a-z0-9 _-]/gi, "").slice(0, 40) || "fa-graduation-cap");
   let activeConvId = null;
+  // Server-rendered on <body data-auth>: anonymous visitors must not trigger
+  // XHRs that need a session (they would answer 401).
+  const LOGGED_IN = document.body.dataset.auth !== "0";
   function trackLearner(event, meta) {
+    if (!LOGGED_IN) return;
     try {
       fetch("/api/learner/events", {
         method: "POST", credentials: "same-origin",
@@ -112,6 +116,7 @@
   }
   async function loadWorkspace() {
     const bar = $("#aiWorkspaceStatus");
+    if (!LOGGED_IN) { if (bar) bar.hidden = true; return; }
     try {
       const resp = await fetch("/api/profile/workspace", {
         headers: { "X-Requested-With": "XMLHttpRequest" },
@@ -448,7 +453,9 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
     row.innerHTML = `
       <button class="up" title="Godt svar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg></button>
       <button class="down" title="Dårligt svar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg></button>
-      <button class="regen" title="Regenerér"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Regenerér</button>
+      ${res.fallback
+        ? '<span class="regen-later" style="font-size:12.5px;color:var(--fm-ink-3,inherit);padding:0 6px">Prøv igen om lidt</span>'
+        : '<button class="regen" title="Regenerér"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Regenerér</button>'}
       <button class="copy" title="Kopiér"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>`;
     const details = document.createElement("div");
     details.className = "fb-details";
@@ -483,7 +490,8 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
       postFeedback(Object.assign({ rating: -1, reason: "", comment: "" }, base));
       showDown();
     };
-    row.querySelector(".regen").onclick = () => { const r = body.closest(".msg"); const q = query; if (r) r.remove(); run(q, { skipUser: true }); };
+    const regenBtn = row.querySelector(".regen");
+    if (regenBtn) regenBtn.onclick = () => { const r = body.closest(".msg"); const q = query; if (r) r.remove(); run(q, { skipUser: true }); };
     row.querySelector(".copy").onclick = function () {
       const btn = this;
       copyText(answerText).then(() => {
@@ -517,7 +525,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
   // Server-provided chat config (role + team-order policy). Safe defaults when absent.
   function chatCfg() {
     const c = window.FM_CHAT_CFG || {};
-    return { teamOrders: !!c.teamOrders, primaryLabel: c.primaryLabel || "Anmod om plads" };
+    return { teamOrders: !!c.teamOrders, primaryLabel: c.primaryLabel || "Anmod om plads", loggedIn: c.loggedIn !== false };
   }
 
   /* ---------------- profile confirm card ---------------- */
@@ -1563,6 +1571,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
     const decoder = new TextDecoder("utf-8");
     let buffer = "", textEl = null, tailEl = null, fullText = "", suggestions = null, done = false;
     let messageIndex = null;              // from the meta event; used by the feedback POST
+    let fallbackSeen = false;             // provider failed: catalogue-only answer, nothing to regenerate
     let cardsSeen = 0, productSeen = 0;   // pair structured course_cards with fallback product HTML
     let questionsSeen = false;            // a question sheet already answers this turn's questions
     let awaiting = false;                 // a card is waiting for the user's decision: no generic follow-ups on top of it
@@ -1632,6 +1641,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
 
           if (data.type === "ping") continue;
           eventsReceived++;
+          if (data.type === "fallback") { fallbackSeen = true; continue; }
           if (data.type === "meta") {
             if (data.message_index != null) messageIndex = data.message_index;
             continue;
@@ -1783,14 +1793,14 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
     // Render suggestion chips last, like the source UI. The server now
     // guarantees a set, but keep a client-side net so a turn never dead-ends
     // even if the suggestions event is dropped.
-    if (awaiting) suggestions = [];
+    if (awaiting || fallbackSeen) suggestions = [];
     else if (!suggestions || !suggestions.length) {
       suggestions = cardsSeen > 0
         ? ["Sammenlign de to bedste", "Vis billigere alternativer", "Fortæl mig mere"]
         : ["Vis populære kurser", "Hjælp mig med at vælge"];
     }
     if (suggestions && suggestions.length) addChips(body, suggestions);
-    return { fullText: fullText, messageIndex: messageIndex, eventsReceived: eventsReceived };
+    return { fullText: fullText, messageIndex: messageIndex, eventsReceived: eventsReceived, fallback: fallbackSeen };
   }
 
   /* ---------------- send / run ---------------- */
@@ -1899,6 +1909,22 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
   }
   document.addEventListener("fm:conversations", paintRecents);
 
+  // Profile chips only for logged-in users; anonymous visitors get chips that
+  // work without a profile (catalogue questions).
+  function welcomeCards() {
+    if (!chatCfg().loggedIn) {
+      return `
+          <button class="w-card" data-q="Find et kursus i projektledelse"><span class="ic"><i class="fa-solid fa-diagram-project"></i></span><span><div class="t">Find et kursus</div><div class="h">Projektledelse og ledelse</div></span></button>
+          <button class="w-card" data-q="Hvad koster et førstehjælpskursus?"><span class="ic"><i class="fa-solid fa-kit-medical"></i></span><span><div class="t">Hvad koster det?</div><div class="h">Pris på et førstehjælpskursus</div></span></button>
+          <button class="w-card" data-q="Vis mig populære kurser"><span class="ic"><i class="fa-solid fa-fire"></i></span><span><div class="t">Populære kurser</div><div class="h">Se hvad andre vælger</div></span></button>
+          <button class="w-card" data-q="Hvilke kurser findes der inden for Excel?"><span class="ic"><i class="fa-solid fa-table"></i></span><span><div class="t">Digitale kompetencer</div><div class="h">Excel, data og IT</div></span></button>`;
+    }
+    return `
+          <button class="w-card" data-q="Vis mig populære projektledelseskurser"><span class="ic"><i class="fa-solid fa-diagram-project"></i></span><span><div class="t">Populære kurser</div><div class="h">Se hvad andre vælger</div></span></button>
+          <button class="w-card" data-q="Jeg vil gerne tale om, hvor jeg vil hen i min karriere"><span class="ic"><i class="fa-solid fa-compass"></i></span><span><div class="t">Min retning</div><div class="h">Sparring om næste skridt</div></span></button>
+          <button class="w-card" data-q="Hvilke kompetencer mangler jeg for at nå mit mål?"><span class="ic"><i class="fa-solid fa-layer-group"></i></span><span><div class="t">Mine kompetencegab</div><div class="h">Se hvad der mangler</div></span></button>
+          <button class="w-card" data-q="Opdater mit CV — jeg har erfaring med projektledelse og teamledelse"><span class="ic"><i class="fa-solid fa-id-card"></i></span><span><div class="t">Opdater dit CV</div><div class="h">Fortæl mig om din erfaring</div></span></button>`;
+  }
   function welcome() {
     thread.innerHTML = `
       <div class="welcome">
@@ -1906,13 +1932,8 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
         <div class="w-eyebrow">Futurematch AI-assistent</div>
         <div class="w-title">Hvad vil du gerne hjælpes med?</div>
         <div class="w-sub">Fortæl, hvor du står og hvor du vil hen, eller beskriv et behov, en rolle eller en kompetence. Så finder jeg kurser, sammenligner muligheder og husker det vigtige på din profil.</div>
-        <div class="w-hint">Anbefalinger tilpasses din profil</div>
-        <div class="w-grid">
-          <button class="w-card" data-q="Vis mig populære projektledelseskurser"><span class="ic"><i class="fa-solid fa-diagram-project"></i></span><span><div class="t">Populære kurser</div><div class="h">Se hvad andre vælger</div></span></button>
-          <button class="w-card" data-q="Jeg vil gerne tale om, hvor jeg vil hen i min karriere"><span class="ic"><i class="fa-solid fa-compass"></i></span><span><div class="t">Min retning</div><div class="h">Sparring om næste skridt</div></span></button>
-          <button class="w-card" data-q="Hvilke kompetencer mangler jeg for at nå mit mål?"><span class="ic"><i class="fa-solid fa-layer-group"></i></span><span><div class="t">Mine kompetencegab</div><div class="h">Se hvad der mangler</div></span></button>
-          <button class="w-card" data-q="Opdater mit CV — jeg har erfaring med projektledelse og teamledelse"><span class="ic"><i class="fa-solid fa-id-card"></i></span><span><div class="t">Opdater dit CV</div><div class="h">Fortæl mig om din erfaring</div></span></button>
-        </div>
+        <div class="w-hint">${chatCfg().loggedIn ? "Anbefalinger tilpasses din profil" : "Log ind for anbefalinger, der passer til din profil"}</div>
+        <div class="w-grid">${welcomeCards()}</div>
         <div class="w-recent" id="wRecent" hidden></div>
       </div>`;
     thread.querySelectorAll(".w-card").forEach((c) => c.onclick = () => ask(c.dataset.q));
@@ -2060,6 +2081,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
   function hideNudge() { const n = $("#nudge"); if (n) n.classList.remove("show"); }
 
   async function loadNudges() {
+    if (!LOGGED_IN) { hideNudge(); return; }
     try {
       const resp = await fetch("/app1/nudges", {
         headers: { "X-Requested-With": "XMLHttpRequest" },

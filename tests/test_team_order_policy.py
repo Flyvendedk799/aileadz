@@ -135,7 +135,7 @@ class TeamOrderFlowTests(Base):
         self.assertTrue(rows[0]["group_order_id"])
         self.assertEqual({r["username"] for r in rows}, {"ada", "bo"})
         self.assertTrue(all(r["status"] == "pending_approval" for r in rows))   # each goes through approval
-        self.assertTrue(all("Bestilt af ada" in r["request_notes"] for r in rows))
+        self.assertTrue(all("Bestilt af Ada Hansen" in r["request_notes"] for r in rows))
 
     def test_an_employee_cannot_get_a_managers_order_auto_approved(self):
         self.policy(tp.LINKED)
@@ -151,7 +151,7 @@ class TeamOrderFlowTests(Base):
             out = json.loads(tools._execute_create_order(
                 {"product_handle": "prince2", "participants": ["Bo Jensen"], "confirm": True}, "hr"))
         self.assertEqual(out["created"], 1)
-        self.assertEqual(self.db.one("SELECT status FROM course_orders")["status"], "pending_approval")
+        self.assertEqual(self.db.one("SELECT status FROM course_orders")["status"], "approved")   # assigned by HR
 
     def test_hr_bulk_assign_hands_the_request_to_hr_with_a_prefilled_link(self):
         self.policy(tp.HR_BULK)

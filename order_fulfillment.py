@@ -10,6 +10,7 @@ import json
 from urllib.parse import urlparse
 import order_service as orders
 import order_lifecycle as lc
+import order_timing
 
 
 def _error(message, code="bad_transition"):
@@ -25,6 +26,18 @@ def details(cur, order_id):
         except (TypeError, ValueError):
             row[key] = {}
     return row
+
+
+def booking_for(order_id):
+    """The booking details of an order for display only ({} when none; never raises)."""
+    try:
+        cur = orders._dict_cursor(orders._get_connection())
+        try:
+            return details(cur, order_id).get("booking_json") or {}
+        finally:
+            cur.close()
+    except Exception:
+        return {}
 
 
 def booking_values(row, supplied):
@@ -60,7 +73,7 @@ def booking_values(row, supplied):
         "end_at": end,
         "location": location,
         "join_url": join_url,
-        "reference": str(supplied.get("reference") or "")[:255],
+        "reference": str(supplied.get("reference") or "").strip()[:255] or None,
         "instructions": str(supplied.get("instructions") or "")[:4000],
         "cancellation_terms": str(supplied.get("cancellation_terms") or "")[:4000],
     }
@@ -95,10 +108,21 @@ def book(ctx, order_id, booking=None, note=None):
         if not allowed:
             return _error(message, code)
         values = booking_values(row, booking)
+        values["confirmed_by_kind"] = "vendor" if "vendor" in actors else "hr"
+        history_note = str(note or "").strip()
+        ordered = order_timing.differs_from_ordered_session(row, values["start_at"])
+        if ordered:
+            if str((booking or {}).get("confirm_date_change") or "").strip().lower() not in ("1", "true", "on", "yes"):
+                return _error(
+                    "Datoen afviger fra den bestilte session (%s). Sæt hak ved „Datoen afviger fra den bestilte session“ for at bekræfte, at det er aftalt."
+                    % ordered,
+                    "date_differs",
+                )
+            history_note = (history_note + " " if history_note else "") + "Datoen afviger fra den bestilte session (bestilt: %s)." % ordered
         _save_details(cur, row, values)
         capture_baseline(cur, row)
         orders._confirm_booking_details(cur, row, values)
-        info = orders._apply_transition(cur, ctx, row, lc.BOOKED, actors, note=note or values["reference"])
+        info = orders._apply_transition(cur, ctx, row, lc.BOOKED, actors, note=history_note or None)
         conn.commit()
         orders._after_transition(ctx, row, info["old"], lc.BOOKED, info, note=note)
         return {
@@ -123,10 +147,60 @@ def book(ctx, order_id, booking=None, note=None):
         cur.close()
 
 
+def add_reference(ctx, order_id, reference):
+    """Add or correct the supplier's booking reference on a booked order.
+
+    Only ``booking_json.reference`` changes: no status change, no money. HR, the
+    order's vendor and platform admins may do it; the history records it."""
+    reference = str(reference or "").strip()[:255]
+    if not reference:
+        return _error("Skriv udbyderens bookingreference.")
+    conn = orders._get_connection()
+    cur = orders._dict_cursor(conn)
+    try:
+        orders._lock_order(cur, ctx, order_id)
+        row = cur.fetchone()
+        actors = orders.actors_for(ctx, row) if row else set()
+        if not actors:
+            return _error("Bestillingen blev ikke fundet.", "not_found")
+        if not ({"manager", "admin", "vendor"} & actors):
+            return _error("Kun HR eller udbyderen kan tilføje en bookingreference.", "forbidden")
+        if row["status"] != lc.BOOKED:
+            return _error("En bookingreference kan kun tilføjes til en booket bestilling.")
+        booking = details(cur, order_id).get("booking_json") or {}
+        if booking.get("reference") == reference:
+            return {"success": True, "unchanged": True, "message": "Referencen er allerede gemt."}
+        booking["reference"] = reference
+        _save_details(cur, row, booking)
+        orders._record_history(cur, row, kind="change", from_value="reference", to_value="added", ctx=ctx, note=reference)
+        orders._write_audit(
+            cur,
+            company_id=orders._int_or_none(row.get("company_id")),
+            user_id=ctx.user_id,
+            action="order.reference_added",
+            resource_id=order_id,
+            description="booking reference set by %s" % ("vendor" if "vendor" in actors else "hr"),
+        )
+        conn.commit()
+        return {"success": True, "order_id": order_id, "status": lc.BOOKED, "message": "Bookingreferencen er gemt."}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.rollback()
+        cur.close()
+
+
 def request_change(ctx, order_id, kind, payload=None):
-    payload = dict(payload or {})
     if kind not in ("cancel", "reschedule", "substitute"):
         return _error("Ukendt ændring.")
+    supplied = dict(payload or {})
+    # Only the fields that belong to the chosen kind are kept; the form may carry the others.
+    payload = {"note": supplied.get("note")}
+    if kind == "reschedule":
+        payload["session_id"] = supplied.get("session_id")
+    elif kind == "substitute":
+        payload["user_id"] = supplied.get("user_id")
     conn = orders._get_connection()
     cur = orders._dict_cursor(conn)
     try:
@@ -146,10 +220,17 @@ def request_change(ctx, order_id, kind, payload=None):
                 "success": True,
                 "pending": True,
                 "change_id": pending["id"],
-                "message": "Der ligger allerede en ændring til behandling.",
+                "message": (
+                    "Afbestillingen er allerede sendt til udbyderen og afventer svar. Din plads og budgettet er uændret."
+                    if kind == "cancel" and pending.get("kind") == "cancel"
+                    else "Der ligger allerede en ændring til behandling."
+                ),
             }
         if kind == "reschedule":
             import enrollment_service
+
+            if not str(payload.get("session_id") or "").strip():
+                return _error("Vælg det nye hold, før du sender ønsket.")
 
             payload["quote"] = enrollment_service.quote_course(
                 row["product_handle"], row.get("company_id"), session_id=payload.get("session_id")
@@ -191,11 +272,14 @@ def request_change(ctx, order_id, kind, payload=None):
                 title="Bookingændring afventer svar",
                 message="En ændring til ‘%s’ kræver bekræftelse. Budget og booking er uændrede indtil da." % row["product_title"],
                 kind="order_change",
-                action_url="/hr/order/%s/details" % order_id,
+                action_url="/hr/order/%s/details#aendring" % order_id,
                 dedupe_key="change:%s" % change_id,
                 dedupe_hours=None,
+                actor_user_id=ctx.user_id,
             )
-        change_notice(cur, row, change_id, "requested", "Et ændringsønske afventer svar. Den oprindelige booking gælder indtil accept.")
+        change_notice(cur, row, change_id, "requested", "Et ændringsønske afventer svar. Den oprindelige booking gælder indtil accept.",
+                      actor_user_id=ctx.user_id)
+        orders._record_history(cur, row, kind="change", from_value=kind, to_value="requested", ctx=ctx, note=payload["note"])
         conn.commit()
         return {
             "success": True,
@@ -203,7 +287,11 @@ def request_change(ctx, order_id, kind, payload=None):
             "change_id": change_id,
             "refunded": False,
             "status": lc.BOOKED,
-            "message": "Ændringsønsket er sendt. Den nuværende booking og budgetbinding gælder indtil bekræftelse.",
+            "message": (
+                "Afbestillingen er sendt til udbyderen. Din plads og budgettet er uændret, indtil den er accepteret."
+                if kind == "cancel"
+                else "Ændringsønsket er sendt. Den nuværende booking og budgetbinding gælder indtil bekræftelse."
+            ),
         }
     except ValueError as exc:
         conn.rollback()
@@ -216,7 +304,36 @@ def request_change(ctx, order_id, kind, payload=None):
         cur.close()
 
 
-def resolve_change(ctx, order_id, change_id, accept, *, note="", fee=0):
+def _rescheduled_booking(row, current, existing, *, new_reference="", new_start_at="", new_instructions=""):
+    """Booking after an accepted reschedule: the existing booking with only the new
+    session overlaid (date, place). Reference, instructions, join link and
+    cancellation terms survive; the vendor or HR may update reference, start
+    time and instructions explicitly. The old end time belonged to the old date."""
+    from calendar_service import parse_danish_date
+
+    existing = dict(existing or {})
+    start = str(new_start_at or "").strip()
+    if not start:
+        day = parse_danish_date(current.get("variant_date"))
+        start = day.isoformat() if day else ""
+    supplied = {
+        **existing,
+        "start_at": start,
+        "end_at": "",
+        "location": current.get("variant_location") or existing.get("location") or "",
+        "reference": str(new_reference or "").strip() or existing.get("reference") or "",
+        "instructions": str(new_instructions or "").strip() or existing.get("instructions") or "",
+    }
+    values = booking_values({**row, **current}, supplied)
+    if existing.get("confirmed_by_kind"):
+        values["confirmed_by_kind"] = existing["confirmed_by_kind"]
+    return values
+
+
+def resolve_change(ctx, order_id, change_id, accept, *, note="", fee=0, new_reference="", new_start_at="", new_instructions=""):
+    """Accept or reject a pending change. ``note`` is the decision (stored only in
+    ``course_order_changes.decision_note``); the optional ``new_*`` fields update
+    the booking on an accepted reschedule."""
     from enrollment_service import money
 
     conn = orders._get_connection()
@@ -244,6 +361,7 @@ def resolve_change(ctx, order_id, change_id, accept, *, note="", fee=0):
             return _error("Notér leverandørens bekræftelse eller aftalen med deltageren.")
         payload = json.loads(change["payload_json"])
         info = None
+        history_note = note
         if accept and change["kind"] == "cancel":
             retained = money(fee)
             if retained > money(row["price"]):
@@ -266,8 +384,18 @@ def resolve_change(ctx, order_id, change_id, accept, *, note="", fee=0):
             if money(current["price"]) != money(quote["price"]):
                 return _error("Prisen er ændret. Afvis ønsket, og indhent en ny bekræftelse.")
             orders._replace_order_terms(cur, ctx, row, current)
-            values = booking_values({**row, **current}, {"reference": note})
+            values = _rescheduled_booking(
+                row, current, details(cur, order_id).get("booking_json"),
+                new_reference=new_reference, new_start_at=new_start_at, new_instructions=new_instructions,
+            )
             _save_details(cur, row, values)
+            from order_timing import session_label
+
+            label = session_label(current["variant_date"], values["start_at"])
+            if label != row.get("variant_date"):
+                cur.execute("UPDATE course_orders SET variant_date=%s WHERE order_id=%s", (label, order_id))
+                row["variant_date"] = label
+            history_note = "Ny dato: %s. %s" % (label, note)
         elif accept and change["kind"] == "substitute":
             orders._replace_order_participant(cur, ctx, row, payload["participant"])
         cur.execute(
@@ -275,7 +403,7 @@ def resolve_change(ctx, order_id, change_id, accept, *, note="", fee=0):
             ("accepted" if accept else "rejected", note[:4000], ctx.actor_label or ctx.username, change_id),
         )
         orders._record_history(
-            cur, row, kind="change", from_value=change["kind"], to_value="accepted" if accept else "rejected", ctx=ctx, note=note
+            cur, row, kind="change", from_value=change["kind"], to_value="accepted" if accept else "rejected", ctx=ctx, note=history_note
         )
         change_notice(
             cur,
@@ -283,6 +411,7 @@ def resolve_change(ctx, order_id, change_id, accept, *, note="", fee=0):
             change_id,
             "accepted" if accept else "rejected",
             ("Ændringen er bekræftet: " if accept else "Ændringen er afvist: ") + note,
+            actor_user_id=ctx.user_id,
         )
         conn.commit()
         if info:
@@ -332,6 +461,11 @@ def report_completion(ctx, order_id, *, note="", evidence_url=""):
             return {"success": True, "unchanged": True, "status": lc.COMPLETED, "message": "Gennemførelsen er allerede bekræftet."}
         if row["status"] != lc.BOOKED:
             return _error("Kurset skal være booket, før du kan registrere deltagelse.")
+        from order_timing import not_yet_held_message
+
+        held_error = not_yet_held_message(row, details(cur, order_id).get("booking_json"))
+        if held_error:
+            return _error(held_error, "not_yet_held")
         if evidence_url and urlparse(evidence_url).scheme not in ("https", "http"):
             return _error("Dokumentationslinket skal starte med https:// eller http://.")
         _save_details(cur, row)
@@ -348,11 +482,12 @@ def report_completion(ctx, order_id, *, note="", evidence_url=""):
                 HR_ROLES,
                 title="Deltagelse afventer bekræftelse",
                 message="%s har meldt ‘%s’ gennemført. Bekræft deltagelse og kompetenceudbytte."
-                % (row.get("user_name") or row.get("username"), row["product_title"]),
+                % (orders._person_name(cur, row), row["product_title"]),
                 kind="attendance",
-                action_url="/hr/ordre/%s/udbytte" % order_id,
+                action_url="/hr/order/%s/details#deltagelse" % order_id,
                 dedupe_key="attendance:%s" % order_id,
                 dedupe_hours=None,
+                actor_user_id=ctx.user_id,
             )
         conn.commit()
         return {
@@ -424,13 +559,18 @@ def outcome_review(ctx, order_id, ratings, *, note=""):
         cur.close()
 
 
-def change_notice(cur, row, change_id, phase, message):
-    """A change is a distinct event, never deduped against the original booking."""
+def change_notice(cur, row, change_id, phase, message, actor_user_id=None):
+    """A change is a distinct event, never deduped against the original booking.
+
+    ``actor_user_id`` is who caused it: a learner who asks for a change is not told about
+    their own request (no card, no e-mail); the supplier and HR are."""
     from notification_service import notify_user
+
+    own_action = actor_user_id is not None and row.get("user_id") is not None and int(actor_user_id) == int(row["user_id"])
 
     title = "Nyt om bookingændring: " + row["product_title"]
     key = "booking-change:%s:%s" % (change_id, phase)
-    url = "/ordre/%s/booking" % row["order_id"]
+    url = "/min-ordre/%s#aendring" % row["order_id"]
     notify_user(
         cur,
         user_id=row.get("user_id"),
@@ -442,13 +582,14 @@ def change_notice(cur, row, change_id, phase, message):
         action_url=url,
         dedupe_key=key,
         dedupe_hours=None,
+        actor_user_id=actor_user_id,
     )
-    contacts = {row.get("user_email"): url} if row.get("user_email") else {}
+    contacts = {row.get("user_email"): url} if row.get("user_email") and not own_action else {}
     if row.get("vendor_id"):
         cur.execute("SELECT contact_email FROM vendors WHERE id=%s", (row["vendor_id"],))
         vendor = cur.fetchone() or {}
         if vendor.get("contact_email"):
-            contacts[vendor["contact_email"]] = "/vendor/orders/%s/booking" % row["order_id"]
+            contacts[vendor["contact_email"]] = "/vendor/orders/%s/booking#aendring" % row["order_id"]
     for email, link in contacts.items():
         orders._send_email_safe(
             email,
@@ -457,6 +598,7 @@ def change_notice(cur, row, change_id, phase, message):
             row.get("company_id"),
             cursor=cur,
             dedupe_key=key,
+            related_order_id=row.get("order_id"),
             heading=title,
             message=message + "\n" + orders._app_base_url() + link,
         )

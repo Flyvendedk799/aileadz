@@ -1,0 +1,53 @@
+{% set defaults = sections.book_defaults %}
+<form method="post" action="{{ sections.post_url }}" class="fm-card os-card" id="booking" data-section="book_form" data-ordered-day="{{ defaults.ordered_day }}">
+    <h2>Bekræft plads og praktiske oplysninger {% if not sections.vendor_mode %}<span class="fm-badge teal">Klar til booking</span>{% endif %}</h2>
+    {% if defaults.ordered_label %}
+        <p class="muted">Bestilt session: {{ defaults.ordered_label|dkdate(style='long') }}. Datoen er udfyldt fra bestillingen; ret klokkeslættet, hvis det er fastlagt.</p>
+    {% endif %}
+    <input type="hidden" name="action" value="book">
+    <label class="fm-field">
+        <span>Startdato og tidspunkt (dansk tid)</span>
+        <input class="fm-input" type="datetime-local" name="start_at" value="{{ defaults.start_at }}" required data-book-start>
+    </label>
+    <label class="fm-field">
+        <span>Sluttidspunkt (valgfrit)</span>
+        <input class="fm-input" type="datetime-local" name="end_at">
+    </label>
+    <label class="fm-field">
+        <span>Sted</span>
+        <input class="fm-input" name="location" value="{{ defaults.location }}">
+    </label>
+    <label class="fm-field">
+        <span>Mødelink (online)</span>
+        <input class="fm-input" type="url" name="join_url">
+    </label>
+    <label class="fm-field">
+        <span>Leverandørens bookingreference (hvis I har den)</span>
+        <input class="fm-input" name="reference" maxlength="255">
+    </label>
+    <label class="fm-field">
+        <span>Praktisk information</span>
+        <textarea class="fm-input" name="instructions" maxlength="4000"></textarea>
+    </label>
+    <label class="fm-field">
+        <span>Afbestillingsvilkår</span>
+        <textarea class="fm-input" name="cancellation_terms" maxlength="4000">{{ defaults.cancellation_terms }}</textarea>
+    </label>
+    {% if defaults.ordered_day %}
+        <label class="fm-field" data-date-differs>
+            <span><input type="checkbox" name="confirm_date_change" value="1"> Datoen afviger fra den bestilte session ({{ defaults.ordered_label|dkdate(style='long') }}). Sæt hak, hvis det er aftalt.</span>
+        </label>
+        <script>
+            (function () {
+                var form = document.currentScript.closest('form');
+                var start = form.querySelector('[data-book-start]');
+                var box = form.querySelector('[data-date-differs]');
+                var day = form.getAttribute('data-ordered-day');
+                function sync() { box.hidden = !start.value || start.value.slice(0, 10) === day; }
+                start.addEventListener('input', sync);
+                sync();
+            })();
+        </script>
+    {% endif %}
+    <button class="btn btn-primary">Bekræft booking</button>
+</form>

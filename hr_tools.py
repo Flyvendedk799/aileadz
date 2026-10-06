@@ -2799,10 +2799,23 @@ def _execute_assign_learning_path_to_team(args):
 
     # ── Confirmation gate: preview only without confirm. ──
     if not bool(args.get('confirm')):
+        cost_review = None
+        if path_id:
+            try:
+                import learning_path_service
+                review = learning_path_service.preview_path_assignment(cur, company_id, path_id, valid_ids)
+                cost_review = review and {
+                    "total_now": review["total_now"], "total_later_estimate": review["total_later"],
+                    "departments": [{"department": d["department"], "budget_before": d["before"], "budget_after": d["after"],
+                                     "over_budget": d["over"]} for d in review["departments"]],
+                }
+            except Exception as exc:
+                print(f"[HR_TOOLS][assign_path] cost review skipped: {exc}")
         cur.close()
         return json.dumps({
             "needs_confirmation": True,
             "action": "assign_learning_path",
+            "cost_review": cost_review,
             "confirmation_args": confirmation_args,
             "price_per_person": confirmation_args.get('expected_price'),
             "path_id": path_id,

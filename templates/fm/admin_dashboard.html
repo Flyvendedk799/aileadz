@@ -24,7 +24,7 @@
     <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-users"></i></span><div><div class="kl">Brugere i alt</div><div class="kv tnum">{{ total_users }}</div><div class="kd">{{ new_users_month }} nye denne måned · {{ total_admins }} admins</div></div></div>
     <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-building"></i></span><div><div class="kl">Virksomheder</div><div class="kv tnum">{{ total_companies }}</div><div class="kd">{{ active_users_7d }} aktive brugere (7d)</div></div></div>
     <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-receipt"></i></span><div><div class="kl">Ordrer</div><div class="kv tnum">{{ total_orders }}</div><div class="kd">{{ orders_this_month }} denne måned</div></div></div>
-    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Omsætning</div><div class="kv tnum">{{ "{:,.0f}".format(total_revenue).replace(",", ".") }} kr</div><div class="kd">{{ "{:,.0f}".format(revenue_this_month).replace(",", ".") }} kr denne måned · {{ "{:,.0f}".format(revenue_invoiced|default(0)).replace(",", ".") }} faktureret · {{ "{:,.0f}".format(revenue_paid|default(0)).replace(",", ".") }} betalt</div></div></div>
+    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Omsætning</div><div class="kv tnum">{{ total_revenue|dkmoney }}</div><div class="kd">{{ revenue_this_month|dkmoney }} denne måned · {{ revenue_invoiced|default(0)|dkmoney }} faktureret · {{ revenue_paid|default(0)|dkmoney }} betalt</div></div></div>
   </div>
 
   <div class="kpi-row" style="grid-template-columns:repeat(2,1fr)">
@@ -49,7 +49,7 @@
                 </td>
                 <td class="muted">{{ c.industry or '-' }}</td>
                 <td style="text-align:center">{{ c.employee_count or 0 }}</td>
-                <td style="text-align:right;font-weight:650">{{ "{:,.0f}".format(c.revenue or 0).replace(",", ".") }} kr</td>
+                <td style="text-align:right;font-weight:650">{{ (c.revenue or 0)|dkmoney }}</td>
                 <td style="text-align:center">
                   <span class="fm-badge {{ 'teal' if c.subscription_status == 'active' else 'amber' if c.subscription_status == 'trial' else '' }}">{{ c.subscription_status or 'trial' }}</span>
                   {% if c.custom_branding %}<span class="fm-badge indigo" title="Branding aktiv">WL</span>{% endif %}
@@ -86,7 +86,7 @@
               <div class="mt">{{ o.username }} · {{ o.company_name or 'Privat' }}</div>
             </div>
             <div class="adm-end">
-              <div style="font-weight:650">{{ o.price }} kr</div>
+              <div style="font-weight:650">{{ o.price|dkmoney }}</div>
               <span class="fm-badge {{ 'teal' if o.status == 'completed' else 'amber' if o.status in ('pending', 'pending_approval') else '' }}">{{ o.status }}</span>
             </div>
           </div>

@@ -3,6 +3,8 @@
 Routes (all on the ``futurematch`` blueprint, login required, owner only):
 
 * ``GET  /min-ordre/<order_id>``              status, history, vendor, date, actions
+* ``POST /min-ordre/<order_id>/handling``     every action of the order page (change request,
+                                              attendance report, resolving a supplier change)
 * ``POST /min-ordre/<order_id>/annuller``     cancel (budget refunded exactly once)
 * ``POST /min-ordre/<order_id>/gennemfoert``  "Markér som gennemført"
 * ``POST /min-ordre/<order_id>/kompetencer``  save the skills the learner accepted
@@ -20,6 +22,7 @@ from flask import (abort, current_app, flash, jsonify, redirect, render_template
                    request, Response, session, url_for)
 
 import order_lifecycle as lc
+import order_timing
 
 logger = logging.getLogger(__name__)
 
@@ -46,10 +49,6 @@ def _wants_json():
 
 def _can_cancel(status):
     return lc.normalize_status(status) in lc.OPEN_STATUSES
-
-
-def _can_complete(status):
-    return lc.normalize_status(status) == lc.BOOKED
 
 
 def register_learner_order_routes(bp):
@@ -80,33 +79,46 @@ def register_learner_order_routes(bp):
             vendor_name = (product or {}).get("vendor") or ""
         except Exception:
             pass
-        from order_fulfillment import details
-        conn = current_app.mysql.connection
-        import MySQLdb.cursors
-        detail_cur = conn.cursor(MySQLdb.cursors.DictCursor)
-        try:
-            fulfillment = details(detail_cur,order_id)
-            detail_cur.execute("SELECT * FROM course_order_changes WHERE order_id=%s ORDER BY created_at DESC",(order_id,))
-            changes = list(detail_cur.fetchall() or [])
-        finally:
-            detail_cur.close()
+        from fulfillment_routes import order_sections
+        sections = order_sections(_ctx(), row, post_url=url_for("futurematch.my_order_action", order_id=order_id))
+        fulfillment = sections["fulfillment"]
+        pending_change = sections["pending_change"]
+        reported = sections["completion_state"] == "reported"
         return render_template(
-            "fm/my_order.html", fulfillment=fulfillment, changes=changes,
+            "fm/my_order.html", fulfillment=fulfillment, sections=sections,
             order=row,
+            assignment=order_service.assignment_info(row),
             status=status,
             status_label=lc.status_label(status),
             status_hint=lc.STATUS_HINTS[status],
             status_tone=lc.STATUS_TONES[status],
             history=history,
             vendor_name=vendor_name,
-            can_cancel=_can_cancel(status),
-            can_complete=_can_complete(status),
+            can_cancel=status in (lc.PENDING_APPROVAL, lc.APPROVED) and not pending_change,
+            can_request_change=sections["show"]["change_request"],
+            pending_change=pending_change,
+            completion_reported=reported and status == lc.BOOKED,
             has_date=bool(row.get("variant_date")),
             moment=moment,
             just_completed=request.args.get("completed") == "1" and status == lc.COMPLETED,
             billing_label=lc.BILLING_LEARNER_LABELS[lc.normalize_billing(row.get("billing_status"))],
             status_labels=lc.STATUS_LABELS_SHORT,
         )
+
+    @bp.route("/min-ordre/<order_id>/handling", methods=["POST"])
+    def my_order_action(order_id):
+        """Every learner action of the order page (change request, attendance report,
+        resolving a supplier change) through the one shared action handler."""
+        if not session.get("user"):
+            flash("Log ind for at se din bestilling.", "danger")
+            return redirect(url_for("auth.login"))
+        row, actors, ctx = _load(order_id)
+        if not row or "owner" not in actors:
+            abort(404)
+        from fulfillment_routes import flash_result, perform_action
+        result, anchor = perform_action(ctx, order_id, request.form)
+        flash_result(result)
+        return redirect(url_for("futurematch.my_order", order_id=order_id) + ("#" + anchor if anchor else ""))
 
     @bp.route("/min-ordre/<order_id>/annuller", methods=["POST"])
     def my_order_cancel(order_id):
@@ -119,7 +131,8 @@ def register_learner_order_routes(bp):
             code = 200 if res.get("success") else (404 if res.get("error") == "not_found" else 400)
             return jsonify(res), code
         if res.get("success"):
-            flash(res.get("message") or "Din bestilling er annulleret.", "success")
+            # A request for a booked order is news, not a completed cancellation.
+            flash(res.get("message") or "Din bestilling er annulleret.", "info" if res.get("requested") else "success")
         else:
             flash(res.get("message") or "Bestillingen kunne ikke annulleres.", "danger")
         return redirect(url_for("futurematch.my_order", order_id=order_id))
@@ -129,7 +142,14 @@ def register_learner_order_routes(bp):
         if not session.get("user"):
             return jsonify({"success": False, "message": "Log ind først."}), 401
         from order_fulfillment import report_completion
-        res = report_completion(_ctx(), order_id, note=request.form.get('evidence_note',''), evidence_url=request.form.get('evidence_url',''))
+        note = (request.form.get('evidence_note') or (request.get_json(silent=True) or {}).get('evidence_note') or '').strip()
+        if not note:
+            msg = "Skriv kort, hvad du har gennemført, så HR kan bekræfte deltagelsen."
+            if _wants_json():
+                return jsonify({"success": False, "error": "note_required", "message": msg}), 400
+            flash(msg, "danger")
+            return redirect(url_for("futurematch.my_order", order_id=order_id))
+        res = report_completion(_ctx(), order_id, note=note, evidence_url=request.form.get('evidence_url',''))
         if _wants_json():
             code = 200 if res.get("success") else (404 if res.get("error") == "not_found" else 400)
             return jsonify(res), code
@@ -171,16 +191,20 @@ def register_learner_order_routes(bp):
             from calendar_service import build_ics_feed
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
             cur.execute(
-                """SELECT order_id, product_title, variant_date, variant_location, completion_deadline, status
-                   FROM course_orders
-                   WHERE (username = %s OR (user_id IS NOT NULL AND user_id = %s))
-                     AND status IN ('approved', 'booked')
-                   ORDER BY created_at DESC LIMIT 100""",
+                """SELECT co.order_id, co.product_title, co.variant_date, co.variant_location,
+                          co.completion_deadline, co.status, d.booking_json
+                   FROM course_orders co
+                   LEFT JOIN course_order_details d ON d.order_id = co.order_id
+                   WHERE (co.username = %s OR (co.user_id IS NOT NULL AND co.user_id = %s))
+                     AND co.status IN ('approved', 'booked')
+                   ORDER BY co.created_at DESC LIMIT 100""",
                 (session.get("user"), session.get("user_id")))
             for r in cur.fetchall() or []:
                 link = request.url_root.rstrip("/") + url_for("futurematch.my_order", order_id=r["order_id"])
-                if r.get("variant_date"):
-                    events.append({"title": "Kursus: %s" % r["product_title"], "start": r["variant_date"],
+                # The booked start (with time) wins over the human session label.
+                booked_start = order_timing.booking_start_text(r)
+                if booked_start or r.get("variant_date"):
+                    events.append({"title": "Kursus: %s" % r["product_title"], "start": booked_start or r["variant_date"],
                                    "location": r.get("variant_location") or "", "url": link,
                                    "uid": "kursus-%s@futurematch" % r["order_id"]})
                 elif r.get("completion_deadline"):

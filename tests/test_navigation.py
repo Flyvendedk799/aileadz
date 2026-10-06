@@ -72,7 +72,7 @@ class SidebarTests(unittest.TestCase):
         html = _html(company_role="hr_manager")
         self.assertIn("Min læring", html)            # every learner, managers included
         self.assertIn(">Virksomhed<", html)
-        self.assertIn("Godkendelser", html)
+        self.assertIn("Bestillinger", html)
         self.assertIn("HR-assistent", html)
         self.assertIn("/virksomhed/indstillinger", html)
         self.assertNotIn(">Admin<", html)

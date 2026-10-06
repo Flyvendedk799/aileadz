@@ -43,9 +43,9 @@
     <tr>
       <td style="font-weight:650"><div class="fm-flex fm-ac fm-gap8">{% if can('hr.budget.edit') %}<button type="button" class="fm-icon-btn" style="width:32px;height:32px;flex:none" title="Rediger budget" aria-label="Rediger budget for {{ b.department|e }}" onclick="editBudget(this.dataset.dept, {{ budget_val }})" data-dept="{{ b.department|e }}"><i class="fa-solid fa-pen"></i></button>{% endif %}<span>{{ b.department }}</span></div></td>
       <td>{{ b.employee_count or 0 }}</td>
-      <td class="mono">{{ '{:,.0f}'.format(budget_val).replace(',','.') }} kr</td>
-      <td class="mono">{{ '{:,.0f}'.format(spent_val).replace(',','.') }} kr</td>
-      <td class="mono" style="{{ 'color:var(--fm-danger);font-weight:700' if remaining < 0 else 'color:var(--fm-success)' }}">{{ '{:,.0f}'.format(remaining).replace(',','.') }} kr</td>
+      <td class="mono">{{ (budget_val)|dkmoney }}</td>
+      <td class="mono">{{ (spent_val)|dkmoney }}</td>
+      <td class="mono" style="{{ 'color:var(--fm-danger);font-weight:700' if remaining < 0 else 'color:var(--fm-success)' }}">{{ (remaining)|dkmoney }}</td>
       <td style="min-width:160px"><div class="fm-prog thin" style="margin-bottom:4px"><span style="width:{{ [util_pct,100]|min }}%;background:{{ barcol }}"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">{{ util_pct|dknum }}%</span></td>
     </tr>
     {% else %}

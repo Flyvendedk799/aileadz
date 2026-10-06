@@ -1,6 +1,6 @@
 {% extends "fm_base.html" %}
 {% block page_id %}company{% endblock %}
-{% block title %}Futurematch{% endblock %}
+{% block title %}Opret virksomhed · Futurematch{% endblock %}
 {% block topbar_title %}Opret virksomhed{% endblock %}
 {% block topbar_sub %}Onboard en ny tenant på Futurematch.{% endblock %}
 {% block extra_head %}
@@ -56,13 +56,13 @@
       <div class="step-section active" id="step-1">
         <div class="fm-card-head" style="padding:0 0 14px 0;border:0"><span class="fm-ch-icon"><i class="fa-solid fa-building"></i></span><h3>Virksomhedsoplysninger</h3></div>
         <div class="fm-field full">
-          <label>Virksomhedsnavn *</label>
+          <label for="company_name">Virksomhedsnavn *</label>
           <input type="text" class="fm-input" name="company_name" id="company_name" required placeholder="F.eks. Acme Danmark A/S">
           <div class="validation-hint" id="company_name_hint"></div>
         </div>
         <div class="form-row2">
           <div class="fm-field">
-            <label>Branche</label>
+            <label for="industry">Branche</label>
             <select class="fm-select" name="industry" id="industry" onchange="toggleCustomIndustry(this)">
               <option value="">Vælg branche</option>
               <option value="technology">IT & Teknologi</option>
@@ -79,10 +79,10 @@
               <option value="media">Medier & Kommunikation</option>
               <option value="other">Andet</option>
             </select>
-            <input type="text" class="fm-input" name="industry_custom" id="industry_custom" placeholder="Skriv jeres branche..." style="display:none;margin-top:8px;">
+            <input type="text" class="fm-input" name="industry_custom" id="industry_custom" aria-label="Jeres branche" placeholder="Skriv jeres branche..." style="display:none;margin-top:8px;">
           </div>
           <div class="fm-field">
-            <label>Antal medarbejdere</label>
+            <label for="company_size">Antal medarbejdere</label>
             <select class="fm-select" name="company_size" id="company_size">
               <option value="1-10">1-10</option>
               <option value="11-50" selected>11-50</option>
@@ -95,12 +95,12 @@
         </div>
         <div class="form-row2">
           <div class="fm-field">
-            <label>By</label>
-            <input type="text" class="fm-input" name="city" placeholder="F.eks. København">
+            <label for="f-city">By</label>
+            <input id="f-city" type="text" class="fm-input" name="city" placeholder="F.eks. København">
           </div>
           <div class="fm-field">
-            <label>Virksomhedsdomæne</label>
-            <input type="text" class="fm-input" name="company_domain" placeholder="firma.dk">
+            <label for="f-company_domain">Virksomhedsdomæne</label>
+            <input id="f-company_domain" type="text" class="fm-input" name="company_domain" placeholder="firma.dk">
             <div class="validation-hint">Bruges til at matche medarbejdere automatisk</div>
           </div>
         </div>
@@ -125,29 +125,29 @@
         <div class="hr-fields active" id="fields-new">
           <div class="form-row2">
             <div class="fm-field">
-              <label>Fulde navn *</label>
+              <label for="hr_name">Fulde navn *</label>
               <input type="text" class="fm-input" name="hr_name" id="hr_name" placeholder="Fulde navn">
             </div>
             <div class="fm-field">
-              <label>Brugernavn *</label>
+              <label for="hr_username">Brugernavn *</label>
               <input type="text" class="fm-input" name="hr_username" id="hr_username" placeholder="Brugernavn">
               <div class="validation-hint">Bruges til login</div>
             </div>
           </div>
           <div class="form-row2">
             <div class="fm-field">
-              <label>E-mail *</label>
+              <label for="hr_email">E-mail *</label>
               <input type="email" class="fm-input" name="hr_email" id="hr_email" placeholder="mette@firma.dk">
               <div class="validation-hint" id="email_hint"></div>
             </div>
             <div class="fm-field">
-              <label>Jobtitel</label>
+              <label for="job_title">Jobtitel</label>
               <input type="text" class="fm-input" name="job_title" id="job_title" placeholder="F.eks. HR-chef">
             </div>
           </div>
           <div class="form-row2">
             <div class="fm-field">
-              <label>Adgangskode <span style="font-weight:400;color:var(--fm-ink-3)">(valgfri)</span></label>
+              <label for="hr_password_field">Adgangskode <span style="font-weight:400;color:var(--fm-ink-3)">(valgfri)</span></label>
               <div class="reg-input">
                 <input type="text" class="fm-input" name="hr_password" id="hr_password_field">
                 <button type="button" class="btn btn-ghost" onclick="generateHRPassword()"><i class="fa-solid fa-dice"></i></button>
@@ -155,8 +155,8 @@
               <div class="validation-hint">Lad feltet stå tomt, så får kontaktpersonen en invitation på e-mail og vælger selv sin adgangskode (anbefalet).</div>
             </div>
             <div class="fm-field">
-              <label>Telefon</label>
-              <input type="tel" class="fm-input" name="hr_phone" placeholder="+45 12 34 56 78">
+              <label for="f-hr_phone">Telefon</label>
+              <input id="f-hr_phone" type="tel" class="fm-input" name="hr_phone" placeholder="+45 12 34 56 78">
             </div>
           </div>
         </div>
@@ -168,7 +168,7 @@
 
         <div class="hr-fields" id="fields-existing">
           <div class="fm-field" style="position:relative">
-            <label>Søg bruger *</label>
+            <label for="user_search">Søg bruger *</label>
             <input type="text" class="fm-input" id="user_search" placeholder="Skriv navn eller e-mail..." autocomplete="off">
             <input type="hidden" name="existing_user_id" id="existing_user_id">
             <div class="search-results" id="searchResults" style="display:none;"></div>

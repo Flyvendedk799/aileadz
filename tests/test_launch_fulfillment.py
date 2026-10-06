@@ -29,6 +29,30 @@ class FulfillmentLaunchTests(OrderFlowBase):
         self.assertEqual(result["change_id"], second["change_id"])
         self.assertEqual(len(self.db.query("SELECT * FROM course_order_changes")), 1)
 
+    def test_cancel_order_on_a_booked_order_reports_a_request_not_a_cancellation(self):
+        oid = self.booked()
+        for ctx in (self.learner(), self.hr()):
+            result = orders.cancel_order(ctx, oid, reason="Kan ikke deltage")
+            self.assertTrue(result["success"])
+            self.assertTrue(result["requested"])
+            self.assertFalse(result["already_cancelled"])
+            self.assertIn("Afbestillingen er", result["message"])
+            self.assertIn("sendt til udbyderen", result["message"])
+            self.assertNotIn("annulleret", result["message"].lower())
+        self.assertEqual(self.order(oid)["status"], "booked")
+        self.assertEqual(self.spent(), 2500)
+
+    def test_cancel_order_on_an_unbooked_order_still_cancels_and_refunds(self):
+        oid = self.create()["order_id"]
+        self.assertTrue(orders.set_status(self.hr(), oid, "approved")["success"])
+        self.assertEqual(self.spent(), 2500)
+        result = orders.cancel_order(self.learner(), oid)
+        self.assertTrue(result["success"])
+        self.assertFalse(result["requested"])
+        self.assertEqual(result["message"], "Ordren er annulleret.")
+        self.assertEqual(self.order(oid)["status"], "cancelled")
+        self.assertEqual(self.spent(), 0)
+
     def test_accepted_cancellation_retains_only_agreed_fee_and_is_idempotent(self):
         oid = self.booked()
         change = fulfillment.request_change(self.learner(), oid, "cancel", {"note": "Afbestilling"})
@@ -101,6 +125,76 @@ class FulfillmentLaunchTests(OrderFlowBase):
             self.assertTrue(fulfillment.resolve_change(self.hr(), oid, change["change_id"], True, note="Bekræftet")["success"])
         self.assertEqual(self.spent(), 3000)
         self.assertEqual(self.order(oid)["variant_date"], "2099-01-01")
+
+    def test_booking_keeps_variant_date_human_and_never_writes_iso(self):
+        oid = self.create(variant_date="3. december 2026")["order_id"]
+        self.assertTrue(orders.set_status(self.hr(), oid, "approved")["success"])
+        self.assertTrue(orders.book_order(self.hr(), oid, booking={
+            "reference": "TI-1", "start_at": "2026-12-03T09:00", "location": "Kontoret"})["success"])
+        self.assertEqual(self.order(oid)["variant_date"], "3. december 2026")
+        oid2 = self.create(handle="itil", variant_date="3. december 2026")["order_id"]
+        self.assertTrue(orders.set_status(self.hr(), oid2, "approved")["success"])
+        self.assertTrue(orders.book_order(self.hr(), oid2, booking={
+            "reference": "TI-2", "start_at": "2026-12-04T09:00:00+01:00", "location": "Kontoret", "confirm_date_change": "1"})["success"])
+        self.assertEqual(self.order(oid2)["variant_date"], "4. december 2026")
+
+    def test_iso_variant_dates_are_migrated_once(self):
+        import schema_registry
+        self.db.execute("UPDATE course_orders SET variant_date='2026-12-03T09:00:00+01:00' WHERE order_id=%s",
+                        (self.create(variant_date="x")["order_id"],))
+        self.create(handle="itil", variant_date="3. december 2026")
+        cur = self.db.connection.cursor()
+        self.assertEqual(schema_registry.migrate_iso_variant_dates(cur), 1)
+        self.assertEqual(schema_registry.migrate_iso_variant_dates(cur), 0)
+        dates = sorted(r["variant_date"] for r in self.db.query("SELECT variant_date FROM course_orders"))
+        self.assertEqual(dates, ["3. december 2026", "3. december 2026"])
+
+    def test_accepted_reschedule_keeps_the_booking_and_lists_the_change_in_history(self):
+        import json
+        oid = self.create(variant_date="3. december 2026")["order_id"]
+        self.assertTrue(orders.set_status(self.hr(), oid, "approved")["success"])
+        self.assertTrue(orders.book_order(self.hr(), oid, booking={
+            "reference": "TI-48213", "start_at": "2026-12-03T09:00", "end_at": "2026-12-03T16:00",
+            "location": "Kontoret", "join_url": "https://meet.example/abc",
+            "instructions": "Medbring laptop", "cancellation_terms": "Gratis til 14 dage før"})["success"])
+        quote = {"price": 2500, "session_id": "s2", "variant_date": "12. november 2026", "variant_location": "Odense"}
+        with mock.patch.object(enrollment_service, "quote_course", return_value=quote):
+            change = fulfillment.request_change(self.learner(), oid, "reschedule", {"session_id": "s2", "note": "Passer bedre"})
+            result = fulfillment.resolve_change(self.hr(), oid, change["change_id"], True,
+                                                note="Det er i orden - du er flyttet til 12. november.")
+        self.assertTrue(result["success"], result)
+        with self.app.app_context():
+            booking = json.loads(self.db.one("SELECT booking_json FROM course_order_details WHERE order_id=%s", (oid,))["booking_json"])
+        self.assertEqual(booking["reference"], "TI-48213")
+        self.assertEqual(booking["instructions"], "Medbring laptop")
+        self.assertEqual(booking["join_url"], "https://meet.example/abc")
+        self.assertEqual(booking["cancellation_terms"], "Gratis til 14 dage før")
+        self.assertEqual(booking["location"], "Odense")
+        self.assertTrue(booking["start_at"].startswith("2026-11-12"))
+        self.assertEqual(booking["end_at"], "")
+        self.assertEqual(self.order(oid)["variant_date"], "12. november 2026")
+        decision = self.db.one("SELECT decision_note FROM course_order_changes")["decision_note"]
+        self.assertIn("du er flyttet", decision)
+        history = [h for h in orders.get_history(self.learner(), oid) if h["kind"] == "change"]
+        self.assertEqual([(h["from_value"], h["to_value"]) for h in history],
+                         [("reschedule", "requested"), ("reschedule", "accepted")])
+        self.assertIn("12. november 2026", history[-1]["note"])
+        import order_lifecycle as lc
+        self.assertEqual(lc.change_label("reschedule", "accepted"), "Ombooking accepteret")
+
+    def test_reschedule_form_fields_may_update_reference_start_and_instructions(self):
+        import json
+        oid = self.booked()
+        quote = {"price": 2500, "session_id": "s2", "variant_date": "12. november 2026", "variant_location": "Odense"}
+        with mock.patch.object(enrollment_service, "quote_course", return_value=quote):
+            change = fulfillment.request_change(self.learner(), oid, "reschedule", {"session_id": "s2"})
+            self.assertTrue(fulfillment.resolve_change(
+                self.hr(), oid, change["change_id"], True, note="OK", new_reference="TI-99",
+                new_start_at="2026-11-12T10:30", new_instructions="Ny sal")["success"])
+        booking = json.loads(self.db.one("SELECT booking_json FROM course_order_details WHERE order_id=%s", (oid,))["booking_json"])
+        self.assertEqual((booking["reference"], booking["instructions"]), ("TI-99", "Ny sal"))
+        self.assertTrue(booking["start_at"].startswith("2026-11-12T10:30"))
+        self.assertEqual(self.order(oid)["variant_date"], "12. november 2026")
 
     def test_verified_course_finishes_matching_personal_plan_step(self):
         self.db.execute(

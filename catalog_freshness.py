@@ -142,6 +142,11 @@ def _parse_explicit_dates(text):
     return found
 
 
+def parse_explicit_dates(text):
+    """Public name for the explicit-year date parser (used by the public dashboard)."""
+    return _parse_explicit_dates(text)
+
+
 def _latest_session_date(product):
     """Latest explicit-year session date for a normalized catalog product.
 

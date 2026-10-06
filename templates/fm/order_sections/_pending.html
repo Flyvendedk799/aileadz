@@ -1,0 +1,8 @@
+{# Pending orders: say what happens next instead of showing a dead end. #}
+<section class="fm-card os-card" id="afventer-godkendelse" data-section="pending">
+    <h2>Afventer godkendelse</h2>
+    <p>Afventer godkendelse &ndash; booking kan først ske, når bestillingen er godkendt.</p>
+    {% if sections.approval_url %}
+        <a class="btn btn-primary btn-sm" href="{{ sections.approval_url }}">Gå til godkendelser</a>
+    {% endif %}
+</section>

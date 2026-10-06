@@ -1,32 +1,115 @@
 {% extends "fm_base.html" %}
+{% from 'fm/_admin_list.html' import pager %}
 {% block title %}Mail og leveringer{% endblock %}
 {% block topbar_title %}Mail og leveringer{% endblock %}
+{% block topbar_sub %}Hvilke mails systemet har sendt eller venter på at sende.{% endblock %}
+{% block extra_head %}
+<style>
+  .mail-filter { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+  .mail-field { display: flex; flex-direction: column; gap: 6px; min-width: 170px; }
+  .mail-field.grow { flex: 1; min-width: 220px; max-width: 380px; }
+  .mail-time { white-space: nowrap; font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--fm-ink-2); }
+  .mail-subject { font-weight: 600; }
+  .mail-err { margin-top: 4px; font-size: 12.5px; color: var(--fm-danger); }
+  .mail-actions-slot { display: flex; gap: 8px; align-items: center; }
+  @media (max-width: 720px) { .mail-field, .mail-field.grow { min-width: 0; width: 100%; max-width: none; } .mail-filter { flex-direction: column; align-items: stretch; } }
+</style>
+{% endblock %}
 {% block content %}
+{% set _tone = {'pending': 'grey', 'sending': 'teal', 'sent': 'green', 'failed': 'red', 'uncertain': 'amber', 'skipped': 'grey'} %}
+{% set _label = {'pending': 'I kø', 'sending': 'Afsender', 'sent': 'Afsendt', 'failed': 'Kræver handling', 'uncertain': 'Ukendt modtagelse', 'skipped': 'Fravalgt af modtager'} %}
     <div class="fm-wrap">
+        {% if can('company.employees') %}{% set active_hr_page = 'mail' %}{% include 'fm/_hr_subnav.html' %}{% else %}{% set active_admin_page = 'mail' %}{% include 'fm/_admin_subnav.html' %}{% endif %}
         <h1>Mail og leveringer</h1>
         <p>“Afsendt” betyder accepteret af mailserveren. Det garanterer ikke, at mailen er læst eller landet i indbakken.</p>
-        {% for d in deliveries %}
-            <article class="fm-card" style="padding:18px;margin-bottom:12px">
-                <h2>{{ d.subject }}</h2>
-                <p>{{ d.to_email }} · {{ {'pending':'I kø','sending':'Afsender','sent':'Afsendt','failed':'Kræver handling','uncertain':'Ukendt modtagelse','skipped':'Fravalgt af modtager'}.get(d.state,d.state) }} · {{ d.attempts }} forsøg</p>
-                {% if d.last_error %}
-                    <p role="status">{{ d.last_error }}</p>
-                {% endif %}
-                {% if d.state in ("pending","failed","uncertain") %}
+
+        {% if stale_since %}
+        <div class="callout warn" role="status" style="margin:14px 0" id="mail-stale-banner">
+            <span class="ci"><i class="fa-solid fa-triangle-exclamation"></i></span>
+            <div>
+                <strong>Mails venter på at blive sendt.</strong>
+                Det kan skyldes, at mailopsætningen eller baggrundsjobbet mangler. Den ældste mail har ventet siden {{ stale_since|dkdate(with_time=True) }}.
+                {% if is_platform_admin %}<a href="{{ url_for('admin_dashboard.admin_system_health') }}">Se systemstatus</a>{% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {# Filters are GET parameters; the layout keeps a slot (mail-actions-slot) for bulk actions such as "Prøv alle fejlede igen". #}
+        <div class="fm-spread" style="align-items:flex-end;flex-wrap:wrap">
+        <form class="mail-filter" method="get" action="{{ url_for('mail_delivery.deliveries') }}">
+            <div class="mail-field">
+                <label class="fm-eyebrow" for="mail-state">Status</label>
+                <select id="mail-state" name="state" class="fm-select" onchange="this.form.submit()">
+                    <option value="" {{ 'selected' if not filters.state }}>Alle</option>
+                    {% for key in ['pending', 'sending', 'sent', 'failed', 'uncertain', 'skipped'] %}
+                    <option value="{{ key }}" {{ 'selected' if filters.state == key }}>{{ _label[key] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="mail-field">
+                <label class="fm-eyebrow" for="mail-period">Periode</label>
+                <select id="mail-period" name="period" class="fm-select" onchange="this.form.submit()">
+                    <option value="" {{ 'selected' if not filters.period }}>Hele perioden</option>
+                    <option value="7" {{ 'selected' if filters.period == '7' }}>Seneste 7 dage</option>
+                    <option value="30" {{ 'selected' if filters.period == '30' }}>Seneste 30 dage</option>
+                </select>
+            </div>
+            <div class="mail-field grow">
+                <label class="fm-eyebrow" for="mail-q">Søg</label>
+                <input id="mail-q" name="q" type="search" class="fm-input" value="{{ filters.q }}" placeholder="Modtager eller emne">
+            </div>
+            <button class="btn btn-soft" type="submit">Søg</button>
+            {% if has_filters %}<a class="btn btn-ghost" href="{{ url_for('mail_delivery.deliveries') }}">Ryd filtre</a>{% endif %}
+        </form>
+        <div class="mail-actions-slot" id="mail-actions"></div>
+        </div>
+
+        {% if deliveries %}
+        <div class="fm-table-wrap">
+        <table class="fm-table">
+            <thead><tr><th>Oprettet</th><th>Sendt</th><th>Mail</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+            {% for d in deliveries %}
+            <tr>
+                <td class="mail-time">{{ d.created_at|dkdate(with_time=True) }}</td>
+                <td class="mail-time">{{ d.sent_at|dkdate(with_time=True) if d.sent_at else '–' }}</td>
+                <td>
+                    <div class="mail-subject">{{ d.subject }}</div>
+                    <div class="muted">{{ d.to_email }}{% if is_platform_admin and d.company_id %} · virksomhed {{ d.company_id }}{% endif %}</div>
+                    {% if d.last_error %}<div class="mail-err" role="status">{{ d.last_error }}</div>{% endif %}
+                    {% if d.order_url %}<div><a href="{{ d.order_url }}">Åbn bestilling</a></div>{% endif %}
+                </td>
+                <td>
+                    <span class="status-pill {{ _tone.get(d.state, 'grey') }}">{{ _label.get(d.state, d.state) }}</span>
+                    <div class="muted" style="margin-top:4px;font-size:12px">
+                        {% if d.state == 'pending' %}I kø siden {{ d.created_at|dkdate(with_time=True) }} · {{ d.attempts }} forsøg
+                        {% else %}{{ d.attempts }} forsøg{% endif %}
+                    </div>
+                </td>
+                <td>
+                    {% if d.state in ("failed", "uncertain") %}
                     <form method="post">
                         <input type="hidden" name="delivery_id" value="{{ d.id }}">
                         {% if d.state == "uncertain" %}
-                            <label>
-                                <input type="checkbox" name="confirm_uncertain" value="yes" required>
-                                Jeg har kontrolleret modtagelsen og accepterer risikoen for en dublet.
-                            </label>
+                        <label style="display:block;font-size:12.5px;margin-bottom:6px">
+                            <input type="checkbox" name="confirm_uncertain" value="yes" required>
+                            Jeg har kontrolleret modtagelsen og accepterer risikoen for en dublet.
+                        </label>
                         {% endif %}
-                        <button class="btn btn-ghost">Prøv afsendelse igen</button>
+                        <button class="btn btn-ghost btn-sm">Prøv afsendelse igen</button>
                     </form>
-                {% endif %}
-            </article>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {{ pager(pg, 'mails') }}
+        {% elif has_filters %}
+        <p>Ingen mails matcher filtrene. <a href="{{ url_for('mail_delivery.deliveries') }}">Ryd filtre</a></p>
         {% else %}
-            <p>Ingen mails i leveringskøen endnu.</p>
-        {% endfor %}
+        <p>Ingen mails i leveringskøen endnu.</p>
+        {% endif %}
     </div>
 {% endblock %}

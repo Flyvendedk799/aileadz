@@ -36,6 +36,7 @@ def enqueue(
     cursor=None,
     report_schedule_id=None,
     delivery_group=None,
+    related_order_id=None,
     **context,
 ):
     if not to_email:
@@ -54,7 +55,7 @@ def enqueue(
     cur = cursor or _cur()
     try:
         cur.execute(
-            "INSERT IGNORE INTO mail_outbox (id,company_id,to_email,subject,payload_json,dedupe_key,report_schedule_id,delivery_group,available_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            "INSERT IGNORE INTO mail_outbox (id,company_id,to_email,subject,payload_json,dedupe_key,report_schedule_id,delivery_group,order_id,available_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (
                 str(uuid.uuid4()),
                 company_id,
@@ -64,6 +65,7 @@ def enqueue(
                 key,
                 report_schedule_id,
                 delivery_group,
+                str(related_order_id)[:50] if related_order_id else None,
                 datetime.datetime.now(),
             ),
         )
@@ -209,7 +211,7 @@ def retry(ctx, delivery_id, *, confirm_uncertain=False):
             return False
         if row["state"] == "uncertain" and not confirm_uncertain:
             return False
-        if row["state"] not in ("failed", "uncertain", "pending"):
+        if row["state"] not in ("failed", "uncertain"):
             return False
         cur.execute(
             "UPDATE mail_outbox SET state='pending',attempts=0,last_error=NULL,locked_until=NULL,claim_id=NULL,available_at=%s WHERE id=%s",

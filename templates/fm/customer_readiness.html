@@ -1,19 +1,16 @@
 {% extends "fm_base.html" %}
-{% block title %}Kom godt i gang{% endblock %}
-{% block topbar_title %}Jeres vej fra opsætning til kursusudbytte{% endblock %}
+{% from 'fm/_checklist.html' import checklist %}
+{% block title %}Kom i gang{% endblock %}
+{% block topbar_title %}Kom i gang{% endblock %}
+{% block topbar_sub %}Jeres vej fra opsætning til kursusudbytte.{% endblock %}
 {% block content %}
     <div class="fm-wrap">
-        <h1>{{ company.company_name }}: {{ readiness.complete }} af {{ readiness.total }} punkter dokumenteret</h1>
+        {% set active_hr_page = 'onboarding' %}{% include 'fm/_hr_subnav.html' %}
+        <h1>Kom i gang</h1>
         <p>De første punkter handler om opsætning. De sidste beviser, at en rigtig medarbejderrejse er gennemført. En markering kan ikke erstatte en booking eller en afsendt meddelelse.</p>
         <a class="btn btn-ghost"
            href="{{ url_for('customer_success.account') }}">Kontakt og pilotmål</a>
-        {% for c in readiness.checks %}
-            <article class="fm-card" style="padding:20px;margin:12px 0">
-                <h2>{{ '✓' if c.done else '○' }} {{ c.label }}</h2>
-                <p>{{ c.detail }}</p>
-                <a class="btn btn-ghost" href="{{ c.url }}">Åbn arbejdsområdet</a>
-            </article>
-        {% endfor %}
+        {{ checklist(readiness.checks, readiness.complete, readiness.total) }}
         <section class="fm-card" style="padding:20px">
             <h2>Dokumentér en gennemgang</h2>
             <p>Skriv hvad der er aftalt. Brug ikke markeringen som erstatning for at konfigurere afdelinger, ledere eller budgetter.</p>

@@ -45,7 +45,7 @@
     <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-layer-group"></i></span><div><div class="kl">Samtaledybde</div><div class="kv tnum">{{ avg_conversation_length }}</div><div class="kd">Beskeder pr. samtale</div></div></div>
     <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-gauge-high"></i></span><div><div class="kl">Responstid</div><div class="kv tnum">{{ avg_chatbot_response_time }}ms</div><div class="kd">Gns. svartid</div></div></div>
     <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-bullseye"></i></span><div><div class="kl">Conversion</div><div class="kv tnum">{{ conversion_rate }}%</div><div class="kd">Samtaler til ordrer</div></div></div>
-    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Omsætning</div><div class="kv tnum">{{ total_revenue|round|int }} kr</div><div class="kd">Betalte/gennemførte</div></div></div>
+    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Omsætning</div><div class="kv tnum">{{ total_revenue|dkmoney }}</div><div class="kd">Betalte/gennemførte</div></div></div>
   </div>
   <div class="kpi-row" style="grid-template-columns:repeat(5,1fr);margin-top:14px">
     <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-box-open"></i></span><div><div class="kl">Afventer</div><div class="kv tnum">{{ pending_orders_count }}</div><div class="kd">Ordrer i behandling</div></div></div>
@@ -62,9 +62,9 @@
 
   {# --- AI-ROI attribution: revenue driven by the AI adviser (seneste 90 dage) --- #}
   <div class="kpi-row" style="grid-template-columns:repeat(3,1fr);margin-top:14px">
-    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-robot"></i></span><div><div class="kl">DKK omsat tilskrevet AI-rådgiveren</div><div class="kv tnum">{{ ai_attributed_revenue|round|int }} kr</div><div class="kd">Ordrer anbefalet af AI (90 d)</div></div></div>
+    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-robot"></i></span><div><div class="kl">DKK omsat tilskrevet AI-rådgiveren</div><div class="kv tnum">{{ ai_attributed_revenue|dkmoney }}</div><div class="kd">Ordrer anbefalet af AI (90 d)</div></div></div>
     <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-cart-shopping"></i></span><div><div class="kl">AI-tilskrevne ordrer</div><div class="kv tnum">{{ ai_attributed_orders }}</div><div class="kd">Ordrer med AI-anbefaling</div></div></div>
-    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Gns. ordreværdi (AI)</div><div class="kv tnum">{{ ai_attributed_aov|round|int }} kr</div><div class="kd">Pr. AI-tilskreven ordre</div></div></div>
+    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Gns. ordreværdi (AI)</div><div class="kv tnum">{{ ai_attributed_aov|dkmoney }}</div><div class="kd">Pr. AI-tilskreven ordre</div></div></div>
   </div>
 
   {# --- Live KPI tiles (poller, opdateres hvert 60. sekund) --- #}
@@ -145,7 +145,7 @@
           <tr>
             <td>{{ order.order_id_short }}</td>
             <td>{{ order.product_title }}</td>
-            <td>{{ order.price }} kr</td>
+            <td>{{ order.price|dkmoney }}</td>
             <td><span class="st-badge {{ order.status }}">{{ order.status }}</span></td>
             <td>{{ order.created_at }}</td>
             <td>{{ order.user_email }}</td>

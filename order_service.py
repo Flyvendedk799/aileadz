@@ -50,7 +50,7 @@ def _emit_event_safe(company_id, event_type, payload):
 
 
 def _send_email_safe(to_email, subject, template_name, company_id,
-                     dedupe_key=None, cursor=None, **context):
+                     dedupe_key=None, cursor=None, related_order_id=None, **context):
     """Stage durable business mail. Transactional staging errors abort the write."""
     if not to_email:
         return
@@ -61,7 +61,8 @@ def _send_email_safe(to_email, subject, template_name, company_id,
         key = dedupe_key or ('order:%s:%s:%s' % (context.get('order_id'),template_name,context.get('decision','')) if context.get('order_id') else None)
         if key and key.startswith('budget_overrun_alert:'):
             key += ':' + datetime.date.today().isoformat()
-        enqueue(to_email,subject,template_name,branding,company_id=company_id,dedupe_key=key,cursor=cursor,**context)
+        enqueue(to_email,subject,template_name,branding,company_id=company_id,dedupe_key=key,cursor=cursor,
+                related_order_id=related_order_id or context.get('order_id'),**context)
     except Exception as e:  # pragma: no cover - defensive
         logger.debug("order_service: email(%s) skipped: %s", template_name, e)
         if cursor is not None:
@@ -207,6 +208,62 @@ def _send_budget_overrun_emails_safe(company_id, *, department, spent,
         logger.debug("order_service: budget-overrun email skipped: %s", e)
 
 
+def _person_name(cur, row):
+    """The name to show for the learner of an order row: full name, else the order's own
+    ``user_name``, else the username. Never raises."""
+    from person_names import display_name
+    username = (row.get("username") or "").strip()
+    name = display_name(cur, _int_or_none(row.get("company_id")), user_id=_int_or_none(row.get("user_id")),
+                        username=username or None)
+    if (not name or name == username) and (row.get("user_name") or "").strip():
+        return row["user_name"].strip()
+    return name or username
+
+
+def _approval_recipients(cur, company_id, requester_user_id, department):
+    """Who is told in-app that an order awaits approval: HR/company admins, the requester's
+    own manager and the head of the requester's department. One entry per person."""
+    from notification_service import role_recipients, HR_ROLES
+    people = {}
+    for r in role_recipients(cur, company_id, HR_ROLES):
+        people[_int_or_none(r.get("user_id"))] = r
+    try:
+        cur.execute(
+            "SELECT cu.user_id AS user_id, COALESCE(u.username, cu.username) AS username "
+            "FROM company_users cu LEFT JOIN users u ON u.id = cu.user_id "
+            "WHERE cu.company_id = %s AND cu.status = 'active' AND ("
+            " cu.user_id = (SELECT m.manager_user_id FROM company_users m WHERE m.company_id = %s AND m.user_id = %s LIMIT 1)"
+            " OR (cu.role = 'department_head' AND cu.department = %s AND cu.department <> ''))",
+            (company_id, company_id, requester_user_id, department or ""),
+        )
+        for r in cur.fetchall() or []:
+            uid = _int_or_none(r.get("user_id") if isinstance(r, dict) else r[0])
+            if uid is not None and uid not in people:
+                people[uid] = {"user_id": uid, "username": r.get("username") if isinstance(r, dict) else r[1]}
+    except Exception as e:
+        propagate_transaction_abort(e)
+        logger.debug("order_service: manager recipients skipped: %s", e)
+    return [r for r in people.values() if r.get("username")]
+
+
+def _notify_approvers_safe(cur, company_id, requester_user_id, department, title, message, *,
+                           action_url=None, dedupe_key=None):
+    """Urgent in-app card for everyone who can decide this approval (see ``_approval_recipients``);
+    nobody gets it twice and the requester never gets it about their own order. Never raises."""
+    if not company_id:
+        return
+    try:
+        from notification_service import notify_user
+        for r in _approval_recipients(cur, company_id, requester_user_id, department):
+            notify_user(cur, title=str(title)[:255], message=str(message), username=r["username"],
+                        user_id=r.get("user_id"), company_id=company_id, kind="order", is_urgent=True,
+                        action_url=action_url, dedupe_key=dedupe_key, dedupe_hours=24 if dedupe_key else None,
+                        actor_user_id=requester_user_id)
+    except Exception as e:  # pragma: no cover - defensive
+        propagate_transaction_abort(e)
+        logger.debug("order_service: approver notification skipped: %s", e)
+
+
 def _notify_company_admins_safe(cur, company_id, title, message, is_urgent=0,
                                 action_url=None, dedupe_key=None):
     """In-app card for the company's HR/admins. Never raises.
@@ -228,6 +285,26 @@ def _notify_company_admins_safe(cur, company_id, title, message, is_urgent=0,
     except Exception as e:  # pragma: no cover - defensive
         propagate_transaction_abort(e)
         logger.debug("order_service: company notification skipped: %s", e)
+
+
+def _notify_assignee_safe(cur, ctx, actor_ctx, order_id, product_title, assigner_name, *, approved):
+    """The one in-app card the learner gets for an assigned course. Never raises."""
+    try:
+        from notification_service import notify_user
+        notify_user(
+            cur, user_id=ctx.user_id, username=ctx.username, company_id=ctx.company_id,
+            kind="assignment", sender_user_id=actor_ctx.user_id,
+            title=("Du er tildelt %s" % product_title)[:255],
+            message=("%s har tildelt dig kurset. Det er godkendt, og HR eller udbyderen bekræfter din plads."
+                     % (assigner_name or "HR")) if approved else
+                    ("%s har tildelt dig kurset. Bestillingen afventer godkendelse, fordi afdelingens budget ikke rækker."
+                     % (assigner_name or "HR")),
+            action_url=order_url(order_id, absolute=False),
+            dedupe_key="assigned:%s" % order_id, dedupe_hours=None,
+        )
+    except Exception as e:  # pragma: no cover - defensive
+        propagate_transaction_abort(e)
+        logger.debug("order_service: assignee notification skipped: %s", e)
 
 
 # ---------------------------------------------------------------------------
@@ -458,6 +535,12 @@ def _write_audit(cur, *, company_id, user_id, action, resource_id, description="
 def _record_history(cur, row, *, kind, from_value, to_value, ctx, note=None):
     """Append to order_status_history (who changed what, when). Never raises."""
     try:
+        label = ctx.actor_label or ctx.username or ""
+        if ctx.actor_kind == "user" and ctx.user_id and (not ctx.actor_label or ctx.actor_label == ctx.username):
+            # People read names, not login handles ("Hanne HR", not "hr").
+            from person_names import display_name
+            label = display_name(cur, _int_or_none(row.get("company_id")) or ctx.company_id,
+                                 user_id=ctx.user_id, username=label or None, default=label)
         cur.execute(
             """
             INSERT INTO order_status_history
@@ -467,7 +550,7 @@ def _record_history(cur, row, *, kind, from_value, to_value, ctx, note=None):
             """,
             (row.get("order_id"), _int_or_none(row.get("company_id")), kind,
              from_value, to_value, ctx.user_id, _actor_kind_label(ctx),
-             (ctx.actor_label or ctx.username or "")[:255],
+             label[:255],
              (note or None) and str(note)[:500]),
         )
     except Exception as e:  # pragma: no cover - history must never fail the op
@@ -601,6 +684,9 @@ def _ownership_ok(ctx, order_row):
 # ---------------------------------------------------------------------------
 ORDER_DETAIL_URL = "/min-ordre/%s"
 
+# ``order_approvals.notes`` of an order a manager assigned (approved at assignment).
+ASSIGNMENT_APPROVAL_NOTE = lc.ASSIGNMENT_APPROVAL_NOTE
+
 
 def order_url(order_id, absolute=True):
     path = ORDER_DETAIL_URL % order_id
@@ -687,6 +773,15 @@ def _next_step_message(status, needs_approval):
             "booket. Fakturering sker uden for appen.")
 
 
+def _undo_create(conn, cur, use_savepoint):
+    """Undo a failed create_order: only its own writes when it runs inside the caller's
+    transaction (savepoint), else the whole transaction."""
+    if use_savepoint and cur is not None:
+        cur.execute("ROLLBACK TO SAVEPOINT order_service_create")
+    else:
+        conn.rollback()
+
+
 def create_order(ctx, **kwargs):
     """Retry only a fully rolled-back standalone transaction, never half a batch.
 
@@ -732,12 +827,21 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
     price_f = _to_float(price)
     order_id = str(uuid.uuid4())
 
-    # HR assigns a course to an employee (compliance, learning paths): the order
-    # is placed as that employee and follows the normal approval + budget rules,
-    # with a visible "Tildelt af HR" note (N-4.3/N-4.4).
+    # HR or a manager assigns a course to an employee (compliance, learning paths,
+    # team orders): the order is placed as that employee. Assigned by a signed-in
+    # manager = approved at once (nobody approves their own assignment); the budget
+    # is still charged and the assigner is recorded as the approver. The budget
+    # overspend rule below can still route an assignment to approval. API keys and
+    # system jobs carry no user id, so they never pre-approve.
     assign = extra.get("assign_to")
+    pre_approved_by = None
+    assigner_ctx = None
     if assign:
+        assigner_ctx = acting_ctx
         assigner = ctx.actor_label or ctx.username or "HR"
+        if (acting_ctx.actor_kind == "user" and acting_ctx.is_manager and acting_ctx.user_id
+                and acting_ctx.company_id):
+            pre_approved_by = acting_ctx.user_id
         ctx = OrderContext(company_id=ctx.company_id, user_id=assign.get("user_id"),
                            username=assign.get("username"), company_role="employee",
                            department=assign.get("department"), source=ctx.source,
@@ -745,7 +849,6 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
         user_email = user_email or assign.get("email") or ""
         user_name = user_name or assign.get("name") or assign.get("username") or ""
         extra = dict(extra)
-        extra.setdefault("notes", "Tildelt af HR (%s)" % assigner)
 
     conn = _get_connection()
     if conn is None:
@@ -756,21 +859,34 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
         }
 
     cur = None
+    # ``extra["savepoint"]``: the caller already has a transaction open (a path step ordered while an
+    # order is being completed). A failure here must undo only this order, never the caller's work.
+    use_savepoint = bool(extra.get("savepoint"))
     try:
         cur = _dict_cursor(conn)
+        if use_savepoint:
+            cur.execute("SAVEPOINT order_service_create")
+
+        assigner_name = None
+        if assigner_ctx is not None:
+            from person_names import display_name
+            assigner_name = display_name(cur, assigner_ctx.company_id, user_id=assigner_ctx.user_id,
+                                         username=assigner_ctx.username,
+                                         default=assigner_ctx.actor_label or "HR")
+            extra.setdefault("notes", "Tildelt af %s" % assigner_name)
 
         assignment_step = extra.get('assignment_step_id')
         if assignment_step:
             cur.execute("SELECT * FROM learning_assignment_steps WHERE id = %s AND company_id = %s AND user_id = %s FOR UPDATE", (assignment_step, ctx.company_id, ctx.user_id))
             step = cur.fetchone()
             if not step or step.get('course_handle') != product_handle:
-                conn.rollback()
+                _undo_create(conn, cur, use_savepoint)
                 return {'success': False, 'error': 'assignment_not_found', 'message': 'Tildelingen blev ikke fundet.'}
             if step.get('order_id'):
                 cur.execute("SELECT status FROM course_orders WHERE order_id = %s AND company_id = %s", (step['order_id'],ctx.company_id))
                 existing = cur.fetchone()
                 if existing and existing['status'] not in ('cancelled','rejected'):
-                    conn.rollback()
+                    _undo_create(conn, cur, use_savepoint)
                     return {'success': True, 'duplicate': True, 'order_id': step['order_id'], 'status': existing['status'], 'order_url': order_url(step['order_id'])}
 
         # Serialize duplicate detection for the same participant, including two
@@ -807,6 +923,9 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
         # Employees (or unknown role) with a company need approval; managers/
         # admins and non-company (anonymous) orders do not.
         needs_approval = bool(ctx.company_id) and ctx.is_employee
+        pre_approved = bool(pre_approved_by) and needs_approval
+        if pre_approved:
+            needs_approval = False
 
         dept = ctx.department or extra.get("department") or ""
 
@@ -818,7 +937,7 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
         # overspend safety rule below can still RE-force approval even when a
         # policy auto-approved — safety first, it only ever tightens.
         auto_approved_by_policy = False
-        if ctx.company_id and price_f > 0:
+        if ctx.company_id and price_f > 0 and not pre_approved:
             policy = _resolve_approval_policy(cur, ctx.company_id, dept)
             if policy:
                 require_over = policy.get("require_approval_over")
@@ -859,6 +978,7 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
                     # layer granted above (safety first).
                     needs_approval = True
                     auto_approved_by_policy = False
+                    pre_approved = False
                     budget_warning = (
                         f"Bestillingen på {price_f:.0f} kr. overskrider afdelingens "
                         f"resterende budget på {remaining:.0f} kr. "
@@ -914,6 +1034,16 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
             ),
         )
 
+        if pre_approved:
+            # Assigned by a manager = approved at assignment. Record who approved so the
+            # order page can say so; no pending approval row is ever created.
+            cur.execute("UPDATE course_orders SET approved_by = %s WHERE order_id = %s", (pre_approved_by, order_id))
+            cur.execute(
+                "INSERT INTO order_approvals (order_id, company_id, requester_user_id, approver_user_id, "
+                "status, notes, decided_at) VALUES (%s, %s, %s, %s, 'approved', %s, NOW())",
+                (order_id, ctx.company_id, ctx.user_id, pre_approved_by, ASSIGNMENT_APPROVAL_NOTE),
+            )
+
         if extra.get("quote"):
             import json
             quote = extra["quote"]
@@ -955,7 +1085,10 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
         # --- 6. history + audit -------------------------------------------
         _new_row = {"order_id": order_id, "company_id": ctx.company_id}
         _record_history(cur, _new_row, kind="status", from_value=None, to_value=initial_status,
-                        ctx=acting_ctx, note="Auto-godkendt via politik" if auto_approved_by_policy else None)
+                        ctx=acting_ctx,
+                        note=("Tildelt af %s · godkendt ved tildeling" % assigner_name if pre_approved
+                              else "Tildelt af %s" % assigner_name if assigner_name
+                              else "Auto-godkendt via politik" if auto_approved_by_policy else None))
         _audit_desc = f"{product_title} ({ctx.source})"
         if auto_approved_by_policy:
             _audit_desc += " [auto-godkendt via politik]"
@@ -970,16 +1103,24 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
 
         # In-app notification to HR/admins when an order needs their approval
         # (shares this transaction so it commits atomically with the order).
+        requester_name = None
         if needs_approval and ctx.company_id:
-            _notify_company_admins_safe(
-                cur, ctx.company_id,
+            from person_names import display_name
+            requester_name = display_name(cur, ctx.company_id, user_id=ctx.user_id, username=ctx.username,
+                                          default=user_name or "en medarbejder")
+            _notify_approvers_safe(
+                cur, ctx.company_id, ctx.user_id, dept,
                 "Ny bestilling afventer godkendelse",
-                f"{product_title} er bestilt af {ctx.username or 'en medarbejder'} "
-                f"og afventer godkendelse.",
-                is_urgent=1,
+                f"{product_title} er bestilt af {requester_name} og afventer godkendelse.",
                 action_url="/hr/approvals",
                 dedupe_key="approval-needed:%s" % order_id,
             )
+
+        # The assigned learner hears about it once, in the app ("Du er tildelt ..."). Path
+        # steps are announced by the path's own notification instead.
+        if assigner_ctx is not None and not assignment_step and ctx.user_id:
+            _notify_assignee_safe(cur, ctx, acting_ctx, order_id, product_title, assigner_name,
+                                  approved=not needs_approval)
 
         if user_email:
             # ONE confirmation email (order_handler no longer sends its own).
@@ -1002,7 +1143,7 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
                 product_title=product_title,
                 price=price_f,
                 department=dept,
-                requester=ctx.username or user_name or "", cursor=cur,
+                requester=requester_name or user_name or ctx.username or "", cursor=cur,
             )
 
         if not needs_approval:
@@ -1053,6 +1194,7 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
             "auto_approved": auto_approved_by_policy,
             "budget_warning": budget_warning,
             "budget_charged": bool(budget_charged),
+            "pre_approved": bool(pre_approved),
             "price": price_f,
             "vendor_id": vendor_id,
             "next_step": _next_step_message(initial_status, needs_approval),
@@ -1061,7 +1203,7 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
     except Exception as e:
         logger.error("order_service.create_order failed: %s", e)
         try:
-            conn.rollback()
+            _undo_create(conn, cur, use_savepoint)
         except Exception:
             pass
         return {
@@ -1126,9 +1268,49 @@ def get_order(ctx, order_id):
             pass
 
 
+def assignment_info(order_row):
+    """Who assigned this order, or None when the learner ordered it themselves.
+
+    ``{"assigned_by": name, "approved": bool}``: ``approved`` is true when a manager
+    approved it by assigning it ("Godkendt ved tildeling"); an assignment that the budget
+    rule sent to approval is still an assignment but not approved yet. Never raises."""
+    if not order_row:
+        return None
+    note = (order_row.get("request_notes") or "").strip()
+    conn = _get_connection()
+    if conn is None:
+        return None
+    cur = None
+    try:
+        cur = _dict_cursor(conn)
+        cur.execute(
+            "SELECT approver_user_id FROM order_approvals WHERE order_id = %s AND company_id = %s "
+            "AND status = 'approved' AND notes = %s ORDER BY id DESC LIMIT 1",
+            (order_row.get("order_id"), order_row.get("company_id"), ASSIGNMENT_APPROVAL_NOTE),
+        )
+        approval = cur.fetchone()
+        if approval and approval.get("approver_user_id"):
+            from person_names import display_name
+            return {"assigned_by": display_name(cur, order_row.get("company_id"),
+                                                user_id=approval["approver_user_id"], default="HR"),
+                    "approved": True}
+        if note.startswith("Tildelt af "):
+            return {"assigned_by": note[len("Tildelt af "):].strip() or "HR", "approved": False}
+    except Exception as e:
+        logger.debug("order_service.assignment_info failed: %s", e)
+    finally:
+        try:
+            if cur is not None:
+                cur.close()
+        except Exception:
+            pass
+    return None
+
+
 def get_history(ctx, order_id):
     """Status + billing history for an order the ctx may see ([] otherwise).
-    Billing rows are only returned to managers/admins, never to the learner."""
+    Billing rows are only returned to managers/admins, never to the learner;
+    status and change-request rows (``kind='change'``) are visible to everyone."""
     row = get_order(ctx, order_id)
     if not row:
         return []
@@ -1155,7 +1337,7 @@ def get_history(ctx, order_id):
         except Exception:
             pass
     if not ({"manager", "admin"} & actors):
-        rows = [r for r in rows if (r.get("kind") or "status") == "status"]
+        rows = [r for r in rows if (r.get("kind") or "status") in ("status", "change")]
     return rows
 
 
@@ -1360,10 +1542,9 @@ def _apply_transition(cur, ctx, row, new, actors, *, note=None, reason=None):
         charged = _maybe_charge(cur, row)
 
     history_note = note or reason
-    if ctx.is_platform_admin and new == lc.BOOKED and "vendor" not in actors:
-        history_note = ("Booket af admin på leverandørens vegne" + (f": {history_note}" if history_note else ""))
-    elif "manager" in actors and new == lc.BOOKED and "vendor" not in actors:
-        history_note = ("Booket af HR på leverandørens vegne" + (f": {history_note}" if history_note else ""))
+    if new == lc.BOOKED:
+        booker = "udbyderen" if "vendor" in actors else ("admin" if ctx.is_platform_admin and "manager" not in actors else "HR")
+        history_note = "Booket af %s" % booker + (f": {history_note}" if history_note else "")
     _record_history(cur, row, kind="status", from_value=old, to_value=new, ctx=ctx, note=history_note)
 
     _write_audit(
@@ -1375,6 +1556,11 @@ def _apply_transition(cur, ctx, row, new, actors, *, note=None, reason=None):
         description=f"{old}->{new} charged={charged} refunded={refunded}",
     )
 
+    # The approval question has been answered: its card stops being unread/urgent for everyone.
+    if old == lc.PENDING_APPROVAL and new != lc.PENDING_APPROVAL:
+        from notification_service import resolve_by_dedupe_key
+        resolve_by_dedupe_key(cur, "approval-needed:%s" % order_id, _int_or_none(row.get("company_id")))
+
     # In-app notifications (same transaction).
     try:
         from notification_service import notify_user, notify_roles, HR_ROLES
@@ -1385,17 +1571,32 @@ def _apply_transition(cur, ctx, row, new, actors, *, note=None, reason=None):
                         user_id=_int_or_none(row.get("user_id")),
                         company_id=_int_or_none(row.get("company_id")), kind="order",
                         action_url=order_url(order_id, absolute=False),
-                        dedupe_key="order:%s:%s" % (order_id, new), dedupe_hours=None)
+                        dedupe_key="order:%s:%s" % (order_id, new), dedupe_hours=None,
+                        actor_user_id=ctx.user_id)
         cid = _int_or_none(row.get("company_id"))
+        if cid and new == lc.BOOKED:
+            # HR hears about a booking too, except the HR person who made it.
+            from notification_service import role_recipients
+            booker = "Udbyderen" if "vendor" in actors else "HR"
+            learner_name = _person_name(cur, row) or "medarbejderen"
+            for rcpt in role_recipients(cur, cid, HR_ROLES):
+                if ctx.actor_kind != "vendor" and ctx.user_id is not None and _int_or_none(rcpt.get("user_id")) == ctx.user_id:
+                    continue
+                notify_user(cur, title="Plads bekræftet",
+                            message=f"{booker} har bekræftet pladsen på “{row.get('product_title')}” til {learner_name}.",
+                            username=rcpt["username"], user_id=rcpt["user_id"], company_id=cid, kind="order",
+                            action_url="/hr/order/%s/details" % order_id,
+                            dedupe_key="order-booked-hr:%s" % order_id, dedupe_hours=None)
         if cid and new == lc.CANCELLED and ("vendor" in actors or "owner" in actors):
-            who = "Udbyderen" if "vendor" in actors else (row.get("username") or "Medarbejderen")
+            who = "Udbyderen" if "vendor" in actors else (_person_name(cur, row) or "Medarbejderen")
             notify_roles(cur, cid, HR_ROLES,
                          title="Bestilling annulleret",
                          message=f"{who} har annulleret “{row.get('product_title')}”."
                                  + (f" Årsag: {reason}" if reason else ""),
                          kind="order", is_urgent=("vendor" in actors),
                          action_url="/hr/order/%s/details" % order_id,
-                         dedupe_key="order-cancelled:%s" % order_id, dedupe_hours=None)
+                         dedupe_key="order-cancelled:%s" % order_id, dedupe_hours=None,
+                         actor_user_id=ctx.user_id)
     except Exception as e:  # notifications must never break the transition
         logger.debug("order_service: transition notifications skipped: %s", e)
 
@@ -1538,13 +1739,24 @@ def set_status(ctx, order_id, new_status, *, note=None, reason=None):
 
 def cancel_order(ctx, order_id, reason=None):
     """Cancel an order (owner, same-company manager, vendor or admin), refunding
-    budget exactly once. Idempotent: cancelling twice never refunds twice."""
+    budget exactly once. Idempotent: cancelling twice never refunds twice.
+
+    A booked order is not cancelled by its owner or HR: the call files a change
+    request with the vendor and returns ``requested: True`` (status stays
+    ``booked``, budget untouched) with the request message, never "annulleret"."""
     res = set_status(ctx, order_id, lc.CANCELLED, reason=reason)
     if res.get("success"):
+        if res.get("pending"):
+            # A booked order is only cancelled once the vendor accepts: this is a
+            # request. Keep order_fulfillment's message and say so explicitly.
+            res["requested"] = True
+            res["already_cancelled"] = False
+            return res
         res.setdefault("message", "Ordren er annulleret.")
         if not res.get("unchanged"):
             res["message"] = "Ordren er annulleret."
         res["already_cancelled"] = bool(res.get("unchanged"))
+        res["requested"] = False
     return res
 
 
@@ -1647,6 +1859,15 @@ def complete_order(ctx, order_id, *, note=None):
         if not ok:
             conn.rollback()
             return {"success": False, "error": code, "message": msg, "status": old}
+
+        # Decision: a course is "completed" only after it has taken place, whoever
+        # confirms it (HR, vendor, admin, the AI tool). No override.
+        from order_fulfillment import details as _booking_details
+        from order_timing import not_yet_held_message
+        held_error = not_yet_held_message(row, _booking_details(cur, order_id).get("booking_json"))
+        if held_error:
+            conn.rollback()
+            return {"success": False, "error": "not_yet_held", "message": held_error, "status": old}
 
         info = _apply_transition(cur, ctx, row, lc.COMPLETED, actors, note=note)
         from order_fulfillment import _save_details, capture_baseline
@@ -1757,10 +1978,10 @@ def _notify_manager_of_completion(row):
                     (cid, uid))
         r = cur.fetchone()
         mgr = _int_or_none(r.get("manager_user_id") if isinstance(r, dict) else (r[0] if r else None))
-        msg = (f"{row.get('user_name') or row.get('username') or 'En medarbejder'} har gennemført "
+        msg = (f"{_person_name(cur, row) or 'En medarbejder'} har gennemført "
                f"“{row.get('product_title')}”. Bekræft kompetenceløftet, så det tæller i kompetenceoverblikket.")
         common = dict(title="Bekræft kompetenceløft", message=msg, kind="skill_uplift",
-                      action_url="/hr/ordre/%s/udbytte" % row.get("order_id"),
+                      action_url="/hr/order/%s/details#udbytte" % row.get("order_id"),
                       dedupe_key="uplift:%s" % row.get("order_id"), dedupe_hours=None)
         if mgr:
             notify_user(cur, user_id=mgr, company_id=cid, **common)
@@ -2050,9 +2271,15 @@ def _replace_order_participant(cur, ctx, row, participant):
 
 
 def _confirm_booking_details(cur, row, booking):
+    """Record the confirmed place on the order. ``variant_date`` stays the human
+    session label ("3. december 2026"): it only changes, to a long Danish date and
+    never an ISO timestamp, when the booked day differs from the ordered session.
+    The exact ``start_at`` lives in ``course_order_details.booking_json``."""
+    from order_timing import session_label
+    label = session_label(row.get('variant_date') or '', booking['start_at'])
     cur.execute('UPDATE course_orders SET variant_date=%s,variant_location=%s WHERE order_id=%s',
-                (booking['start_at'],booking['location'] or 'Online',row['order_id']))
-    row.update(variant_date=booking['start_at'],variant_location=booking['location'] or 'Online')
+                (label,booking['location'] or 'Online',row['order_id']))
+    row.update(variant_date=label,variant_location=booking['location'] or 'Online')
 
 
 def _queue_transition_emails(ctx,row,old,new,*,note=None,reason=None,cursor=None):

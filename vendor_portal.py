@@ -24,6 +24,7 @@ import json
 import logging
 import time
 
+import order_timing
 from flask import (
     Blueprint,
     Response,
@@ -817,14 +818,34 @@ def _vendor_orders(vendor_id, tab):
     cur.execute(
         "SELECT co.order_id, co.product_title, co.product_handle, co.variant_date, co.variant_location, "
         "co.status, co.user_name, co.user_email, co.user_phone, co.request_notes, co.cancel_reason, "
-        "co.created_at, c.company_name "
+        "co.created_at, c.company_name, d.booking_json "
         "FROM course_orders co LEFT JOIN companies c ON c.id = co.company_id "
+        "LEFT JOIN course_order_details d ON d.order_id = co.order_id "
         "WHERE " + where + " ORDER BY co.created_at DESC LIMIT 200",
         (vendor_id,),
     )
     rows = list(cur.fetchall() or [])
     cur.close()
     return rows
+
+
+def _pending_change_ids(order_ids):
+    """Order ids (of the given list) with an open change request: one grouped query."""
+    if not order_ids:
+        return set()
+    try:
+        cur = _db().cursor()
+        cur.execute(
+            "SELECT order_id FROM course_order_changes WHERE status = 'pending' AND order_id IN (%s) GROUP BY order_id"
+            % ",".join(["%s"] * len(order_ids)),
+            tuple(order_ids),
+        )
+        rows = list(cur.fetchall() or [])
+        cur.close()
+        return {r["order_id"] if isinstance(r, dict) else r[0] for r in rows}
+    except Exception as e:
+        logger.debug("vendor_orders: pending changes lookup failed: %s", e)
+        return set()
 
 
 @vendor_bp.route("/orders", methods=["GET"])
@@ -845,14 +866,18 @@ def vendor_orders():
     except Exception as e:
         logger.warning("vendor_orders: load failed: %s", e)
         orders, load_error = [], True
+    pending_changes = _pending_change_ids([o["order_id"] for o in orders])
     for o in orders:
         st = lc.normalize_status(o.get("status"))
         o["state"] = st
+        o["change_pending"] = o["order_id"] in pending_changes
         o["label"] = lc.status_label(st, short=True)
         o["tone"] = lc.STATUS_TONES[st]
         o["can_book"] = st == lc.APPROVED
         o["can_decline"] = st in (lc.APPROVED, lc.BOOKED)
-        o["can_complete"] = st == lc.BOOKED
+        # Attendance is only confirmed once the course has taken place.
+        o["can_complete"] = st == lc.BOOKED and order_timing.not_yet_held_message(o) is None
+        o["held_message"] = order_timing.not_yet_held_message(o) if st == lc.BOOKED else None
     return render_template(
         "fm/vendor_orders.html", vendor_name=session.get("vendor_name") or "", orders=orders, tab=tab,
         tabs=_ORDER_TABS, load_error=load_error,
@@ -893,8 +918,8 @@ def _order_action_response(order_id, fn_name, ok_msg):
 @vendor_bp.route('/orders/<order_id>/booking',methods=['GET','POST'])
 @_vendor_login_required
 def vendor_booking(order_id):
-    from fulfillment_routes import workflow
-    return workflow(_active_vendor_ctx(),order_id,vendor=True)
+    from fulfillment_routes import vendor_workflow
+    return vendor_workflow(_active_vendor_ctx(), order_id)
 
 
 @vendor_bp.route("/orders/<order_id>/book", methods=["POST"])

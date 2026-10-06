@@ -21,6 +21,16 @@
 .pg-tab i { font-size: 12px; }
 .pg-tab:hover { color: var(--fm-ink); }
 .pg-tab.active { background: var(--fm-surface); color: var(--fm-primary); box-shadow: var(--sh-xs); }
+/* HR navigation: group row (first) + the active group's tabs (second row) */
+.pg-hrnav { margin-bottom: 22px; }
+.pg-hrnav .pg-subnav-wrap { margin-bottom: 0; }
+.pg-groups { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.pg-group { height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--fm-line); background: var(--fm-surface); color: var(--fm-ink-2); font-size: 13px; font-weight: 600; white-space: nowrap; transition: var(--t); display: inline-flex; align-items: center; gap: 7px; text-decoration: none; }
+.pg-group i { font-size: 12px; }
+.pg-group:hover { color: var(--fm-ink); border-color: var(--fm-ink-3); }
+.pg-group.active { background: var(--fm-primary); border-color: var(--fm-primary); color: #fff; }
+.pg-group-select { display: none; width: 100%; height: 40px; margin-bottom: 10px; padding: 0 12px; border-radius: var(--r-ctrl); border: 1px solid var(--fm-line); background: var(--fm-surface); color: var(--fm-ink); font: inherit; font-weight: 600; }
+@media (max-width: 700px) { .pg-groups { display: none; } .pg-group-select { display: block; } }
 
 /* breadcrumb */
 .crumb { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--fm-ink-3); margin-bottom: 16px; }
@@ -217,6 +227,12 @@
 .fm-aip-fab:hover{filter:brightness(1.05)}
 .fm-wrap:has(.fm-aip){padding-bottom:84px}
 body:has(.fm-aip) .fm-foot{padding-right:150px}
+/* On laptop widths the floating button would sit on the last table column ("Afventer godk." on /hr/team):
+   shrink it to an icon and keep the last column's content clear of it. */
+@media (min-width:721px) and (max-width:1500px){
+  .fm-aip-fab span{display:none}.fm-aip-fab{padding:14px;font-size:16px}
+  .fm-wrap:has(.fm-aip) .fm-table th:last-child,.fm-wrap:has(.fm-aip) .fm-table td:last-child{padding-right:76px}
+}
 @media (max-width:720px){.fm-aip{right:14px;bottom:14px}.fm-aip-fab span{display:none}.fm-aip-fab{padding:14px;font-size:16px}}
 .fm-aip-panel{position:absolute;right:0;bottom:62px;width:360px;max-width:88vw;height:460px;max-height:72vh;
   display:flex;flex-direction:column;border:1px solid var(--fm-line);border-radius:16px;overflow:hidden;
@@ -312,3 +328,24 @@ body:has(.fm-aip) .fm-foot{padding-right:150px}
 .fm-aip-msg{overflow-wrap:anywhere;min-width:0}
 .fm-confirm-card{max-width:100%}
 .fm-feedback button{min-width:32px;min-height:32px}
+.status-pill.grey { background: var(--fm-surface-3); color: var(--fm-ink-2); }
+/* responsive card grid: as many columns as fit (min 220px), one column on phones */
+.fm-auto-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.fm-auto-grid > * { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .fm-auto-grid { grid-template-columns: 1fr; } }
+
+/* shared checklist (fm/_checklist.html) */
+.fm-checklist-progress { height: 8px; border-radius: 999px; background: var(--fm-surface-3); overflow: hidden; }
+.fm-checklist-progress > span { display: block; height: 100%; border-radius: 999px; background: var(--fm-primary); transition: width var(--t); }
+.fm-checklist-count { margin: 8px 0 14px; font-size: 13px; font-weight: 650; color: var(--fm-ink-2); }
+.fm-checklist-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.fm-checklist-item { display: flex; align-items: center; gap: 14px; padding: 16px 18px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); }
+.fm-checklist-item.done .fm-checklist-icon { color: var(--fm-success); }
+.fm-checklist-item.open .fm-checklist-icon { color: var(--fm-ink-3); }
+.fm-checklist-icon { flex: 0 0 auto; font-size: 20px; }
+.fm-checklist-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.fm-checklist-body { flex: 1; min-width: 0; }
+.fm-checklist-body h2 { margin: 0; font-size: 15px; }
+.fm-checklist-body p { margin: 3px 0 0; font-size: 13px; color: var(--fm-ink-2); }
+@media (max-width: 640px) { .fm-checklist-item { flex-wrap: wrap; } .fm-checklist-item .btn { width: 100%; justify-content: center; } }
+.fm-checklist { margin: 18px 0; }

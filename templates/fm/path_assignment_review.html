@@ -1,0 +1,44 @@
+{% extends "fm_base.html" %}
+{% from 'fm/_macros.html' import crumbs %}
+{% block page_id %}hr{% endblock %}
+{% block title %}Gennemse tildeling · {{ review.path.name if review and review.path else 'forløb' }}{% endblock %}
+{% block topbar_title %}Gennemse tildelingen{% endblock %}
+{% block topbar_sub %}{{ review.path.name if review and review.path else '' }}{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+{% set active_hr_page = 'learning_paths' %}{% include 'fm/_hr_subnav.html' %}
+{% set review = review|default({'path': {'id': 0, 'name': 'Eksempelforløb', 'version': 1, 'mode': 'all_at_once'}, 'people': [], 'departments': [], 'problems': [], 'already': [], 'total_now': 0, 'total_later': 0, 'over_budget': False, 'blocked': True, 'guidance': 0}) %}
+{% set form = form|default({}) %}
+{{ crumbs([('Læringsforløb', url_for('hr_dashboard.learning_paths')), (review.path.name, None), ('Gennemse tildeling', None)]) }}
+
+  <div class="fm-card" style="padding:18px 20px;margin-bottom:14px">
+    <h2 class="fm-section-title" style="margin:0 0 6px">{{ review.path.name }}</h2>
+    <p style="margin:0;font-size:13.5px;color:var(--fm-ink-2)">
+      {% if review.path.mode == 'sequential' %}Kurserne bestilles ét ad gangen: det første nu, og det næste når det forrige er gennemført.{% else %}Alle forløbets kurser bestilles nu.{% endif %}
+      Tildelte kurser er godkendt med det samme og trækkes på afdelingens budget. Pladserne er først booket, når HR eller udbyderen har bekræftet dem.
+    </p>
+  </div>
+
+  {% include 'fm/_assignment_review.html' %}
+
+  <form method="post" action="{{ url_for('hr_dashboard.assign_learning_path', path_id=review.path.id) }}" class="fm-card" style="padding:18px 20px">
+    <input type="hidden" name="assign_type" value="{{ form.assign_type or 'individual' }}">
+    <input type="hidden" name="user_id" value="{{ form.user_id or '' }}">
+    <input type="hidden" name="department" value="{{ form.department or '' }}">
+    <input type="hidden" name="due_date" value="{{ form.due_date or '' }}">
+    {% for uid in form.employee_ids or [] %}<input type="hidden" name="employee_ids" value="{{ uid }}">{% endfor %}
+    <input type="hidden" name="expected_version" value="{{ review.path.version }}">
+    <input type="hidden" name="expected_total" value="{{ review.total_now }}">
+    {% if review.over_budget %}
+    <label style="display:flex;gap:10px;align-items:flex-start;margin-bottom:14px;font-size:13.5px">
+      <input type="checkbox" name="accept_over_budget" value="1" required>
+      <span>Jeg ved, at bestillinger ud over budgettet sendes til godkendelse i stedet for at blive godkendt automatisk.</span>
+    </label>
+    {% endif %}
+    <div class="fm-flex fm-gap8" style="justify-content:flex-end;flex-wrap:wrap">
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('hr_dashboard.learning_paths') }}">Annuller</a>
+      <button class="btn btn-primary btn-sm" type="submit" {% if review.blocked %}disabled{% endif %}><i class="fa-solid fa-user-plus"></i> Bekræft og tildel</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -713,19 +713,10 @@ def _resolve_company_features(company_id):
             # If the compat helper is unavailable, carry on with the raw conn.
             pass
 
-        conn = mysql.connection
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                "SELECT features FROM companies WHERE id = %s LIMIT 1",
-                (company_id,),
-            )
-            row = cur.fetchone()
-        finally:
-            try:
-                cur.close()
-            except Exception:
-                pass
+        # One companies read per request, shared with branding and the HR context.
+        import request_memo
+
+        row = request_memo.company_row(company_id)
 
         if not row:
             return None

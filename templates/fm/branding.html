@@ -1,6 +1,6 @@
 {% extends "fm_base.html" %}
 {% block page_id %}company{% endblock %}
-{% block title %}Futurematch{% endblock %}
+{% block title %}Branding · Futurematch{% endblock %}
 {% block topbar_title %}Branding{% endblock %}
 {% block topbar_sub %}{{ company.company_name if company else 'Virksomhed' }} · white-label udseende.{% endblock %}
 {% block extra_head %}
@@ -58,33 +58,33 @@
     <!-- IDENTITY -->
     <div class="btab active" id="tab-identity"><div class="fm-card"><div class="fm-card-body">
       <div class="form-grid">
-        <div class="fm-field"><label>Visningsnavn</label><input type="text" class="fm-input" name="company_display_name" value="{{ settings.company_display_name or branding.company_name or '' }}" {% if not branding_enabled %}disabled{% endif %}></div>
-        <div class="fm-field"><label>Tagline</label><input type="text" class="fm-input" name="company_tagline" value="{{ settings.company_tagline or branding.tagline or '' }}" placeholder="f.eks. Læring der matcher jer" {% if not branding_enabled %}disabled{% endif %}></div>
-        <div class="fm-field full"><label>Beskrivelse</label><textarea class="fm-input" name="company_description" rows="2" {% if not branding_enabled %}disabled{% endif %}>{{ settings.company_description or branding.description or '' }}</textarea></div>
-        <div class="fm-field"><label>Hjemmeside</label><input type="url" class="fm-input" name="company_website" value="{{ settings.company_website or branding.website or '' }}" {% if not branding_enabled %}disabled{% endif %}></div>
-        <div class="fm-field"><label>Support e-mail</label><input type="email" class="fm-input" name="support_email" value="{{ settings.support_email or branding.support_email or '' }}" {% if not branding_enabled %}disabled{% endif %}></div>
-        <div class="fm-field"><label>Support telefon</label><input type="text" class="fm-input" name="support_phone" value="{{ settings.support_phone or branding.support_phone or '' }}" {% if not branding_enabled %}disabled{% endif %}></div>
-        <div class="fm-field"><label>Sprog</label>
-          <select class="fm-select" name="language" {% if not branding_enabled %}disabled{% endif %}>
+        <div class="fm-field"><label for="f-company_display_name">Visningsnavn</label><input id="f-company_display_name" type="text" class="fm-input" name="company_display_name" value="{{ settings.company_display_name or branding.company_name or '' }}" {% if not branding_enabled %}disabled{% endif %}></div>
+        <div class="fm-field"><label for="f-company_tagline">Tagline</label><input id="f-company_tagline" type="text" class="fm-input" name="company_tagline" value="{{ settings.company_tagline or branding.tagline or '' }}" placeholder="f.eks. Læring der matcher jer" {% if not branding_enabled %}disabled{% endif %}></div>
+        <div class="fm-field full"><label for="f-company_description">Beskrivelse</label><textarea id="f-company_description" class="fm-input" name="company_description" rows="2" {% if not branding_enabled %}disabled{% endif %}>{{ settings.company_description or branding.description or '' }}</textarea></div>
+        <div class="fm-field"><label for="f-company_website">Hjemmeside</label><input id="f-company_website" type="url" class="fm-input" name="company_website" value="{{ settings.company_website or branding.website or '' }}" {% if not branding_enabled %}disabled{% endif %}></div>
+        <div class="fm-field"><label for="f-support_email">Support e-mail</label><input id="f-support_email" type="email" class="fm-input" name="support_email" value="{{ settings.support_email or branding.support_email or '' }}" {% if not branding_enabled %}disabled{% endif %}></div>
+        <div class="fm-field"><label for="f-support_phone">Support telefon</label><input id="f-support_phone" type="text" class="fm-input" name="support_phone" value="{{ settings.support_phone or branding.support_phone or '' }}" {% if not branding_enabled %}disabled{% endif %}></div>
+        <div class="fm-field"><label for="f-language">Sprog</label>
+          <select id="f-language" class="fm-select" name="language" {% if not branding_enabled %}disabled{% endif %}>
             <option value="da" {% if (settings.language or 'da') == 'da' %}selected{% endif %}>Dansk</option>
             <option value="en" {% if settings.language == 'en' %}selected{% endif %}>English</option>
           </select>
         </div>
-        <div class="fm-field"><label>Tidszone</label><input type="text" class="fm-input" name="timezone" value="{{ settings.timezone or 'Europe/Copenhagen' }}" {% if not branding_enabled %}disabled{% endif %}></div>
+        <div class="fm-field"><label for="f-timezone">Tidszone</label><input id="f-timezone" type="text" class="fm-input" name="timezone" value="{{ settings.timezone or 'Europe/Copenhagen' }}" {% if not branding_enabled %}disabled{% endif %}></div>
       </div>
     </div></div></div>
 
     <!-- VISUALS -->
     <div class="btab" id="tab-visuals"><div class="fm-card"><div class="fm-card-body">
       <div class="form-grid">
-        <div class="fm-field color-field"><label>Primær farve</label><input type="color" name="primary_color" value="{{ settings.primary_color or branding.primary_color or '#0b6b63' }}" {% if not branding_enabled %}disabled{% endif %}></div>
-        <div class="fm-field color-field"><label>Sekundær farve</label><input type="color" name="secondary_color" value="{{ settings.secondary_color or branding.secondary_color or '#2563eb' }}" {% if not branding_enabled %}disabled{% endif %}></div>
-        <div class="fm-field color-field"><label>Accent</label><input type="color" name="accent_color" value="{{ settings.accent_color or branding.accent_color or '#d97706' }}" {% if not branding_enabled %}disabled{% endif %}></div>
-        <div class="fm-field color-field"><label>Baggrund</label><input type="color" name="background_color" value="{{ settings.background_color or branding.background_color or '#f5f5f7' }}" {% if not branding_enabled %}disabled{% endif %}></div>
-        <div class="fm-field color-field"><label>Tekst</label><input type="color" name="text_color" value="{{ settings.text_color or branding.text_color or '#111827' }}" {% if not branding_enabled %}disabled{% endif %}></div>
-        <div class="fm-field"><label>Border radius</label><input type="text" class="fm-input" name="border_radius" value="{{ settings.border_radius or branding.border_radius or '8px' }}" {% if not branding_enabled %}disabled{% endif %}></div>
-        <div class="fm-field full"><label>Skrifttype</label><input type="text" class="fm-input" name="font_family" value="{{ settings.font_family or branding.font_family or 'Inter, sans-serif' }}" {% if not branding_enabled %}disabled{% endif %}></div>
-        <div class="fm-field"><label>Basis skriftstørrelse</label><input type="text" class="fm-input" name="font_size_base" value="{{ settings.font_size_base or branding.font_size_base or '14px' }}" {% if not branding_enabled %}disabled{% endif %}></div>
+        <div class="fm-field color-field"><label for="f-primary_color">Primær farve</label><input id="f-primary_color" type="color" name="primary_color" value="{{ settings.primary_color or branding.primary_color or '#0b6b63' }}" {% if not branding_enabled %}disabled{% endif %}></div>
+        <div class="fm-field color-field"><label for="f-secondary_color">Sekundær farve</label><input id="f-secondary_color" type="color" name="secondary_color" value="{{ settings.secondary_color or branding.secondary_color or '#2563eb' }}" {% if not branding_enabled %}disabled{% endif %}></div>
+        <div class="fm-field color-field"><label for="f-accent_color">Accent</label><input id="f-accent_color" type="color" name="accent_color" value="{{ settings.accent_color or branding.accent_color or '#d97706' }}" {% if not branding_enabled %}disabled{% endif %}></div>
+        <div class="fm-field color-field"><label for="f-background_color">Baggrund</label><input id="f-background_color" type="color" name="background_color" value="{{ settings.background_color or branding.background_color or '#f5f5f7' }}" {% if not branding_enabled %}disabled{% endif %}></div>
+        <div class="fm-field color-field"><label for="f-text_color">Tekst</label><input id="f-text_color" type="color" name="text_color" value="{{ settings.text_color or branding.text_color or '#111827' }}" {% if not branding_enabled %}disabled{% endif %}></div>
+        <div class="fm-field"><label for="f-border_radius">Border radius</label><input id="f-border_radius" type="text" class="fm-input" name="border_radius" value="{{ settings.border_radius or branding.border_radius or '8px' }}" {% if not branding_enabled %}disabled{% endif %}></div>
+        <div class="fm-field full"><label for="f-font_family">Skrifttype</label><input id="f-font_family" type="text" class="fm-input" name="font_family" value="{{ settings.font_family or branding.font_family or 'Inter, sans-serif' }}" {% if not branding_enabled %}disabled{% endif %}></div>
+        <div class="fm-field"><label for="f-font_size_base">Basis skriftstørrelse</label><input id="f-font_size_base" type="text" class="fm-input" name="font_size_base" value="{{ settings.font_size_base or branding.font_size_base or '14px' }}" {% if not branding_enabled %}disabled{% endif %}></div>
       </div>
       {% if branding_enabled and theme_templates %}
       <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--fm-line)">
@@ -104,8 +104,8 @@
     <!-- ASSETS -->
     <div class="btab" id="tab-assets"><div class="fm-card"><div class="fm-card-body">
       <div class="form-grid">
-        <div class="fm-field"><label>Logo URL</label><input type="url" class="fm-input" name="logo_url" value="{{ settings.logo_url or branding.logo_url or '' }}" placeholder="https://..."></div>
-        <div class="fm-field"><label>Favicon URL</label><input type="url" class="fm-input" name="favicon_url" value="{{ settings.favicon_url or branding.favicon_url or '' }}" placeholder="https://..."></div>
+        <div class="fm-field"><label for="f-logo_url">Logo URL</label><input id="f-logo_url" type="url" class="fm-input" name="logo_url" value="{{ settings.logo_url or branding.logo_url or '' }}" placeholder="https://..."></div>
+        <div class="fm-field"><label for="f-favicon_url">Favicon URL</label><input id="f-favicon_url" type="url" class="fm-input" name="favicon_url" value="{{ settings.favicon_url or branding.favicon_url or '' }}" placeholder="https://..."></div>
       </div>
     </div></div></div>
 
@@ -114,8 +114,8 @@
       <label class="fm-switch"><input type="checkbox" name="enable_white_label" id="enable_white_label" {% if settings.enable_white_label or whitelabel_active %}checked{% endif %}> Aktiver white-label for medarbejdere</label>
       <input type="hidden" name="_hide_platform_branding_present" value="1">
       <label class="fm-switch"><input type="checkbox" name="hide_platform_branding" id="hide_platform_branding" {% if settings.hide_platform_branding %}checked{% endif %}> Skjul Futurematch-branding</label>
-      <div class="fm-field"><label>Custom CSS</label><textarea class="fm-input mono" name="custom_css" rows="6">{{ settings.custom_css or branding.custom_css or '' }}</textarea></div>
-      <div class="fm-field" style="margin-bottom:0"><label>Custom JS <span style="color:var(--fm-ink-3);font-weight:400">(Enterprise)</span></label><textarea class="fm-input mono" name="custom_js" rows="4">{{ settings.custom_js or '' }}</textarea></div>
+      <div class="fm-field"><label for="f-custom_css">Custom CSS</label><textarea id="f-custom_css" class="fm-input mono" name="custom_css" rows="6">{{ settings.custom_css or branding.custom_css or '' }}</textarea></div>
+      <div class="fm-field" style="margin-bottom:0"><label for="f-custom_js">Custom JS <span style="color:var(--fm-ink-3);font-weight:400">(Enterprise)</span></label><textarea id="f-custom_js" class="fm-input mono" name="custom_js" rows="4">{{ settings.custom_js or '' }}</textarea></div>
     </div></div></div>
 
     <!-- HISTORY -->

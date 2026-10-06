@@ -1,7 +1,7 @@
 {% extends "fm_base.html" %}
 {% import 'fm/_macros.html' as ui %}
 {% block page_id %}hr{% endblock %}
-{% block title %}Futurematch{% endblock %}
+{% block title %}Læringsforløb · Futurematch{% endblock %}
 {% block topbar_title %}Læringsforløb{% endblock %}
 {% block topbar_sub %}{{ paths|length }} forløb · strukturerede udviklingsprogrammer.{% endblock %}
 {% block content %}
@@ -56,15 +56,11 @@
 
       {% set psteps = (path_steps or {}).get(path.id, []) %}
       <details style="font-size:13px">
-        <summary style="cursor:pointer;font-weight:600">Kursustrin ({{ psteps|length }}) · version {{ path.version or 1 }}</summary>
-        {% if psteps %}<ol style="margin:8px 0 8px 18px;padding:0">{% for s in psteps %}<li>{{ s.title }}{% if s.step_type == 'catalog' %} <span class="fm-badge teal">bestilles ved tildeling</span>{% endif %}</li>{% endfor %}</ol>
-        {% else %}<p class="muted" style="margin:8px 0">Ingen trin endnu. Tilføj kursus-handles fra kataloget, så tildelingen også bestiller kurserne (via godkendelse og budget).</p>{% endif %}
+        <summary style="cursor:pointer;font-weight:600">Kursustrin ({{ psteps|length }}) · version {{ path.version or 1 }}{% if path.ordering_mode == 'sequential' %} · ét kursus ad gangen{% endif %}</summary>
+        {% if psteps %}<ol style="margin:8px 0 8px 18px;padding:0">{% for s in psteps %}<li>{{ s.title }}{% if s.step_type == 'catalog' %} <span class="fm-badge teal">{{ 'bestilles, når forrige er gennemført' if path.ordering_mode == 'sequential' else 'bestilles ved tildeling' }}</span>{% endif %}</li>{% endfor %}</ol>
+        {% else %}<p class="muted" style="margin:8px 0">Ingen trin endnu. Vælg kurser fra kataloget, så tildelingen også bestiller kurserne.</p>{% endif %}
         {% if can_manage %}
-        <form method="post" action="{{ url_for('hr_dashboard.save_learning_path_steps', path_id=path.id) }}">
-          <textarea class="fm-input" name="steps" rows="4" placeholder="prince2-grundkursus | PRINCE2 Foundation&#10;# Sæt tid af til øvelser med din leder" style="width:100%">{% for s in psteps %}{% if s.step_type == 'catalog' %}{{ s.course_handle }} | {{ s.title }}{% else %}# {{ s.title }}{% endif %}
-{% endfor %}</textarea>
-          <div class="fm-flex fm-gap8" style="margin-top:6px"><button class="btn btn-ghost btn-sm" type="submit">Gem trin</button><span class="muted" style="font-size:12px">Hver gem oprettes som ny version. En linje = ét trin; start med # for vejledning uden kursus.</span></div>
-        </form>
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('hr_dashboard.learning_path_steps', path_id=path.id) }}" style="margin-top:6px"><i class="fa-solid fa-pen"></i> Redigér trin</a>
         {% endif %}
       </details>
 
@@ -87,6 +83,18 @@
               {% else %}<span style="font-size:11px;color:var(--fm-ink-3)">—</span>{% endif %}
             </td>
           </tr>
+          {% for fs in (failed_steps or {}).get(e.id, []) %}
+          <tr><td colspan="5" style="background:var(--fm-clay-tint, rgba(200,80,60,.07))">
+            <div class="fm-flex fm-ac fm-gap8" style="flex-wrap:wrap">
+              <span class="fm-badge red dot">Mislykkedes</span>
+              <span style="font-size:12.5px"><strong>{{ fs.title }}</strong>{% if fs.last_error %} · {{ fs.last_error }}{% endif %}</span>
+              {% if can_create %}
+              <form method="post" action="{{ url_for('hr_dashboard.retry_learning_path_step', step_id=fs.id) }}" style="margin:0 0 0 auto"><button class="btn btn-soft btn-sm" type="submit">Bestil igen</button></form>
+              <form method="post" action="{{ url_for('hr_dashboard.skip_learning_path_step', step_id=fs.id) }}" style="margin:0"><button class="btn btn-ghost btn-sm" type="submit">Spring over</button></form>
+              {% endif %}
+            </div>
+          </td></tr>
+          {% endfor %}
           {% endfor %}
         </tbody></table>
       </div>
@@ -98,7 +106,7 @@
     <div class="fm-modal-bk" id="assignModal{{ path.id }}" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center">
       <div class="fm-card" style="max-width:480px;width:90%;padding:22px">
         <h3 style="font-size:17px;font-weight:700;margin-bottom:14px">Tildel: {{ path.path_name }}</h3>
-        <form method="POST" action="{{ url_for('hr_dashboard.assign_learning_path', path_id=path.id) }}">
+        <form method="GET" action="{{ url_for('hr_dashboard.learning_path_assignment_review', path_id=path.id) }}">
           <label class="fm-field"><span>Tildelingstype</span>
             <select name="assign_type" class="fm-input" id="assignType{{ path.id }}" onchange="toggleAssignFields({{ path.id }})">
               <option value="individual">Enkelt medarbejder</option>
@@ -122,9 +130,10 @@
             </label>
           </div>
           <label class="fm-field"><span>Deadline (valgfri)</span><input type="date" name="due_date" class="fm-input"></label>
+          <p class="muted" style="font-size:12.5px;margin:10px 0 0">Tildelte kurser er godkendt med det samme og trækkes på afdelingens budget. Pladserne er først booket, når HR eller udbyderen har bekræftet dem.</p>
           <div class="fm-flex fm-gap8" style="justify-content:flex-end;margin-top:14px">
             <button type="button" class="btn btn-ghost btn-sm" onclick="closeAssign({{ path.id }})">Annuller</button>
-            <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-user-plus"></i> Tildel</button>
+            <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-clipboard-check"></i> Gennemse og tildel</button>
           </div>
         </form>
       </div>

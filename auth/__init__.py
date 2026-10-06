@@ -231,30 +231,40 @@ def _join_tenant(user_id, username, email, slug):
         return None
 
 
+def _register_form_error(errors, username, email):
+    """Re-render the form (HTTP 400) with what was typed. Never the password."""
+    return render_template('fm/register.html', tenant_slug=request.args.get('tenant') or '',
+                           errors=errors, form={'username': username, 'email': email}), 400
+
+
 @auth_bp.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
         username = (request.form.get('username') or '').strip()
         password = request.form.get('password') or ''
         email = (request.form.get('email') or '').strip().lower()
-        if not username or not password or not email:
-            flash('Udfyld alle felter.', 'danger')
-            return redirect(url_for('auth.register'))
-        if not _EMAIL_RE.match(email):
-            flash('Angiv en gyldig e-mailadresse.', 'danger')
-            return redirect(url_for('auth.register'))
-        pw_errors = validate_password(password, username, email)
-        if pw_errors:
-            for err in pw_errors:
-                flash(err, 'danger')
-            return redirect(url_for('auth.register'))
+        errors = {}
+        if not username:
+            errors['username'] = 'Vælg et brugernavn.'
+        if not email:
+            errors['email'] = 'Skriv din e-mailadresse.'
+        elif not _EMAIL_RE.match(email):
+            errors['email'] = 'Angiv en gyldig e-mailadresse.'
+        if not password:
+            errors['password'] = 'Vælg en adgangskode.'
+        elif username and email:
+            pw_errors = validate_password(password, username, email)
+            if pw_errors:
+                errors['password'] = list(pw_errors)
+        if errors:
+            return _register_form_error(errors, username, request.form.get('email', '').strip())
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
         cur.execute("SELECT * FROM users WHERE username = %s OR email = %s", (username, email))
         existing_user = cur.fetchone()
         if existing_user:
-            flash('Brugernavnet eller e-mailen er allerede i brug.', 'danger')
             cur.close()
-            return redirect(url_for('auth.register'))
+            return _register_form_error(
+                {'username': 'Brugernavnet eller e-mailen er allerede i brug.'}, username, email)
         hashed_password = generate_password_hash(password)
         cur.execute("INSERT INTO users (username, password, email) VALUES (%s, %s, %s)", (username, hashed_password, email))
         new_user_id = cur.lastrowid
@@ -268,7 +278,7 @@ def register():
         if request.args.get('tenant'):
             return redirect(url_for('auth.login', slug=request.args.get('tenant')))
         return redirect(url_for('auth.login'))
-    return render_template('fm/register.html', tenant_slug=request.args.get('tenant') or '')
+    return render_template('fm/register.html', tenant_slug=request.args.get('tenant') or '', errors={}, form={})
 
 
 _LOGOUT_CONFIRM_HTML = (

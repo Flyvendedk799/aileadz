@@ -1,6 +1,6 @@
 {% extends "fm_base.html" %}
 {% block page_id %}assign_path{% endblock %}
-{% block title %}Futurematch{% endblock %}
+{% block title %}Tildel forløb · Futurematch{% endblock %}
 {% block topbar_title %}Tildel forløb{% endblock %}
 {% block topbar_sub %}Tildel ét læringsforløb til flere medarbejdere på én gang — og send dem et puf.{% endblock %}
 {% block content %}
@@ -35,14 +35,9 @@
         </label>
         <label class="fm-field"><span>Frist (valgfri)</span><input type="date" name="due_date" class="fm-input"></label>
 
-        <div style="border-top:1px solid var(--fm-line);margin:14px 0;padding-top:14px">
-          <label class="fm-field" style="margin-bottom:6px"><span>Bekræftelse *</span>
-            <input type="text" name="confirm" id="confirm" class="fm-input" placeholder="Skriv 'ja' for at bekræfte" autocomplete="off" required>
-          </label>
-          <p style="font-size:12px;color:var(--fm-ink-3);margin:0">Skriv <strong>ja</strong> for at bekræfte. Hver valgt medarbejder tilmeldes og får en notifikation.</p>
-        </div>
+        <p style="font-size:12px;color:var(--fm-ink-3);margin:14px 0 0">Du ser omkostninger og afdelingens budget, før noget bestilles. Hver valgt medarbejder tilmeldes og får en notifikation.</p>
 
-        <button type="submit" class="btn btn-primary" style="width:100%;margin-top:8px"><i class="fa-solid fa-paper-plane"></i> Tildel &amp; puf (<span id="countLabel">0</span> valgt)</button>
+        <button type="submit" class="btn btn-primary" style="width:100%;margin-top:8px"><i class="fa-solid fa-clipboard-check"></i> Gennemse tildeling (<span id="countLabel">0</span> valgt)</button>
       </div>
 
       <!-- Employees -->
@@ -102,7 +97,6 @@ function clearAll(){ document.querySelectorAll('.emp-cb').forEach(function(cb){ 
 function validateAssign(){
   if(!document.getElementById('path_id').value){ alert('Vælg et læringsforløb.'); return false; }
   if(document.querySelectorAll('.emp-cb:checked').length === 0){ alert('Vælg mindst én medarbejder.'); return false; }
-  if((document.getElementById('confirm').value || '').trim().toLowerCase() !== 'ja'){ alert('Skriv "ja" i bekræftelsesfeltet for at fortsætte.'); return false; }
   return true;
 }
 </script>

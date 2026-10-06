@@ -49,8 +49,8 @@ class AssignTests(unittest.TestCase):
         res = ca.assign_required_course(self.cur, self.hr, 7, 1)
         self.assertEqual((res["created"], res["skipped"]), (1, 1))     # ada gets it, bo already completed
         row = self.db.one("SELECT * FROM course_orders WHERE user_id = 1")
-        self.assertEqual(row["status"], "pending_approval")            # normal approval + budget rules
-        self.assertIn("Tildelt af HR", row["request_notes"])
+        self.assertEqual(row["status"], "approved")                    # assigned by HR = approved, budget rules still apply
+        self.assertIn("Tildelt af", row["request_notes"])
         self.assertIsNone(self.db.one("SELECT 1 AS x FROM course_orders WHERE user_id = 3"))   # Salg not in scope
 
     def test_running_twice_does_not_duplicate(self):

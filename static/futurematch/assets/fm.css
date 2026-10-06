@@ -893,3 +893,41 @@ html, body { max-width: 100%; overflow-x: hidden; overflow-x: clip; }
 @media (prefers-reduced-motion: reduce) {
   .fm-skel { animation: none; }
 }
+
+/* ---- Public header for logged-out visitors (replaces the account sidebar) ---- */
+.fm-pubnav {
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  padding: 10px 24px; background: var(--fm-bg);
+  border-bottom: 1px solid color-mix(in srgb, var(--fm-ink) 8%, transparent);
+}
+.fm-pubnav .fm-brand { text-decoration: none; }
+.fm-pubnav-links { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; flex-wrap: wrap; }
+.fm-pubnav-links a {
+  padding: 8px 12px; border-radius: var(--r-md, 10px); font-weight: 600; font-size: 14px;
+  color: var(--fm-ink-2, var(--fm-ink)); text-decoration: none;
+}
+.fm-pubnav-links a:hover { background: color-mix(in srgb, var(--fm-ink) 6%, transparent); color: var(--fm-ink); }
+.fm-pubnav-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+@media (max-width: 640px) {
+  .fm-pubnav { padding: 8px 14px; gap: 8px 12px; }
+  .fm-pubnav-links { order: 3; flex-basis: 100%; }
+  .fm-pubnav-links a { padding: 6px 10px; font-size: 13.5px; }
+}
+
+/* ---- Field-level form errors (templates/fm/_macros.html: field_error) ---- */
+.fm-field-error { font-size: 12.5px; font-weight: 600; color: var(--fm-danger); }
+.fm-input.is-invalid { border-color: var(--fm-danger); }
+
+/* ---- Foldable sidebar sections (shell.js: initNavSections) ---- */
+.fm-nav-label.is-foldable { cursor: pointer; display: flex; align-items: center; justify-content: space-between; user-select: none; }
+.fm-nav-label.is-foldable::after { content: "\f078"; font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 9px; transition: transform .15s var(--ease); }
+.fm-nav-label.is-foldable[aria-expanded="false"]::after { transform: rotate(-90deg); }
+.fm-nav-label.is-foldable:focus-visible { outline: 2px solid var(--fm-primary); outline-offset: -2px; border-radius: 6px; }
+.fm-nav-list.is-folded { display: none; }
+.fm-side.collapsed .fm-nav-list.is-folded { display: flex; }
+
+/* Visually hidden, still read by screen readers (page headings the top bar already shows). */
+.fm-sr-only {
+  position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+}

@@ -164,7 +164,7 @@ def _env():
     from tests.jinja_globals import add_app_globals
     add_app_globals(env)
     env.globals["asset_version"] = lambda p: "test"
-    env.globals["session"] = {}
+    env.globals["session"] = {"user": "tester"}
     env.globals["request"] = jinja2.ChainableUndefined()
     env.globals["get_flashed_messages"] = lambda **kw: []
     env.globals["white_label_active"] = False

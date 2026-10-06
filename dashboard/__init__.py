@@ -30,12 +30,46 @@ def dknum(value, decimals=None):
     return text.replace(",", "\x00").replace(".", ",").replace("\x00", ".")
 
 
+@dashboard_bp.app_template_filter('dkmoney')
+def dkmoney(value):
+    """The one price format: '12.500 kr.' (whole amounts) or '12.500,50 kr.'.
+
+    Accepts numbers and numeric strings ('12500.00'). Empty input gives '';
+    non-numeric input is returned unchanged so a template never breaks on it.
+    """
+    if value is None or value == '':
+        return ''
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return value
+    rounded = round(num, 2)
+    return '%s kr.' % dknum(rounded, 0 if float(rounded).is_integer() else 2)
+
+
+@dashboard_bp.app_template_global('course_date')
+def course_date(order, booking=None, with_time=True, style='long'):
+    """The course date of an order for display ("3. december 2026 kl. 09.00"):
+    the booking's start when booked, else the ordered session label. See
+    ``order_timing.course_label``."""
+    import order_timing
+    return order_timing.course_label(order, booking, with_time=with_time, style=style)
+
+
 @dashboard_bp.app_template_filter('dkdate')
-def dkdate(value, with_time=False):
+def dkdate(value, with_time=False, style=None):
     """Danish date format 'dd.mm.yyyy' (optionally ' hh:mm') for datetimes and
     ISO strings ('2026-10-01', '2026-10-01T08:30:00'). Empty input gives '';
-    unparseable input is returned unchanged."""
+    unparseable input is returned unchanged.
+
+    ``style`` opts into the order-page formats of ``order_timing.format_date``:
+    ``'short'`` = '03.12.2026', ``'long'`` = '3. december 2026'; with
+    ``with_time`` they append ' kl. 09.00'. Without ``style`` the output is the
+    legacy one above."""
     import datetime as _dt
+    if style:
+        import order_timing
+        return order_timing.format_date(value, style=style, with_time=with_time)
     if value is None or value == '':
         return ''
     dt_value = value

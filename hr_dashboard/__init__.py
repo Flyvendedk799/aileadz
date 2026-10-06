@@ -948,10 +948,12 @@ def create_hr_dashboard_blueprint():
             cur.execute("""
                 SELECT oa.*, co.product_title, co.price, co.product_handle, co.status AS order_status,
                        co.variant_date, co.variant_location, co.user_email, co.user_name,
+                       cod.booking_json,
                        u.username AS requester_username,
                        cu.department, cu.job_title
                 FROM order_approvals oa
                 JOIN course_orders co ON oa.order_id = co.order_id
+                LEFT JOIN course_order_details cod ON cod.order_id = co.order_id
                 JOIN users u ON oa.requester_user_id = u.id
                 LEFT JOIN company_users cu ON oa.requester_user_id = cu.user_id AND oa.company_id = cu.company_id
                 WHERE oa.company_id = %s
@@ -974,7 +976,18 @@ def create_hr_dashboard_blueprint():
                     budgets[b['department']] = float(b['annual_budget'] or 0) - float(b['spent'] or 0)
             except Exception:
                 budgets = {}
+            import order_timing
             for a in approvals:
+                # The course date HR is approving: booked start, else the ordered session; never blank
+                # without saying so ("Dato aftales"), and flagged when it is close.
+                a['course_date'] = order_timing.course_label(a, with_time=False)
+                a['starts_soon'] = None
+                _start = order_timing.course_start(a)
+                if _start is not None and a.get('status') == 'pending':
+                    _days = (_start.date() - order_timing.now().date()).days
+                    if 0 <= _days <= 14:
+                        a['starts_soon'] = ('Starter i dag' if _days == 0 else 'Starter i morgen' if _days == 1
+                                            else 'Starter om %d dage' % _days)
                 rem = budgets.get(a.get('department'))
                 a['dept_remaining'] = rem
                 a['over_budget'] = bool(rem is not None and float(a.get('price') or 0) > rem)

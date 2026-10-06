@@ -134,6 +134,30 @@ class ActionTests(Base):
             self.assertTrue(result['success'])
         self.assertEqual(self.db.one("SELECT spent FROM department_budgets")["spent"], 0)
 
+    def test_cancel_request_on_a_booked_order_flashes_info_and_shows_the_banner(self):
+        c = self.client_as("ada", 1)
+        html = c.get("/min-ordre/ord-1").get_data(as_text=True)
+        self.assertIn("Vil du anmode om afbestilling? Udbyderen skal acceptere, og der kan være et gebyr.", html)
+        self.assertNotIn("afventer svar fra udbyderen", html)
+        resp = c.post("/min-ordre/ord-1/annuller", data={"reason": "Syg"}, follow_redirects=True)
+        html = resp.get_data(as_text=True)
+        self.assertIn("fm-flash-info", html)
+        self.assertIn("Afbestillingen er sendt til udbyderen", html)
+        self.assertNotIn("Ordren er annulleret.", html)
+        self.assertIn("Din afbestilling afventer svar fra udbyderen. Din plads og budgettet er uændret, indtil den er accepteret.", html)
+        self.assertIn("Booket", html)
+        self.assertNotIn("Anmod om afbestilling</button>", html)
+        self.assertEqual(self.db.one("SELECT status FROM course_orders")["status"], "booked")
+
+    def test_unbooked_order_keeps_the_plain_cancel_text_and_cancels(self):
+        self.db.execute("UPDATE course_orders SET status='approved' WHERE order_id='ord-1'")
+        c = self.client_as("ada", 1)
+        html = c.get("/min-ordre/ord-1").get_data(as_text=True)
+        self.assertIn("Vil du annullere denne bestilling?", html)
+        resp = c.post("/min-ordre/ord-1/annuller", follow_redirects=True)
+        self.assertIn("fm-flash-success", resp.get_data(as_text=True))
+        self.assertEqual(self.db.one("SELECT status FROM course_orders")["status"], "cancelled")
+
     def test_colleague_cannot_cancel(self):
         resp = self.client_as("bo", 2).post("/min-ordre/ord-1/annuller", headers={"Accept": "application/json"})
         self.assertEqual(resp.status_code, 404)

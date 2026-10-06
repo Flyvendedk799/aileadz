@@ -90,6 +90,7 @@ def register_learner_order_routes(bp):
             changes = list(detail_cur.fetchall() or [])
         finally:
             detail_cur.close()
+        pending_change = next((c for c in changes if (c.get("status") or "") == "pending"), None)
         return render_template(
             "fm/my_order.html", fulfillment=fulfillment, changes=changes,
             order=row,
@@ -99,7 +100,8 @@ def register_learner_order_routes(bp):
             status_tone=lc.STATUS_TONES[status],
             history=history,
             vendor_name=vendor_name,
-            can_cancel=_can_cancel(status),
+            can_cancel=_can_cancel(status) and not pending_change,
+            pending_change=pending_change,
             can_complete=_can_complete(status),
             has_date=bool(row.get("variant_date")),
             moment=moment,
@@ -119,7 +121,8 @@ def register_learner_order_routes(bp):
             code = 200 if res.get("success") else (404 if res.get("error") == "not_found" else 400)
             return jsonify(res), code
         if res.get("success"):
-            flash(res.get("message") or "Din bestilling er annulleret.", "success")
+            # A request for a booked order is news, not a completed cancellation.
+            flash(res.get("message") or "Din bestilling er annulleret.", "info" if res.get("requested") else "success")
         else:
             flash(res.get("message") or "Bestillingen kunne ikke annulleres.", "danger")
         return redirect(url_for("futurematch.my_order", order_id=order_id))

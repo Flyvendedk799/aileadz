@@ -29,6 +29,30 @@ class FulfillmentLaunchTests(OrderFlowBase):
         self.assertEqual(result["change_id"], second["change_id"])
         self.assertEqual(len(self.db.query("SELECT * FROM course_order_changes")), 1)
 
+    def test_cancel_order_on_a_booked_order_reports_a_request_not_a_cancellation(self):
+        oid = self.booked()
+        for ctx in (self.learner(), self.hr()):
+            result = orders.cancel_order(ctx, oid, reason="Kan ikke deltage")
+            self.assertTrue(result["success"])
+            self.assertTrue(result["requested"])
+            self.assertFalse(result["already_cancelled"])
+            self.assertIn("Afbestillingen er", result["message"])
+            self.assertIn("sendt til udbyderen", result["message"])
+            self.assertNotIn("annulleret", result["message"].lower())
+        self.assertEqual(self.order(oid)["status"], "booked")
+        self.assertEqual(self.spent(), 2500)
+
+    def test_cancel_order_on_an_unbooked_order_still_cancels_and_refunds(self):
+        oid = self.create()["order_id"]
+        self.assertTrue(orders.set_status(self.hr(), oid, "approved")["success"])
+        self.assertEqual(self.spent(), 2500)
+        result = orders.cancel_order(self.learner(), oid)
+        self.assertTrue(result["success"])
+        self.assertFalse(result["requested"])
+        self.assertEqual(result["message"], "Ordren er annulleret.")
+        self.assertEqual(self.order(oid)["status"], "cancelled")
+        self.assertEqual(self.spent(), 0)
+
     def test_accepted_cancellation_retains_only_agreed_fee_and_is_idempotent(self):
         oid = self.booked()
         change = fulfillment.request_change(self.learner(), oid, "cancel", {"note": "Afbestilling"})

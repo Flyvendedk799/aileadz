@@ -1538,13 +1538,24 @@ def set_status(ctx, order_id, new_status, *, note=None, reason=None):
 
 def cancel_order(ctx, order_id, reason=None):
     """Cancel an order (owner, same-company manager, vendor or admin), refunding
-    budget exactly once. Idempotent: cancelling twice never refunds twice."""
+    budget exactly once. Idempotent: cancelling twice never refunds twice.
+
+    A booked order is not cancelled by its owner or HR: the call files a change
+    request with the vendor and returns ``requested: True`` (status stays
+    ``booked``, budget untouched) with the request message, never "annulleret"."""
     res = set_status(ctx, order_id, lc.CANCELLED, reason=reason)
     if res.get("success"):
+        if res.get("pending"):
+            # A booked order is only cancelled once the vendor accepts: this is a
+            # request. Keep order_fulfillment's message and say so explicitly.
+            res["requested"] = True
+            res["already_cancelled"] = False
+            return res
         res.setdefault("message", "Ordren er annulleret.")
         if not res.get("unchanged"):
             res["message"] = "Ordren er annulleret."
         res["already_cancelled"] = bool(res.get("unchanged"))
+        res["requested"] = False
     return res
 
 

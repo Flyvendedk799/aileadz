@@ -146,7 +146,11 @@ def request_change(ctx, order_id, kind, payload=None):
                 "success": True,
                 "pending": True,
                 "change_id": pending["id"],
-                "message": "Der ligger allerede en ændring til behandling.",
+                "message": (
+                    "Afbestillingen er allerede sendt til udbyderen og afventer svar. Din plads og budgettet er uændret."
+                    if kind == "cancel" and pending.get("kind") == "cancel"
+                    else "Der ligger allerede en ændring til behandling."
+                ),
             }
         if kind == "reschedule":
             import enrollment_service
@@ -203,7 +207,11 @@ def request_change(ctx, order_id, kind, payload=None):
             "change_id": change_id,
             "refunded": False,
             "status": lc.BOOKED,
-            "message": "Ændringsønsket er sendt. Den nuværende booking og budgetbinding gælder indtil bekræftelse.",
+            "message": (
+                "Afbestillingen er sendt til udbyderen. Din plads og budgettet er uændret, indtil den er accepteret."
+                if kind == "cancel"
+                else "Ændringsønsket er sendt. Den nuværende booking og budgetbinding gælder indtil bekræftelse."
+            ),
         }
     except ValueError as exc:
         conn.rollback()

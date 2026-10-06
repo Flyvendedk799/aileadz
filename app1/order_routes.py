@@ -252,9 +252,11 @@ def cancel_order(order_id):
         result = _svc_cancel_order(ctx, order_id)
 
         if result.get('success'):
+            requested = bool(result.get('requested'))
             return jsonify({
                 'success': True,
-                'message': 'Bestillingen er annulleret.'
+                'requested': requested,
+                'message': (result.get('message') if requested else None) or 'Bestillingen er annulleret.'
             })
 
         # Anti-enumeration: not-found / not-owned both surface as 404.

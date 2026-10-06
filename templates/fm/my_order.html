@@ -46,6 +46,12 @@
             {% endif %}
           </div>
           <p class="mo-hint">{{ status_hint }}</p>
+          {% if pending_change %}
+          <div class="mo-pending" role="status" style="margin-top:12px;padding:10px 12px;border:1px solid var(--fm-line);border-radius:10px;background:var(--fm-surface);font-size:13.5px">
+            <span class="fm-badge amber"><i class="fa-solid fa-hourglass-half"></i> Ændring afventer svar</span>
+            <div style="margin-top:6px;color:var(--fm-ink-2)">{% if pending_change.kind == 'cancel' %}Din afbestilling afventer svar fra udbyderen.{% else %}Din ændringsanmodning afventer svar fra udbyderen.{% endif %} Din plads og budgettet er uændret, indtil den er accepteret.</div>
+          </div>
+          {% endif %}
           {% if order.cancel_reason and status in ['cancelled','rejected'] %}
           <p class="mo-hint"><strong>Begrundelse:</strong> {{ order.cancel_reason }}</p>
           {% endif %}
@@ -70,7 +76,7 @@
             </form>
             {% endif %}
             {% if can_cancel %}
-            <form method="post" action="{{ url_for('futurematch.my_order_cancel', order_id=order.order_id) }}" onsubmit="return confirm('Vil du annullere denne bestilling?');">
+            <form method="post" action="{{ url_for('futurematch.my_order_cancel', order_id=order.order_id) }}" onsubmit="return confirm('{{ 'Vil du anmode om afbestilling? Udbyderen skal acceptere, og der kan være et gebyr.' if status == 'booked' else 'Vil du annullere denne bestilling?' }}');">
               <button class="btn btn-ghost btn-sm" type="submit"><i class="fa-solid fa-ban"></i> {{ 'Anmod om afbestilling' if status == 'booked' else 'Annullér' }}</button>
             </form>
             {% endif %}

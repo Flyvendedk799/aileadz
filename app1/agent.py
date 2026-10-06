@@ -2927,10 +2927,16 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                     "catalog_compare_products",
                 )
                 if fn in _PRODUCT_CARD_TOOLS:
-                    raw_products = resolve_products_for_ui(
-                        compact_results=tool_result_dict.get("results"),
-                    )
-                    if raw_products:
+                    # L10: honour suppress_cards / strict no-match from tools.
+                    if tool_result_dict.get("suppress_cards") or tool_result_dict.get("status") in (
+                        "not_found", "no_results",
+                    ) and not tool_result_dict.get("results"):
+                        raw_products = []
+                    else:
+                        raw_products = resolve_products_for_ui(
+                            compact_results=tool_result_dict.get("results"),
+                        )
+                    if raw_products and not tool_result_dict.get("suppress_cards"):
                         # Per-card "why": carry the verifiable match_reason the
                         # search tools computed (lost when products are re-resolved
                         # by handle) so the card can show why each course fits.
@@ -2945,14 +2951,18 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                         _track_shown_products(sid, tool_result_dict.get("results", []))
 
                 elif fn in ("get_course_details", "catalog_get_product"):
-                    handle = (
-                        tool_result_dict.get("product", {}).get("handle")
-                        or tool_result.arguments.get("handle")
-                        or tool_result.arguments.get("product_handle")
-                    )
-                    if not handle and tool_result_dict.get("results"):
-                        handle = tool_result_dict["results"][0].get("handle")
-                    resolved = resolve_products_for_ui(single_handle=handle)
+                    if tool_result_dict.get("suppress_cards") or tool_result_dict.get("status") == "not_found":
+                        resolved = []
+                        handle = None
+                    else:
+                        handle = (
+                            tool_result_dict.get("product", {}).get("handle")
+                            or tool_result.arguments.get("handle")
+                            or tool_result.arguments.get("product_handle")
+                        )
+                        if not handle and tool_result_dict.get("results"):
+                            handle = tool_result_dict["results"][0].get("handle")
+                        resolved = resolve_products_for_ui(single_handle=handle)
                     if resolved:
                         buffered_ui_html.append(render_product_media(resolved[0]))
                         buffered_course_cards.append(serialize_course_cards([resolved[0]]))

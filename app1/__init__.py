@@ -397,17 +397,30 @@ def serialize_course_card(product):
         meta.append(["fa-tag", "Aftalepris"])
 
     card_variants = []
-    for v in variants[:6]:
-        seats = v.get("inventory_quantity")
-        try:
-            seats = int(seats)
-        except (TypeError, ValueError):
-            seats = 99
-        card_variants.append({
-            "date": (_clean_variant_opt(v.get("option2")) or "Efter aftale"),
-            "loc": (_clean_variant_opt(v.get("option1")) or p.get("location") or "Online"),
-            "seats": seats,
-        })
+    # L03: same availability fact as catalog_service.normalize_variant — never
+    # invent 99 / "Ledig" from untracked inventory_quantity 0.
+    try:
+        from app1.course_facts import card_variant_payload
+        for v in variants[:6]:
+            payload = card_variant_payload(v if isinstance(v, dict) else {}, product=p)
+            # Prefer cleaned option strings when present on the raw row.
+            if isinstance(v, dict):
+                d = _clean_variant_opt(v.get("option2"))
+                loc = _clean_variant_opt(v.get("option1"))
+                if d:
+                    payload["date"] = d
+                if loc:
+                    payload["loc"] = loc
+            card_variants.append(payload)
+    except Exception:
+        for v in variants[:6]:
+            card_variants.append({
+                "date": (_clean_variant_opt(v.get("option2")) or "Efter aftale"),
+                "loc": (_clean_variant_opt(v.get("option1")) or p.get("location") or "Online"),
+                "seats": None,
+                "availability": "unknown",
+                "availability_label": "Tilgængelighed ikke oplyst",
+            })
 
     card = {
         "vendor": p.get("vendor") or "",
@@ -1658,8 +1671,8 @@ def confirm_tool_action():
     SSE event.  The server looks up the stored (scope, tool_name, args) entry,
     injects confirm=True, and re-dispatches to the correct executor.
 
-    Idempotent: if the token has already been consumed (or never existed),
-    returns {"status": "already_confirmed"} so double-clicks are harmless.
+    Distinguishes expired / rejected / unknown / already_confirmed (S01).
+    Success is recorded as a durable outcome receipt on the token.
     """
     logged_in_user = session.get("user")
     if not logged_in_user:
@@ -1670,37 +1683,61 @@ def confirm_tool_action():
     if not token:
         return jsonify({"status": "error", "message": "token mangler"}), 400
 
-    # Resolve the session_id used when the confirm_card was emitted.
-    # Employee path uses session["session_id"]; HR path uses hr_chat_session_id.
-    # We try both so one route handles both scopes.
-    # The chat and the profiler each have their own session id, so try every id
-    # this browser session holds.
     from app1 import confirm_store as _cs
     from app1 import conversation_state as _conv_state
     hr_sid = session.get("hr_chat_session_id", "")
     employee_sid = ""
     entry = None
-    for _candidate in _conv_state.all_session_ids(session):
+    candidates = list(_conv_state.all_session_ids(session))
+    if hr_sid and hr_sid not in candidates:
+        candidates.append(hr_sid)
+
+    # Prefer an existing success receipt (true already_confirmed).
+    prior = _cs.get_outcome(token)
+    if prior and prior.get("status") == "consumed":
+        receipt = prior.get("receipt") or {}
+        out = dict(receipt) if isinstance(receipt, dict) else {}
+        # Keep status as already_confirmed so double-clicks stay idempotent
+        # and the UI does not re-announce a fresh success.
+        original = out.get("status")
+        out["status"] = "already_confirmed"
+        if original and original != "already_confirmed":
+            out["original_status"] = original
+        return jsonify(out)
+    if prior and prior.get("status") == "rejected":
+        return jsonify({"status": "rejected", "message": "Handlingen blev afvist."})
+    if prior and prior.get("status") == "expired":
+        return jsonify({"status": "expired", "message": "Bekræftelsen er udløbet."})
+    if prior and prior.get("status") == "failed":
+        return jsonify({"status": "error", "message": "Forrige forsøg fejlede — handlingen blev ikke gennemført."})
+
+    for _candidate in candidates:
         entry = _cs.pop_pending(_candidate, token)
         if entry is not None:
             employee_sid = _candidate
             break
     if entry is None:
-        entry = _cs.pop_pending(hr_sid, token)
-    if entry is None:
-        return jsonify({"status": "already_confirmed"})
+        # Peek across sessions for a clearer status than a false success.
+        for _candidate in candidates:
+            _e, st = _cs.peek_pending(_candidate, token)
+            if st == "expired":
+                return jsonify({"status": "expired", "message": "Bekræftelsen er udløbet."})
+            if st == "rejected":
+                return jsonify({"status": "rejected", "message": "Handlingen blev afvist."})
+            if st == "consumed":
+                return jsonify({"status": "already_confirmed"})
+        return jsonify({"status": "unknown_token", "message": "Bekræftelsen er ikke længere gyldig."})
 
     scope = entry["scope"]
     from auth_decorators import can as _can
     if scope == "hr" and not _can("company.workspace"):
-        # An HR confirmation is only honoured for someone who still holds an HR role.
+        # Token already consumed — record failure so retry is not shown as success.
+        _cs.mark_consumed(token, ok=False, tool_name=entry.get("tool_name") or "")
         return jsonify({"status": "error", "message": "Ingen adgang til HR-handlinger."}), 403
     tool_name = entry["tool_name"]
     args = dict(entry["args"])
     args["confirm"] = True  # inject the confirmation flag
 
-    # Rebuild the provider-shaped tool call the executors expect
-    # (tool_call.function.name / .arguments), not a flat stand-in.
     import types
     tool_call = types.SimpleNamespace(
         name=tool_name,
@@ -1718,18 +1755,22 @@ def confirm_tool_action():
                                session_id=employee_sid)
 
         result = json.loads(raw) if isinstance(raw, str) else raw
+        ok_statuses = {"success", "order_created", "team_orders_created", "handed_off_to_hr", "ok"}
+        succeeded = isinstance(result, dict) and result.get("status") in ok_statuses
+        _cs.mark_consumed(
+            token, ok=bool(succeeded), tool_name=tool_name,
+            receipt=result if isinstance(result, dict) else {"status": "ok"},
+        )
         try:
             from app1.memory_store import log_event
             log_event(
                 employee_sid or hr_sid, "confirm_tool_action",
                 tool_used=tool_name,
-                extra={"status": result.get("status", "ok"), "scope": scope},
+                extra={"status": (result or {}).get("status", "ok") if isinstance(result, dict) else "ok", "scope": scope},
             )
         except Exception:
             pass
         if tool_name == "create_course_order" and scope != "hr" and isinstance(result, dict):
-            # Confirming runs the tool without a model turn, so the chat gets its
-            # written confirmation from here, and the transcript learns the order exists.
             from app1.order_confirmation import order_confirmation_text
             confirmation = order_confirmation_text(result, args)
             if confirmation:
@@ -1739,7 +1780,35 @@ def confirm_tool_action():
 
     except Exception as e:
         logging.error("confirm_tool_action error [%s]: %s", tool_name, e)
+        _cs.mark_consumed(token, ok=False, tool_name=tool_name)
         return jsonify({"status": "error", "message": "Fejl ved bekræftelse"}), 500
+
+
+@app1_bp.route("/reject_tool_action", methods=["POST"])
+def reject_tool_action():
+    """Revoke a pending confirmation token (Afvis). Never executes the tool."""
+    logged_in_user = session.get("user")
+    if not logged_in_user:
+        return jsonify({"status": "error", "message": "Ikke logget ind"}), 401
+
+    data = request.json or {}
+    token = (data.get("token") or "").strip()
+    if not token:
+        return jsonify({"status": "error", "message": "token mangler"}), 400
+
+    from app1 import confirm_store as _cs
+    from app1 import conversation_state as _conv_state
+    hr_sid = session.get("hr_chat_session_id", "")
+    candidates = list(_conv_state.all_session_ids(session))
+    if hr_sid and hr_sid not in candidates:
+        candidates.append(hr_sid)
+
+    status = "unknown"
+    for sid in candidates:
+        status = _cs.reject_pending(sid, token)
+        if status in ("rejected", "already_rejected", "already_confirmed", "expired"):
+            break
+    return jsonify({"status": status})
 
 
 @app1_bp.route("/adminlog")

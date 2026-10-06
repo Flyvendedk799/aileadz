@@ -43,6 +43,17 @@ def _product(handle):
         return None
 
 
+def is_meta_tag(tag):
+    """Format, language, level and location tags ("Klassekursus", "Online", "Aarhus")
+    are never proposed as skills. One definition, ``catalog_service.is_meta_tag``,
+    shared with the outcome-review prefill, which reads ``skills_for_product``."""
+    try:
+        import catalog_service
+        return catalog_service.is_meta_tag(tag)
+    except Exception:
+        return False
+
+
 def skills_for_product(product):
     """Candidate skill names + a suggested level for a normalized catalog product."""
     if not product:
@@ -55,6 +66,8 @@ def skills_for_product(product):
 
     def _add(n, why):
         n = (n or "").strip()
+        if n and is_meta_tag(n):
+            return
         if n and n.lower() not in {x["name"].lower() for x in names}:
             names.append({"name": n[:80], "level": level, "why": why})
 

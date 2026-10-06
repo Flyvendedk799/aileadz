@@ -56,12 +56,13 @@
 {% block content %}
 <div class="fm-wrap">
 
+        {# One hero: the starter block while the profile is empty and not dismissed, otherwise the regular hero. #}
         {% if show_welcome %}
         <section class="fm-card" data-reveal style="margin-bottom:18px;border-color:var(--fm-primary)">
           <div class="fm-card-body" style="padding:20px 24px">
             <div class="fm-spread" style="align-items:flex-start;gap:16px;flex-wrap:wrap">
               <div style="max-width:60ch">
-                <span class="fm-eyebrow"><i class="fa-solid fa-hand-sparkles"></i> Velkommen</span>
+                <span class="fm-eyebrow"><i class="fa-solid fa-hand-sparkles"></i> Goddag{% if session.get('user') %}, {{ session.get('user') }}{% endif %}</span>
                 <h2 style="font-size:20px;margin:6px 0 6px">Vælg, hvor du vil starte</h2>
                 <p class="muted" style="margin:0;font-size:14px">Du behøver ikke udfylde noget for at komme i gang. Jo mere AI'en ved om dig, jo bedre kan den hjælpe, men du bestemmer selv tempoet.</p>
               </div>
@@ -74,8 +75,7 @@
             </div>
           </div>
         </section>
-        {% endif %}
-
+        {% else %}
         <!-- Hero -->
         <section class="emp-hero" data-reveal>
           <div>
@@ -88,6 +88,7 @@
             </div>
           </div>
         </section>
+        {% endif %}
 
         <!-- Two column: recommended + side -->
         <div class="split" style="margin-top:8px">
@@ -188,7 +189,7 @@
           </div>
 
           <div class="stack">
-            {% if not has_skills %}
+            {% if not has_skills and not show_welcome %}
             <div class="fm-card" data-reveal data-d="1"><div class="fm-card-body" style="text-align:center">
               <span class="learn-thumb" style="margin:2px auto 10px"><i class="fa-solid fa-id-card"></i></span>
               <div style="font-weight:700;font-size:14.5px">Kom godt i gang</div>

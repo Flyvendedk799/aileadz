@@ -52,6 +52,34 @@ FORMAT_TAGS = {
     "konference",
 }
 
+# Words that describe how, where, in which language or at which level a course is
+# given, not what it teaches: never a competence the learner gains.
+_META_TAGS = {
+    # format
+    "klassekursus", "klasseundervisning", "online", "virtuelt", "virtuel", "webinar", "hybrid",
+    "åbent kursus", "åbne kurser", "firmakursus", "workshop", "seminar", "kursus",
+    # language
+    "dansk", "engelsk", "english", "danish",
+    # level
+    "begynder", "mellem", "avanceret", "ekspert", "intro", "beginner", "intermediate", "advanced", "expert",
+    # places
+    "danmark", "sjælland", "fyn", "jylland", "hovedstaden", "midtjylland", "nordjylland", "syddanmark",
+    "københavn", "aarhus", "århus", "odense", "aalborg", "ålborg", "esbjerg", "kolding", "vejle",
+    "roskilde", "herning", "silkeborg", "horsens", "randers", "viborg", "næstved", "fredericia",
+    "taastrup", "ballerup", "lyngby", "hillerød", "slagelse", "holstebro", "skive", "svendborg",
+}
+
+
+def is_meta_tag(tag):
+    """True for a tag that names a format, language, level, place or other
+    operational detail ("Klassekursus", "E-learning", "Online", "Aarhus"), i.e. not
+    something a learner can be said to have learnt."""
+    t = str(tag or "").strip().lower()
+    if not t:
+        return True
+    return (t in _META_TAGS or t in FORMAT_TAGS or t in OPERATIONAL_TAGS
+            or t.startswith(("region:", "region ", "by:", "land:")))
+
 GENERIC_PRODUCT_TYPES = {"", "kursus"}
 
 _CACHE = {

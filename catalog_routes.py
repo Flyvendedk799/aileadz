@@ -309,6 +309,41 @@ def _completed_count(handle):
         return 0
 
 
+def _ordered_session_id(product, order_id):
+    """The session id of the product variant the viewer ordered with ``order_id``.
+
+    Only an order that belongs to the viewer counts (user id or username). The
+    stored session id wins; an older order without one is matched on its date and
+    place. Returns None when nothing matches, so the page falls back to its default."""
+    username = session.get("user")
+    user_id = session.get("user_id")
+    variants = (product or {}).get("variants") or []
+    if not order_id or not variants or (not username and not user_id):
+        return None
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            """SELECT o.variant_date, o.variant_location, d.session_id
+               FROM course_orders o LEFT JOIN course_order_details d ON d.order_id = o.order_id
+               WHERE o.order_id = %s AND o.product_handle = %s
+                 AND ( (%s IS NOT NULL AND o.user_id = %s) OR (%s <> '' AND o.username = %s) )""",
+            (order_id, product.get("handle"), user_id, user_id, username or "", username or ""),
+        )
+        row = cur.fetchone()
+        cur.close()
+    except Exception:
+        return None
+    if not row:
+        return None
+    if row.get("session_id") and any(v.get("session_id") == row["session_id"] for v in variants):
+        return row["session_id"]
+    for v in variants:
+        place = v.get("location") or v.get("city") or ""
+        if row.get("variant_date") and v.get("date") == row["variant_date"] and place == (row.get("variant_location") or ""):
+            return v.get("session_id")
+    return None
+
+
 def _user_open_order(handle):
     """The logged-in user's still-open order for this course (or None), so the
     page can say "Du har allerede anmodet om dette kursus" instead of inviting a
@@ -461,6 +496,7 @@ def product_detail(handle):
     return render_template(
         "fm/product_detail.html",
         existing_order=existing_order,
+        ordered_session_id=_ordered_session_id(product, request.args.get("order")),
         request_flow=_request_flow(),
         product=product,
         related_products=related_products,
@@ -615,12 +651,10 @@ def request_product(handle):
 
     order = result.get("order", {})
     order_id = order.get("order_id") or result.get("order_id", "")
+    # The product page shows one "Anmodningen er registreret" banner for ``order``, so a
+    # success flash would only repeat it; a duplicate has no new order to announce.
     if result.get("duplicate"):
         flash("Du har allerede anmodet om dette kursus. Se status på din tidslinje.", "info")
-    elif order.get("needs_approval") or order.get("status") == "pending_approval":
-        flash("Anmodningen er sendt til godkendelse. Du hører fra os, så snart den er behandlet.", "success")
-    else:
-        flash("Anmodningen er godkendt. Udbyderen bekræfter din plads.", "success")
     return redirect(url_for("catalog.product_detail", handle=handle, order=order_id))
 
 

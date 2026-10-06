@@ -213,6 +213,7 @@
    posted as variant_index 0 and bounced by the server-side sold-out guard. #}
 {% set ns = namespace(sel=none) %}
 {% for v in variants %}{% if ns.sel is none and not (v.get('seats') is not none and v.get('seats') <= 0) %}{% set ns.sel = loop.index0 %}{% endif %}{% endfor %}
+{% for v in variants %}{% if ordered_session_id and v.get('session_id') == ordered_session_id %}{% set ns.sel = loop.index0 %}{% endif %}{% endfor %}
 {% set first = variants[ns.sel] if ns.sel is not none else (variants[0] if variants else None) %}
 {% set has_deal = product.has_agreement and product.discounted_price_label %}
 {% set rv_count = (review_summary.count if review_summary else 0) or 0 %}
@@ -237,7 +238,7 @@
 
   {% if request.args.get('order') %}
   <div class="fm-card" style="padding:14px 18px;margin-bottom:18px;border-left:3px solid var(--fm-success);background:color-mix(in srgb,var(--fm-success) 8%,var(--fm-surface))">
-    <i class="fa-solid fa-circle-check" style="color:var(--fm-success)"></i> Anmodningen er registreret med reference <strong>{{ request.args.get('order')[:8] }}</strong>.
+    <i class="fa-solid fa-circle-check" style="color:var(--fm-success)"></i> Anmodningen er registreret med reference <strong>{{ request.args.get('order')[:8] }}</strong>{% if existing_order %} ({{ existing_order.label|lower }}){% endif %}.
     <a href="{{ url_for('futurematch.my_order', order_id=request.args.get('order')) }}" style="margin-left:8px;font-weight:600">Se status på din tidslinje <i class="fa-solid fa-arrow-right"></i></a>
   </div>
   {% elif existing_order %}

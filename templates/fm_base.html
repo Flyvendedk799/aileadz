@@ -201,7 +201,8 @@
         <button class="fm-icon-btn" data-theme-toggle aria-label="Tema"><i class="fa-solid fa-moon"></i></button>
         <a class="fm-icon-btn" href="{{ url_for('pages.notifications') }}" aria-label="Notifikationer"><i class="fa-solid fa-bell"></i><span class="dot" data-notif-dot hidden></span><span class="fm-bell-count" data-notif-count hidden></span></a>
         {% if session.get('user') %}
-        {% set _cc = credit_chip() %}<a class="fm-chip credits" href="{{ url_for('credits.company_credits') if _cc.scope == 'company' and has_endpoint('credits.company_credits') and can('company.credits') else url_for('pages.analytics') }}" title="{{ 'Virksomhedens AI-kreditter' if _cc.scope == 'company' else 'Dine AI-kreditter' }}" style="text-decoration:none"><i class="fa-solid fa-coins"></i> {{ _cc.label }}</a>
+        {# The credits balance means something to credit managers and platform admins only; employees have "Mit forbrug" in the menu. #}
+        {% if can('company.credits') or can('platform.admin') %}{% set _cc = credit_chip() %}<a class="fm-chip credits" href="{{ url_for('credits.company_credits') if _cc.scope == 'company' and has_endpoint('credits.company_credits') and can('company.credits') else url_for('pages.analytics') }}" title="{{ 'Virksomhedens AI-kreditter' if _cc.scope == 'company' else 'Dine AI-kreditter' }}" style="text-decoration:none"><i class="fa-solid fa-coins"></i> {{ _cc.label }}</a>{% endif %}
         <form method="post" action="{{ url_for('auth.logout') }}" style="display:inline;margin:0"><button type="submit" class="fm-icon-btn" aria-label="Log ud" title="Log ud"><i class="fa-solid fa-arrow-right-from-bracket"></i></button></form>
         {% else %}
         <a class="fm-chip" href="{{ url_for('auth.login') }}" style="text-decoration:none"><i class="fa-solid fa-arrow-right-to-bracket"></i> Log ind</a>

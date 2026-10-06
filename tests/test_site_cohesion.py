@@ -339,6 +339,31 @@ class ActiveStateTests(unittest.TestCase):
         self._check("/admin/credits/companies", "/admin/credits", "/admin/credits", page_id="ausers",
                     subnav="admin", role="admin")
 
+    def test_customer_accounts_light_the_sidebar_entry_and_the_subnav_tab(self):
+        self._check("/admin/kundeforloeb", "/admin/kundeforloeb", "/admin/kundeforloeb", page_id="", subnav="admin",
+                    role="admin")
+        self._check("/admin/kundeforloeb/7", "/admin/kundeforloeb", "/admin/kundeforloeb", page_id="", subnav="admin",
+                    role="admin")
+        html = self._render("/admin/users", "admin", "{% include 'fm/_admin_subnav.html' %}", "admin")
+        self.assertIn("Kundeforløb", html)
+
+    def test_design_gallery_link_needs_sandbox_or_the_flag(self):
+        env = {k: v for k, v in os.environ.items() if k not in ("SANDBOX", "SHOW_DESIGN_GALLERY")}
+        body = "{% include 'fm/_admin_subnav.html' %}"
+        with mock.patch.dict(os.environ, env, clear=True):
+            html = self._render("/admin/users", "admin", body, "admin")
+        self.assertNotIn("Designgalleri", html)
+        with mock.patch.dict(os.environ, {**env, "SHOW_DESIGN_GALLERY": "1"}, clear=True):
+            html = self._render("/admin/users", "admin", body, "admin")
+        self.assertIn("Designgalleri", html)
+        with mock.patch.dict(os.environ, {**env, "SANDBOX": "1"}, clear=True):
+            self.assertIn("Designgalleri", self._render("/admin/users", "admin", body, "admin"))
+
+    def test_admin_sidebar_sections_are_foldable_with_learner_closed_by_default(self):
+        html = self._render("/admin/users", "admin", "", "admin")
+        self.assertIn('data-section="learn" data-default="closed"', html)
+        self.assertIn('data-section="admin" class="fm-nav-label"', html)
+
     def test_admin_pages_use_the_shared_admin_subnav(self):
         import glob
         for path in sorted(glob.glob(os.path.join(TEMPLATES, "fm", "admin_*.html"))):

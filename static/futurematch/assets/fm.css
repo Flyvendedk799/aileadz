@@ -917,3 +917,11 @@ html, body { max-width: 100%; overflow-x: hidden; overflow-x: clip; }
 /* ---- Field-level form errors (templates/fm/_macros.html: field_error) ---- */
 .fm-field-error { font-size: 12.5px; font-weight: 600; color: var(--fm-danger); }
 .fm-input.is-invalid { border-color: var(--fm-danger); }
+
+/* ---- Foldable sidebar sections (shell.js: initNavSections) ---- */
+.fm-nav-label.is-foldable { cursor: pointer; display: flex; align-items: center; justify-content: space-between; user-select: none; }
+.fm-nav-label.is-foldable::after { content: "\f078"; font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 9px; transition: transform .15s var(--ease); }
+.fm-nav-label.is-foldable[aria-expanded="false"]::after { transform: rotate(-90deg); }
+.fm-nav-label.is-foldable:focus-visible { outline: 2px solid var(--fm-primary); outline-offset: -2px; border-radius: 6px; }
+.fm-nav-list.is-folded { display: none; }
+.fm-side.collapsed .fm-nav-list.is-folded { display: flex; }

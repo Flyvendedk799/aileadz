@@ -98,10 +98,48 @@
     });
 
     initMotion();
+    initNavSections();
     initCmdK();
     initTooltips();
     initNotifBadge();
     applyBrand();
+  }
+
+  /* ---- Collapsible sidebar sections ----
+     A label with data-section folds the list that follows it. The state is
+     remembered per section (localStorage, best effort); data-default="closed"
+     is the starting state for a first visit, and the section that holds the
+     current page always stays open so the active link is never hidden. */
+  function initNavSections() {
+    document.querySelectorAll("#fmSide .fm-nav-label[data-section]").forEach(label => {
+      const list = label.nextElementSibling;
+      if (!list || !list.classList.contains("fm-nav-list")) return;
+      const key = "fm-nav-" + label.dataset.section;
+      let open = label.dataset.default !== "closed";
+      try {
+        const saved = localStorage.getItem(key);
+        if (saved === "1") open = true;
+        else if (saved === "0") open = false;
+      } catch (e) { /* storage blocked: use the default */ }
+      if (list.querySelector("a.active")) open = true;
+      label.classList.add("is-foldable");
+      label.setAttribute("role", "button");
+      label.setAttribute("tabindex", "0");
+      function paint() {
+        label.setAttribute("aria-expanded", open ? "true" : "false");
+        list.classList.toggle("is-folded", !open);
+      }
+      function toggle() {
+        open = !open;
+        paint();
+        try { localStorage.setItem(key, open ? "1" : "0"); } catch (e) { /* ignore */ }
+      }
+      label.addEventListener("click", toggle);
+      label.addEventListener("keydown", e => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
+      });
+      paint();
+    });
   }
 
   /* ---- Unread notification badge (bell + nav) ----

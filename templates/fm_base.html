@@ -30,6 +30,7 @@
 </head>
 
 {% set _role = 'manager' if can('company.workspace') else 'employee' %}
+{% set _is_admin = can("platform.admin") %}
 {% set platform_name = company_branding.company_name if white_label_active and company_branding.company_name else 'Futurematch' %}
 {% set platform_tagline = company_branding.tagline if white_label_active and company_branding.tagline else 'Læring & HR' %}
 {% set _uname = session.get('user') or 'Gæst' %}
@@ -85,7 +86,9 @@
       {% set _nav = nav_state(page).side if nav_state is defined else page %}
 
       {# Every learner gets "Min læring" (employees, managers and solo users alike). #}
-      <div class="fm-nav-label">Min læring</div>
+      {# Platform admins start with the learner and company sections folded; the Admin section is open.
+         shell.js remembers each section's state (localStorage) and keeps the current page's section open. #}
+      <div data-section="learn" {% if _is_admin %}data-default="closed"{% endif %} class="fm-nav-label">Min læring</div>
       <ul class="fm-nav-list">
         <li><a class="fm-nav-link {{ 'active' if _nav == 'emphome' }}" href="{{ url_for('futurematch.employee_home') }}"><i class="fa-solid fa-house"></i><span>Min læring</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if _nav == 'timeline' }}" href="{{ url_for('futurematch.timeline') }}"><i class="fa-solid fa-timeline"></i><span>Mine bestillinger</span></a></li>
@@ -115,7 +118,7 @@
          capability its route's guard checks (tests/test_site_cohesion.py), so nobody
          sees a link that bounces. #}
       {% if session.get('company_id') and can('company.workspace') %}
-      <div class="fm-nav-label">Virksomhed</div>
+      <div data-section="company" {% if _is_admin %}data-default="closed"{% endif %} class="fm-nav-label">Virksomhed</div>
       <ul class="fm-nav-list">
         {% if can('company.workspace') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'hr.overview' }}" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i><span>Overblik</span></a></li>{% endif %}
         {% if can('company.employees') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'hr.organisation' }}" href="{{ url_for('companies.employees') }}"><i class="fa-solid fa-sitemap"></i><span>Organisation</span></a></li>{% endif %}
@@ -142,9 +145,10 @@
 
       {# Admin: the same destinations, labels and icons as fm/_admin_subnav.html. #}
       {% if can('platform.admin') %}
-      <div class="fm-nav-label">Admin</div>
+      <div data-section="admin" class="fm-nav-label">Admin</div>
       <ul class="fm-nav-list">
         <li><a class="fm-nav-link {{ 'active' if _nav == 'admin.home' }}" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i><span>Adminoversigt</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if _nav == 'admin.accounts' }}" href="{{ url_for('customer_success.accounts') }}"><i class="fa-solid fa-briefcase"></i><span>Kundeforløb</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if _nav == 'admin.companies' }}" href="{{ url_for('companies.admin_companies_list') }}"><i class="fa-solid fa-building"></i><span>Virksomheder</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if _nav == 'admin.users' }}" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i><span>Brugere</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if _nav == 'admin.credits' }}" href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i><span>Kreditter</span></a></li>
@@ -164,7 +168,7 @@
         <li><a class="fm-nav-link {{ 'active' if _nav == 'admin.health' }}" href="{{ url_for('admin_dashboard.admin_system_health') }}"><i class="fa-solid fa-heart-pulse"></i><span>Systemstatus</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if _nav == 'admin.mail' }}" href="{{ url_for('mail_delivery.deliveries') }}"><i class="fa-solid fa-envelope"></i><span>Mail og leveringer</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if _nav == 'admin.gdpr' }}" href="{{ url_for('gdpr.admin_console') }}"><i class="fa-solid fa-user-shield"></i><span>GDPR / datasletning</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if _nav == 'admin.ui' }}" href="{{ url_for('futurematch.showcase_index') }}"><i class="fa-solid fa-swatchbook"></i><span>Designgalleri</span></a></li>
+        {% if show_design_gallery is defined and show_design_gallery() %}<li><a class="fm-nav-link {{ 'active' if _nav == 'admin.ui' }}" href="{{ url_for('futurematch.showcase_index') }}"><i class="fa-solid fa-swatchbook"></i><span>Designgalleri</span></a></li>{% endif %}
       </ul>
       {% endif %}
     </div>

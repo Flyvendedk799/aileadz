@@ -138,6 +138,8 @@ HR_SECTION_CAPABILITY = {
 # values; the sidebar entry is ``admin.<tab>``).
 ADMIN_TAB_BY_ENDPOINT = {
     'admin_dashboard.admin_home': 'home',
+    'customer_success.accounts': 'accounts',
+    'customer_success.manage_account': 'accounts',
     'companies.admin_companies_list': 'companies',
     'companies.admin_company_detail': 'companies',
     'admin_dashboard.user_list': 'users',
@@ -259,6 +261,15 @@ def nav_state(page_id='', hr_tab='', admin_tab=''):
     else:
         side = PAGE_ID_ALIASES.get(page, page)
     return {'side': side, 'hr': hr, 'admin': admin}
+
+
+@futurematch_bp.app_template_global('show_design_gallery')
+def show_design_gallery():
+    """The design gallery is a developer showcase: its navigation link is shown in
+    the sandbox (``SANDBOX=1``) or when ``SHOW_DESIGN_GALLERY`` is set. The route
+    itself stays admin-only everywhere (it renders ``templates/fm/*.html``)."""
+    import os
+    return os.environ.get('SANDBOX') == '1' or os.environ.get('SHOW_DESIGN_GALLERY', '').strip().lower() in ('1', 'true', 'yes', 'on')
 
 
 @futurematch_bp.app_template_global('hr_tab_group')

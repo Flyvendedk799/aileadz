@@ -423,6 +423,148 @@ def assign_path(cur, ctx, company_id, path_id, user_ids, *, due_date=None, sende
     return out
 
 
+def _money_value(value):
+    try:
+        return round(float(value or 0), 2)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _budget_map(cur, company_id):
+    """{department: {annual, spent, remaining, limited}} for this fiscal year (same table the
+    approvals page and ``order_service`` read). ``limited`` mirrors create_order: only a budget
+    above zero can be overspent."""
+    import datetime
+
+    out = {}
+    try:
+        cur.execute(
+            "SELECT department, annual_budget, spent FROM department_budgets WHERE company_id = %s AND fiscal_year = %s",
+            (company_id, datetime.datetime.now().year),
+        )
+        for row in list(cur.fetchall() or []):
+            annual = _money_value(row.get("annual_budget"))
+            spent = _money_value(row.get("spent"))
+            out[row["department"]] = {"annual": annual, "spent": spent, "remaining": round(annual - spent, 2), "limited": annual > 0}
+    except Exception as e:
+        logger.debug("learning_path_service: budgets unavailable for the review: %s", e)
+    return out
+
+
+def _priced_course(handle, company_id, title=""):
+    """What one person's order of ``handle`` would cost, without writing anything.
+
+    Uses the same quote as the real order. A course with several sessions cannot be quoted for
+    "one" session: the list price is shown and the participant picks the session afterwards."""
+    import enrollment_service
+
+    product = None
+    try:
+        product = enrollment_service.get_course(handle, company_id)
+    except Exception:
+        product = None
+    if not product:
+        return {"handle": handle, "title": title or handle, "price": 0.0, "session": "", "location": "",
+                "needs_session": False, "error": "Kurset findes ikke længere i kataloget."}
+    line = {"handle": handle, "title": product.get("title") or title or handle, "session": "", "location": "",
+            "needs_session": False, "error": ""}
+    try:
+        quote = enrollment_service.quote_course(handle, company_id)
+        line.update(price=float(quote["price"]), session=quote.get("variant_date") or "", location=quote.get("variant_location") or "")
+    except ValueError as exc:
+        line.update(price=_money_value(product.get("price_min")), needs_session=True, note=str(exc))
+    return line
+
+
+def _finish_review(cur, company_id, people):
+    """Totals, per-department budget before/after and the list of reasons that need HR's attention."""
+    budgets = _budget_map(cur, company_id)
+    departments = {}
+    for person in people:
+        dept = departments.setdefault(person["department"] or "", {"department": person["department"] or "", "now": 0.0, "later": 0.0})
+        dept["now"] = round(dept["now"] + sum(o["price"] for o in person["now"]), 2)
+        dept["later"] = round(dept["later"] + sum(o["price"] for o in person["later"]), 2)
+    lines = []
+    for dept in sorted(departments.values(), key=lambda d: d["department"]):
+        budget = budgets.get(dept["department"])
+        dept["has_budget"] = bool(budget and budget["limited"])
+        if dept["has_budget"]:
+            dept["before"] = budget["remaining"]
+            dept["after"] = round(budget["remaining"] - dept["now"], 2)
+            dept["after_later"] = round(dept["after"] - dept["later"], 2)
+            dept["over"] = dept["after"] < 0
+            dept["later_over"] = (not dept["over"]) and dept["after_later"] < 0
+        else:
+            dept.update(before=None, after=None, after_later=None, over=False, later_over=False)
+        lines.append(dept)
+    problems = [o["error"] for p in people for o in p["now"] + p["later"] if o.get("error")]
+    return {
+        "people": people,
+        "departments": lines,
+        "total_now": round(sum(d["now"] for d in lines), 2),
+        "total_later": round(sum(d["later"] for d in lines), 2),
+        "over_budget": any(d["over"] for d in lines),
+        "problems": problems,
+        "blocked": bool(problems) or not people,
+    }
+
+
+def preview_path_assignment(cur, company_id, path_id, user_ids):
+    """What assigning a path would do, WITHOUT writing: per person the orders created now and
+    (sequential paths) the ones ordered later, totals, and each department's budget before and after.
+
+    Returns None for an unknown path. People who are not active employees are left out and people
+    already enrolled are listed in ``already`` (they get nothing)."""
+    cur.execute("SELECT * FROM learning_paths WHERE id = %s AND company_id = %s", (path_id, company_id))
+    path = cur.fetchone()
+    if not path:
+        return None
+    mode = normalize_mode(path.get("ordering_mode"))
+    steps = get_steps(cur, company_id, path_id)
+    catalog = [s for s in steps if s.get("course_handle")]
+    priced = [_priced_course(s["course_handle"], company_id, s.get("title") or "") for s in catalog]
+    now_lines, later_lines = (priced[:1], priced[1:]) if mode == "sequential" else (priced, [])
+    people, already = [], []
+    for uid in dict.fromkeys(int(u) for u in user_ids):
+        emp = _load_employee(cur, company_id, uid)
+        if not emp:
+            continue
+        cur.execute(
+            "SELECT id FROM employee_learning_progress WHERE user_id = %s AND company_id = %s AND learning_path_id = %s",
+            (uid, company_id, path_id),
+        )
+        if cur.fetchone():
+            already.append(emp["name"])
+            continue
+        people.append({"user_id": uid, "name": emp["name"], "department": emp.get("department") or "",
+                       "now": [dict(line) for line in now_lines], "later": [dict(line) for line in later_lines]})
+    review = _finish_review(cur, company_id, people)
+    if not catalog:
+        review["problems"].append("Forløbet har ingen kurser at bestille. Tilføj trin, eller tildel det uden bestillinger.")
+    review.update(path={"id": path_id, "name": path["path_name"], "version": int(path.get("version") or 1), "mode": mode},
+                  already=already, blocked=review["blocked"] or not catalog,
+                  guidance=len(steps) - len(catalog))
+    return review
+
+
+def preview_course_assignment(cur, company_id, quote, user_ids):
+    """The same review for assigning one course to several people (one order each)."""
+    people = []
+    for uid in dict.fromkeys(int(u) for u in user_ids):
+        emp = _load_employee(cur, company_id, uid)
+        if not emp:
+            continue
+        line = {"handle": quote["product_handle"], "title": quote["product_title"], "price": float(quote["price"]),
+                "session": quote.get("variant_date") or "", "location": quote.get("variant_location") or "",
+                "needs_session": False, "error": ""}
+        people.append({"user_id": uid, "name": emp["name"], "department": emp.get("department") or "",
+                       "now": [line], "later": []})
+    review = _finish_review(cur, company_id, people)
+    review["path"] = None
+    review["already"] = []
+    return review
+
+
 def assignments_for_learner(cur, user_id, company_id):
     """ "Tildelt af HR": the learner's assigned paths with due date and progress."""
     if not user_id or not company_id:

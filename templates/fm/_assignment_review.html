@@ -1,0 +1,71 @@
+{# Shared review of an assignment before anything is created (course and learning path).
+   Expects `review` from learning_path_service.preview_path_assignment / preview_course_assignment:
+   people (orders created now / ordered later), departments (budget before and after), totals, problems.
+   Pure markup: the page around it owns the form and the confirm button. #}
+{% set _r = review %}
+<style>
+  .asr-person { padding: 14px 0; border-bottom: 1px solid var(--fm-line); }
+  .asr-person:last-child { border-bottom: 0; }
+  .asr-line { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 13.5px; padding: 3px 0; }
+  .asr-later { color: var(--fm-ink-3); }
+  .asr-meta { font-size: 12.5px; color: var(--fm-ink-2); }
+  .asr-budget { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 8px 0; font-size: 13.5px; border-bottom: 1px solid var(--fm-line); }
+  .asr-budget:last-child { border-bottom: 0; }
+  .asr-bad { color: var(--fm-danger); font-weight: 650; }
+  .asr-total { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 15px; padding-top: 10px; }
+</style>
+
+{% if _r.problems %}
+<div class="fm-card" role="alert" style="padding:16px 18px;margin-bottom:14px;border-color:var(--fm-danger)">
+  <strong class="asr-bad"><i class="fa-solid fa-triangle-exclamation"></i> Tildelingen kan ikke gennemføres endnu</strong>
+  <ul style="margin:8px 0 0 18px;padding:0">{% for p in _r.problems %}<li>{{ p }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<div class="fm-card" style="padding:18px 20px;margin-bottom:14px" data-review="orders">
+  <div class="fm-card-head" style="margin-bottom:6px"><span class="fm-ch-icon"><i class="fa-solid fa-cart-shopping"></i></span><h3>Bestillinger der oprettes</h3></div>
+  {% for p in _r.people %}
+  <div class="asr-person">
+    <div style="font-weight:650">{{ p.name }}{% if p.department %} <span class="asr-meta">· {{ p.department }}</span>{% endif %}</div>
+    {% for o in p.now %}
+    <div class="asr-line" data-when="now">
+      <span>{{ o.title }}<span class="asr-meta"> · {{ o.session or ('Hold vælges af deltageren' if o.needs_session else 'Dato aftales') }}{% if o.location %} · {{ o.location }}{% endif %}</span></span>
+      <span class="mono">{{ o.price|dkmoney }}</span>
+    </div>
+    {% endfor %}
+    {% for o in p.later %}
+    <div class="asr-line asr-later" data-when="later">
+      <span>{{ o.title }}<span class="asr-meta"> · Bestilles senere (anslået), når det forrige er gennemført</span></span>
+      <span class="mono">≈ {{ o.price|dkmoney }}</span>
+    </div>
+    {% endfor %}
+    {% if not p.now %}<div class="asr-meta">Ingen bestillinger nu.</div>{% endif %}
+  </div>
+  {% else %}
+  <p class="muted" style="margin:10px 0 0">Ingen medarbejdere at tildele.</p>
+  {% endfor %}
+  {% if _r.already %}<p class="asr-meta" style="margin:10px 0 0">Er allerede tilmeldt og springes over: {{ _r.already|join(', ') }}.</p>{% endif %}
+  {% if _r.path and _r.guidance %}<p class="asr-meta" style="margin:10px 0 0">{{ _r.guidance }} vejledningstrin bestilles ikke.</p>{% endif %}
+  <div class="asr-total"><strong>Bestilles nu</strong><strong class="mono" data-total="now">{{ _r.total_now|dkmoney }}</strong></div>
+  {% if _r.total_later %}<div class="asr-total asr-later"><span>Bestilles senere (anslået)</span><span class="mono" data-total="later">≈ {{ _r.total_later|dkmoney }}</span></div>{% endif %}
+</div>
+
+<div class="fm-card" style="padding:18px 20px;margin-bottom:14px" data-review="budget">
+  <div class="fm-card-head" style="margin-bottom:6px"><span class="fm-ch-icon"><i class="fa-solid fa-wallet"></i></span><h3>Afdelingens budget</h3></div>
+  {% for d in _r.departments %}
+  <div class="asr-budget" data-dept="{{ d.department }}">
+    {% if d.has_budget %}
+    <span>{{ d.department or 'Uden afdeling' }}: {{ d.before|dkmoney }} tilbage → <strong class="{{ 'asr-bad' if d.over }}">{{ d.after|dkmoney }}</strong> efter tildelingen</span>
+    {% if d.over %}<span class="asr-bad"><i class="fa-solid fa-triangle-exclamation"></i> Overskrider budgettet med {{ (0 - d.after)|dkmoney }}</span>
+    {% elif d.later_over %}<span class="asr-meta">De senere kurser (≈ {{ d.later|dkmoney }}) rækker ikke til budgettet.</span>{% endif %}
+    {% else %}
+    <span>{{ d.department or 'Uden afdeling' }}: intet budget sat, så bestillingerne trækkes ikke mod en grænse ({{ d.now|dkmoney }}).</span>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="muted" style="margin:10px 0 0">Ingen afdelinger berørt.</p>
+  {% endfor %}
+  {% if _r.over_budget %}
+  <p class="asr-bad" role="alert" style="margin:12px 0 0">Mindst én afdeling overskrider budgettet. Bestillinger ud over budgettet bliver ikke godkendt automatisk, men sendt til godkendelse.</p>
+  {% endif %}
+</div>

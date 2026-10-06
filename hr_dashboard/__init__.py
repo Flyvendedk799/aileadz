@@ -3690,8 +3690,74 @@ def create_hr_dashboard_blueprint():
             flash("Fejl ved oprettelse af læringsforløb.", "danger")
         return redirect(url_for('hr_dashboard.learning_paths'))
 
+    def _path_assignment_targets(cur, company_id, values):
+        """Who a path assignment form is about: one person, a whole department or a hand-picked list.
+        ``values`` is ``request.values`` (query string for the GET-able review, form for the rest)."""
+        assign_type = values.get('assign_type', 'individual')
+        if assign_type == 'department':
+            cur.execute("""
+                SELECT user_id FROM company_users
+                WHERE company_id = %s AND department = %s AND status = 'active'
+            """, (company_id, values.get('department', '')))
+            return [r['user_id'] for r in cur.fetchall()]
+        if assign_type == 'selected':
+            ids = []
+            for raw in values.getlist('employee_ids[]') + values.getlist('employee_ids'):
+                try:
+                    ids.append(int(raw))
+                except (TypeError, ValueError):
+                    continue
+            return list(dict.fromkeys(ids))
+        try:
+            return [int(values.get('user_id'))] if values.get('user_id') else []
+        except (TypeError, ValueError):
+            return []
+
+    def _path_review_args(values):
+        """The assignment inputs as query arguments, to send HR back to the review page."""
+        args = {k: values.get(k) for k in ('assign_type', 'user_id', 'department', 'due_date') if values.get(k)}
+        ids = values.getlist('employee_ids[]') + values.getlist('employee_ids')
+        if ids:
+            args['employee_ids'] = ids
+        return args
+
+    def _render_path_review(path_id, values):
+        """Compute and show what assigning a path would do. Writes nothing."""
+        company_id = session['company_id']
+        import learning_path_service
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        try:
+            user_ids = _path_assignment_targets(cur, company_id, values)
+            if not user_ids:
+                flash("Ingen medarbejdere valgt.", "warning")
+                return redirect(url_for('hr_dashboard.learning_paths'))
+            review = learning_path_service.preview_path_assignment(cur, company_id, path_id, user_ids)
+        finally:
+            cur.close()
+        if review is None:
+            flash("Læringsforløbet blev ikke fundet.", "warning")
+            return redirect(url_for('hr_dashboard.learning_paths'))
+        form = {'assign_type': values.get('assign_type', 'individual'), 'user_id': values.get('user_id'),
+                'department': values.get('department'), 'due_date': values.get('due_date'),
+                'employee_ids': values.getlist('employee_ids[]') + values.getlist('employee_ids')}
+        return render_template('fm/path_assignment_review.html', review=review, form=form)
+
+    @hr_dashboard_bp.route('/learning-paths/<int:path_id>/tildel/gennemse', methods=['GET', 'POST'])
+    def learning_path_assignment_review(path_id):
+        """Step one of assigning a path: every order, the cost and each department's budget before
+        and after. A GET (or POST) that never creates anything; "Bekræft og tildel" posts to the assign route."""
+        if 'company_id' not in session:
+            return jsonify({'error': 'Ikke logget ind'}), 401
+        if not can('company.workspace'):
+            flash("Du har ikke rettigheder til at tildele læringsforløb.", "danger")
+            return redirect(url_for('hr_dashboard.learning_paths'))
+        return _render_path_review(path_id, request.values)
+
     @hr_dashboard_bp.route('/learning-paths/<int:path_id>/assign', methods=['POST'])
     def assign_learning_path(path_id):
+        """Step two: create the assignment, but only for a review the caller has seen. The confirm
+        form carries the path version and the total it showed; if either changed meanwhile, or a
+        department would exceed its budget without being acknowledged, HR is sent back to the review."""
         if 'company_id' not in session:
             return jsonify({'error': 'Ikke logget ind'}), 401
         company_id = session['company_id']
@@ -3699,43 +3765,68 @@ def create_hr_dashboard_blueprint():
             flash("Du har ikke rettigheder til at tildele læringsforløb.", "danger")
             return redirect(url_for('hr_dashboard.learning_paths'))
 
-        assign_type = request.form.get('assign_type', 'individual')
+        def back():
+            return redirect(url_for('hr_dashboard.learning_path_assignment_review', path_id=path_id,
+                                    **_path_review_args(request.form)))
+
         due_date = request.form.get('due_date') or None
-
         try:
+            import learning_path_service
+            import order_service
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-
-            # Collect user IDs to assign
-            user_ids = []
-            if assign_type == 'department':
-                dept = request.form.get('department', '')
-                cur.execute("""
-                    SELECT user_id FROM company_users
-                    WHERE company_id = %s AND department = %s AND status = 'active'
-                """, (company_id, dept))
-                user_ids = [r['user_id'] for r in cur.fetchall()]
-            else:
-                uid = request.form.get('user_id')
-                if uid:
-                    user_ids = [int(uid)]
-
+            user_ids = _path_assignment_targets(cur, company_id, request.form)
             if not user_ids:
+                cur.close()
                 flash("Ingen medarbejdere valgt.", "warning")
                 return redirect(url_for('hr_dashboard.learning_paths'))
 
-            import learning_path_service
-            import order_service
+            expected_version = request.form.get('expected_version')
+            expected_total = request.form.get('expected_total')
+            if expected_version is None or expected_total is None:
+                cur.close()
+                flash("Gennemse omkostninger og budget, før du tildeler forløbet.", "warning")
+                return back()
+            review = learning_path_service.preview_path_assignment(cur, company_id, path_id, user_ids)
+            if review is None:
+                cur.close()
+                flash("Læringsforløbet blev ikke fundet.", "warning")
+                return redirect(url_for('hr_dashboard.learning_paths'))
+            try:
+                stale = (int(expected_version) != review['path']['version']
+                         or abs(float(expected_total) - review['total_now']) > 0.005)
+            except (TypeError, ValueError):
+                stale = True
+            if stale:
+                cur.close()
+                flash("Forløbet, priserne eller deltagerne er ændret, siden du gennemså tildelingen. Gennemse den igen.", "warning")
+                return back()
+            if review['blocked']:
+                cur.close()
+                flash("Tildelingen kan ikke gennemføres. Se det markerede på siden.", "warning")
+                return back()
+            if review['over_budget'] and not request.form.get('accept_over_budget'):
+                cur.close()
+                flash("En afdeling overskrider budgettet. Bekræft, at overskydende bestillinger sendes til godkendelse.", "warning")
+                return back()
+
             ctx = order_service.OrderContext.from_session(source='hr')
             ctx.company_id = company_id
             res = learning_path_service.assign_path(cur, ctx, company_id, path_id, user_ids,
-                                                    due_date=due_date, sender_id=session.get('user_id'))
+                                                    due_date=due_date, sender_id=session.get('user_id'),
+                                                    expected_version=expected_version)
             assigned = res['assigned']
 
             current_app.mysql.connection.commit()
             cur.close()
+            if not assigned and res.get('message'):
+                flash(res['message'], "warning")
+                return back()
+            pending = sum(1 for r in res.get('results') or [] if r.get('needs_approval'))
             msg = f"{assigned} medarbejder(e) tildelt."
             if res['orders']:
-                msg += f" {res['orders']} kurser er bestilt og godkendt."
+                msg += f" {res['orders'] - pending} kurser er bestilt og godkendt."
+            if pending:
+                msg += f" {pending} afventer godkendelse, fordi afdelingens budget ikke rækker."
             if res['order_failures']:
                 msg += f" {res['order_failures']} bestillinger kunne ikke oprettes."
             flash(msg, "success")
@@ -5458,10 +5549,9 @@ def create_hr_dashboard_blueprint():
 
     @hr_dashboard_bp.route('/assign-path', methods=['POST'])
     def bulk_assign_path():
-        """Assign one learning_path to many employees: insert
-        employee_learning_progress rows (mirroring assign_learning_path) and
-        create a nudge notification for each assigned employee. Requires a Danish
-        confirmation (confirm='ja'). Single commit; partial-failure tolerant."""
+        """Assign one learning path to many hand-picked employees. Like every path assignment this
+        is a review first: the page shows each order, the cost and the departments' budgets, and
+        "Bekræft og tildel" posts to ``assign_learning_path``. Nothing is created here."""
         auth_check = require_hr_access()
         if auth_check:
             return auth_check
@@ -5469,12 +5559,9 @@ def create_hr_dashboard_blueprint():
         if not company:
             flash("Virksomhedsoplysninger ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
-
-        confirm = (request.form.get('confirm') or '').strip().lower()
-        if confirm != 'ja':
-            flash("Bekræft tildelingen ved at skrive 'ja' i bekræftelsesfeltet.", "warning")
+        if not can('company.workspace'):
+            flash("Du har ikke rettigheder til at tildele læringsforløb.", "danger")
             return redirect(url_for('hr_dashboard.bulk_assign_form'))
-
         try:
             path_id = int(request.form.get('path_id') or 0)
         except (ValueError, TypeError):
@@ -5482,69 +5569,12 @@ def create_hr_dashboard_blueprint():
         if not path_id:
             flash("Vælg et læringsforløb.", "warning")
             return redirect(url_for('hr_dashboard.bulk_assign_form'))
-
-        # Parse employee_ids[] (multi-select / checkboxes).
-        raw_ids = request.form.getlist('employee_ids[]') or request.form.getlist('employee_ids')
-        employee_ids = []
-        for v in raw_ids:
-            try:
-                employee_ids.append(int(v))
-            except (ValueError, TypeError):
-                continue
-        employee_ids = list(dict.fromkeys(employee_ids))  # de-dupe, keep order
-
-        if not employee_ids:
+        values = request.form.copy()
+        values['assign_type'] = 'selected'
+        if not (values.getlist('employee_ids[]') or values.getlist('employee_ids')):
             flash("Vælg mindst en medarbejder.", "warning")
             return redirect(url_for('hr_dashboard.bulk_assign_form'))
-
-        due_date = request.form.get('due_date') or None
-        assigned = 0
-        skipped = 0
-        nudged = 0
-        try:
-            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-
-            # Validate the path belongs to this company.
-            cur.execute("""
-                SELECT id, path_name FROM learning_paths
-                WHERE id = %s AND company_id = %s
-            """, (path_id, company['id']))
-            path = cur.fetchone()
-            if not path:
-                cur.close()
-                flash("Læringsforløb ikke fundet.", "danger")
-                return redirect(url_for('hr_dashboard.bulk_assign_form'))
-            path_name = path['path_name']
-
-            # Restrict to employees that actually belong to this company (isolation).
-            placeholders = ','.join(['%s'] * len(employee_ids))
-            cur.execute(f"""
-                SELECT user_id FROM company_users
-                WHERE company_id = %s AND status = 'active'
-                  AND user_id IN ({placeholders})
-            """, tuple([company['id']] + employee_ids))
-            valid_ids = [r['user_id'] for r in (cur.fetchall() or [])]
-
-            import learning_path_service
-            import order_service
-            ctx = order_service.OrderContext.from_session(source='hr')
-            ctx.company_id = company['id']
-            res = learning_path_service.assign_path(cur, ctx, company['id'], path_id, valid_ids,
-                                                    due_date=due_date, sender_id=session.get('user_id'))
-            assigned, skipped, nudged = res['assigned'], res['skipped'], res['assigned']
-
-            current_app.mysql.connection.commit()
-            cur.close()
-            flash(f"{assigned} medarbejder(e) tildelt '{path_name}' "
-                  f"({nudged} notificeret, {skipped} allerede tilmeldt).", "success")
-        except Exception as e:
-            current_app.logger.error(f"Error in bulk-assign learning path: {e}")
-            try:
-                current_app.mysql.connection.rollback()
-            except Exception:
-                pass
-            flash("Fejl ved bulk-tildeling af læringsforløb.", "danger")
-        return redirect(url_for('hr_dashboard.bulk_assign_form'))
+        return _render_path_review(path_id, values)
 
     # ── S-4.4: per-goal sharing ("Del med medarbejder") ──────────────────────
     # JSON endpoints; the two-section HR view ("Delt med medarbejderen" /

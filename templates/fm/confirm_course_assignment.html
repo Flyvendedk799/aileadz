@@ -1,35 +1,46 @@
 {% extends "fm_base.html" %}
+{% from 'fm/_macros.html' import crumbs %}
+{% block page_id %}hr{% endblock %}
 {% block title %}Bekræft kursustildeling{% endblock %}
 {% block topbar_title %}Gennemse bestillingen{% endblock %}
 {% block content %}
-    <div class="fm-wrap">
-        <article class="fm-card" style="padding:24px;max-width:760px">
-            <h1>{{ quote.product_title }}</h1>
-            <p>{{ quote.variant_date|dkdate(style='long') or 'Dato aftales med HR eller udbyderen' }} · {{ quote.variant_location or 'Sted aftales' }}</p>
-            <p>
-                {{ quote.price|dkmoney }} pr. deltager · {{ people|length }} deltagere · <strong>{{ (quote.price * (people|length))|dkmoney }} i alt</strong>
-            </p>
-            {% if quote.agreement_reference %}
-                <p>Aftale: {{ quote.agreement_reference }}</p>
-            {% endif %}
-            <ul>
-                {% for person in people %}
-                    <li>{{ person.name }}</li>
-                {% endfor %}
-            </ul>
-            <p>Tildelte kurser er godkendt med det samme og trækkes på afdelingens budget. Pladserne er først booket, når HR eller udbyderen har bekræftet dem.</p>
-            <form method="post">
-                <input type="hidden" name="handle" value="{{ quote.product_handle }}">
-                <input type="hidden" name="confirm" value="yes">
-                <input type="hidden" name="session_id" value="{{ quote.session_id or '' }}">
-                <input type="hidden" name="expected_price" value="{{ quote.price }}">
-                {% for person in people %}
-                    <input type="hidden" name="employee_ids" value="{{ person.user_id }}">
-                {% endfor %}
-                <button class="btn btn-primary">Bekræft og opret bestillinger</button>
-                <a class="btn btn-ghost"
-                   href="{{ url_for('course_assign.assign_course',course=quote.product_handle) }}">Ret deltagere eller hold</a>
-            </form>
-        </article>
+<div class="fm-wrap">
+{% set active_hr_page = 'employees' %}{% include 'fm/_hr_subnav.html' %}
+{% set quote = quote|default({'product_title': 'Eksempelkursus', 'product_handle': '', 'session_id': '', 'price': 0, 'variant_date': '', 'variant_location': '', 'agreement_reference': ''}) %}
+{% set people = people|default([]) %}
+{% set review = review|default({'people': [], 'departments': [], 'problems': [], 'already': [], 'total_now': 0, 'total_later': 0, 'over_budget': False, 'blocked': True, 'path': None, 'guidance': 0}) %}
+{{ crumbs([('Tildel kursus', url_for('course_assign.assign_course', course=quote.product_handle)), ('Gennemse bestillingen', None)]) }}
+
+  <div class="fm-card" style="padding:18px 20px;margin-bottom:14px">
+    <h2 class="fm-section-title" style="margin:0 0 6px">{{ quote.product_title }}</h2>
+    <p style="margin:0;font-size:13.5px;color:var(--fm-ink-2)">
+      {{ quote.variant_date|dkdate(style='long') or 'Dato aftales med HR eller udbyderen' }} · {{ quote.variant_location or 'Sted aftales' }}
+      · {{ quote.price|dkmoney }} pr. deltager · {{ people|length }} deltagere
+    </p>
+    {% if quote.agreement_reference %}<p style="margin:6px 0 0;font-size:13px">Aftale: {{ quote.agreement_reference }}</p>{% endif %}
+    <p style="margin:8px 0 0;font-size:13.5px;color:var(--fm-ink-2)">Tildelte kurser er godkendt med det samme og trækkes på afdelingens budget. Pladserne er først booket, når HR eller udbyderen har bekræftet dem.</p>
+  </div>
+
+  {% if over_budget_blocked %}<div class="fm-card" role="alert" style="padding:14px 18px;margin-bottom:14px;border-color:var(--fm-danger)"><strong>Bekræft, at bestillinger ud over budgettet sendes til godkendelse, før du tildeler.</strong></div>{% endif %}
+
+  {% include 'fm/_assignment_review.html' %}
+
+  <form method="post" class="fm-card" style="padding:18px 20px">
+    <input type="hidden" name="handle" value="{{ quote.product_handle }}">
+    <input type="hidden" name="confirm" value="yes">
+    <input type="hidden" name="session_id" value="{{ quote.session_id or '' }}">
+    <input type="hidden" name="expected_price" value="{{ quote.price }}">
+    {% for person in people %}<input type="hidden" name="employee_ids" value="{{ person.user_id }}">{% endfor %}
+    {% if review.over_budget %}
+    <label style="display:flex;gap:10px;align-items:flex-start;margin-bottom:14px;font-size:13.5px">
+      <input type="checkbox" name="accept_over_budget" value="1" required>
+      <span>Jeg ved, at bestillinger ud over budgettet sendes til godkendelse i stedet for at blive godkendt automatisk.</span>
+    </label>
+    {% endif %}
+    <div class="fm-flex fm-gap8" style="justify-content:flex-end;flex-wrap:wrap">
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('course_assign.assign_course', course=quote.product_handle) }}">Ret deltagere eller hold</a>
+      <button class="btn btn-primary btn-sm" {% if review.blocked %}disabled{% endif %}>Bekræft og opret bestillinger</button>
     </div>
+  </form>
+</div>
 {% endblock %}

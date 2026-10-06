@@ -106,7 +106,7 @@
     <div class="fm-modal-bk" id="assignModal{{ path.id }}" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center">
       <div class="fm-card" style="max-width:480px;width:90%;padding:22px">
         <h3 style="font-size:17px;font-weight:700;margin-bottom:14px">Tildel: {{ path.path_name }}</h3>
-        <form method="POST" action="{{ url_for('hr_dashboard.assign_learning_path', path_id=path.id) }}">
+        <form method="GET" action="{{ url_for('hr_dashboard.learning_path_assignment_review', path_id=path.id) }}">
           <label class="fm-field"><span>Tildelingstype</span>
             <select name="assign_type" class="fm-input" id="assignType{{ path.id }}" onchange="toggleAssignFields({{ path.id }})">
               <option value="individual">Enkelt medarbejder</option>
@@ -133,7 +133,7 @@
           <p class="muted" style="font-size:12.5px;margin:10px 0 0">Tildelte kurser er godkendt med det samme og trækkes på afdelingens budget. Pladserne er først booket, når HR eller udbyderen har bekræftet dem.</p>
           <div class="fm-flex fm-gap8" style="justify-content:flex-end;margin-top:14px">
             <button type="button" class="btn btn-ghost btn-sm" onclick="closeAssign({{ path.id }})">Annuller</button>
-            <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-user-plus"></i> Tildel</button>
+            <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-clipboard-check"></i> Gennemse og tildel</button>
           </div>
         </form>
       </div>

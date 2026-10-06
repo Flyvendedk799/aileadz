@@ -28,9 +28,9 @@ class AssignmentApprovalTests(unittest.TestCase):
         self.hr = client_as(self.app, user="hr", user_id=2, company_id=7, company_role="hr_manager")
         self.addCleanup(d.raw.close)
 
-    def assign(self, ids=("1", "4")):
+    def assign(self, ids=("1", "4"), **extra):
         return self.hr.post("/hr/assign-course", data={
-            "handle": "internal:5", "employee_ids": list(ids), "confirm": "yes", "expected_price": "500"})
+            "handle": "internal:5", "employee_ids": list(ids), "confirm": "yes", "expected_price": "500", **extra})
 
     def flashes(self, resp_client):
         with resp_client.session_transaction() as s:
@@ -76,7 +76,7 @@ class AssignmentApprovalTests(unittest.TestCase):
 
     def test_over_budget_assignment_still_goes_to_approval(self):
         self.db.execute("UPDATE department_budgets SET annual_budget = 700")
-        self.assign()
+        self.assign(accept_over_budget="1")
         self.assertEqual(sorted(o["status"] for o in self.db.query("SELECT status FROM course_orders")),
                          ["approved", "pending_approval"])        # the second person would overspend
 

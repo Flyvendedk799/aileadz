@@ -9,8 +9,8 @@ not proof of inbox delivery.
 
 | Journey | Canonical implementation | Human entry point |
 |---|---|---|
-| Assign a course from HR, AI or API | `learning_path_service.assign_course_to_people`, `enrollment_service.create_order` | `/hr/assign-course` |
-| Assign/version a learning path | `learning_path_service.assign_path`, `learning_assignment_steps` | HR step editor `/hr/learning-paths/<id>/trin` (courses picked via `/hr/learning-paths/catalog-search?q=`, structured `step_type[]`/`course_handle[]`/`title[]` fields, errors re-render the editor); learner `/min-laering/forloeb/<id>` |
+| Assign a course from HR, AI or API | `learning_path_service.assign_course_to_people`, `enrollment_service.create_order` | `/hr/assign-course` (review page `fm/_assignment_review.html`: orders, total, department budget before/after; over-budget needs an explicit yes) |
+| Assign/version a learning path (review first: `/hr/learning-paths/<id>/tildel/gennemse` via `learning_path_service.preview_path_assignment`; the confirm posts the reviewed path version and total, a stale one is refused) | `learning_path_service.assign_path`, `learning_assignment_steps` | HR step editor `/hr/learning-paths/<id>/trin` (courses picked via `/hr/learning-paths/catalog-search?q=`, structured `step_type[]`/`course_handle[]`/`title[]` fields, errors re-render the editor); learner `/min-laering/forloeb/<id>` |
 | Internal learning | tenant-scoped `company_courses`, `internal:<id>` handles | `/interne-kurser` |
 | Renew an expiring requirement | `compliance_assign.has_open_or_done` | existing compliance assignment action |
 | Confirm a booking (HR by default, reference optional; vendor may confirm in the portal) | `order_fulfillment.book`, `add_reference` | the role's one order page: learner `/min-ordre/<order_id>`, HR `/hr/order/<order_id>/details`, vendor `/vendor/orders/<order_id>/booking` |

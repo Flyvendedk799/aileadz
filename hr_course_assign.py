@@ -63,23 +63,29 @@ def assign_course():
 
         from order_service import OrderContext
         from enrollment_service import session_key
-        from learning_path_service import assign_course_to_people
+        from learning_path_service import assign_course_to_people, preview_course_assignment
         cur = _cur()
         try:
             selected_session = request.form.get('session_id') or (session_key(variant) if variant else None)
-            if request.form.get('confirm') != 'yes':
-                placeholders = ','.join(['%s']*len(ids))
-                cur.execute('SELECT cu.user_id,COALESCE(cu.full_name,u.username) AS name FROM company_users cu JOIN users u ON u.id=cu.user_id WHERE cu.company_id=%s AND cu.status=%s AND cu.user_id IN ('+placeholders+')',tuple([company_id,'active']+ids))
-                people = list(cur.fetchall() or [])
-                if not people:
-                    flash('Vælg aktive medarbejdere i virksomheden.','warning')
-                    return redirect(url_for('course_assign.assign_course',course=handle))
-                try:
-                    quote = catalog.quote_course(handle,company_id,session_id=selected_session,participants=len(people))
-                except ValueError as exc:
-                    flash(str(exc),'warning')
-                    return redirect(url_for('course_assign.assign_course',course=handle))
-                return render_template('fm/confirm_course_assignment.html',quote=quote,people=people)
+            confirmed = request.form.get('confirm') == 'yes'
+            placeholders = ','.join(['%s']*len(ids))
+            cur.execute('SELECT cu.user_id,COALESCE(cu.full_name,u.username) AS name FROM company_users cu JOIN users u ON u.id=cu.user_id WHERE cu.company_id=%s AND cu.status=%s AND cu.user_id IN ('+placeholders+')',tuple([company_id,'active']+ids))
+            people = list(cur.fetchall() or [])
+            if not people:
+                flash('Vælg aktive medarbejdere i virksomheden.','warning')
+                return redirect(url_for('course_assign.assign_course',course=handle))
+            try:
+                quote = catalog.quote_course(handle,company_id,session_id=selected_session,participants=len(people))
+            except ValueError as exc:
+                flash(str(exc),'warning')
+                return redirect(url_for('course_assign.assign_course',course=handle))
+            # Every assignment passes the same review first: each order, the total and the
+            # departments' budget before and after. Over-budget orders need an explicit yes.
+            review = preview_course_assignment(cur, company_id, quote, [p['user_id'] for p in people])
+            needs_ack = review['over_budget'] and not request.form.get('accept_over_budget')
+            if not confirmed or needs_ack:
+                return render_template('fm/confirm_course_assignment.html', quote=quote, people=people, review=review,
+                                       over_budget_blocked=confirmed and needs_ack)
             result = assign_course_to_people(cur, OrderContext.from_session(source='hr_assign_course'), company_id,
                                              handle, ids, session_id=selected_session, expected_price=request.form.get('expected_price'))
             current_app.mysql.connection.commit()

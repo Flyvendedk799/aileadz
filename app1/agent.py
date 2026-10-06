@@ -1020,6 +1020,39 @@ def _cleanup_stale_sessions():
         print(f"[Cleanup Error] {e}")
 
 
+def provider_fallback_events(user_query, exc, company_id=None):
+    """SSE events for a turn whose AI provider failed (timeout, auth, 5xx, no key).
+
+    Both providers (OpenAI and Claude) end up in the same error boundary in
+    ``stream_generator``, so one fallback serves both: say plainly that the
+    advisor is unavailable and still hand over catalogue keyword results for what
+    was asked, as course cards. With no matches (or no catalogue) it degrades to
+    the plain user-facing error. Every event is flagged ``fallback`` so the chat
+    does not offer a "Regenerér" that would fail again.
+    """
+    from ai_runtime import user_facing_error_message
+
+    cards = []
+    try:
+        import catalog_service
+        query = _re.sub(r"\[VEDH\u00c6FTET KURSUS:[^\]]*\]", " ", str(user_query or "")).strip()
+        if query:
+            found = catalog_service.search_products({"q": query}, page=1, per_page=5, company_id=company_id)
+            cards = serialize_course_cards((found or {}).get("products") or [])[:5]
+    except Exception as e:
+        print(f"[Agent Fallback Search Error] {e}")
+        cards = []
+    if cards:
+        text = "AI-rådgiveren er ikke tilgængelig lige nu. Her er kurser, der matcher din søgning:"
+    else:
+        text = user_facing_error_message(exc)
+    events = [f"data: {json.dumps({'type': 'chunk', 'content': text, 'fallback': True}, ensure_ascii=False)}\n\n"]
+    if cards:
+        events.append(f"data: {json.dumps({'type': 'course_cards', 'items': cards, 'fallback': True}, ensure_ascii=False)}\n\n")
+    events.append(f"data: {json.dumps({'type': 'fallback', 'content': 'provider_unavailable'})}\n\n")
+    return events
+
+
 def _track_shown_products(sid, compact_results):
     """Add products to the shown products list for this session."""
     if sid not in SHOWN_PRODUCTS:
@@ -2641,7 +2674,6 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                 make_run_id,
                 prepare_messages_for_turn,
                 run_agent_with_fallback,
-                user_facing_error_message,
             )
             from app1.tools import resolve_products_for_ui
             from ai_tool_registry import get_employee_tool_selection, make_tool_choice, tool_name, toolset_enabled
@@ -3715,7 +3747,8 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
             # stares at a blank reply for the full AI_LIVE_TOOL_EVENTS_TIMEOUT_SECONDS.
             print(f"[Agent Timeout] {timeout_err}")
             try:
-                yield f"data: {json.dumps({'type': 'chunk', 'content': user_facing_error_message(timeout_err)})}\n\n"
+                for _fb in provider_fallback_events(user_query, timeout_err, company_id=company_id_for_turn):
+                    yield _fb
             except (OSError, BrokenPipeError, ConnectionResetError):
                 pass  # Client really is gone
         except (OSError, BrokenPipeError, ConnectionResetError) as pipe_err:
@@ -3724,8 +3757,8 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
         except Exception as e:
             print(f"[Agent Error] {e}")
             try:
-                error_msg = user_facing_error_message(e)
-                yield f"data: {json.dumps({'type': 'chunk', 'content': error_msg})}\n\n"
+                for _fb in provider_fallback_events(user_query, e, company_id=company_id_for_turn):
+                    yield _fb
             except (OSError, BrokenPipeError, ConnectionResetError):
                 pass  # Client already gone
         finally:

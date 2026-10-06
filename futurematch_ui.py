@@ -373,7 +373,7 @@ def company_chat():
 def _chat_cfg():
     """Role + team-order policy for the course cards (N-5.2): "Bestil til team" is
     only offered to company members when the company policy allows team orders."""
-    cfg = {'teamOrders': False, 'primaryLabel': 'Anmod om plads'}
+    cfg = {'teamOrders': False, 'primaryLabel': 'Anmod om plads', 'loggedIn': bool(session.get('user'))}
     try:
         cid = session.get('company_id')
         if session.get('user') and cid:

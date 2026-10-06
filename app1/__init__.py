@@ -1234,6 +1234,16 @@ def resume_conversation_endpoint(conv_id):
         # earlier turns' cards/chips.
         _agent.seed_artifacts_from_messages(target_sid, messages)
 
+        # L11: restore conversation-scoped search_constraints + active_result_set
+        # from state_json immediately (not only on the next /ask), so a reload
+        # cannot inherit another chat's Excel/budget constraints from digests.
+        try:
+            stored = conv_state.load(logged_in_user, target_sid)
+            if stored and isinstance(stored.get("state"), dict):
+                _agent.SESSION_STATE[target_sid] = dict(stored["state"])
+        except Exception as _st_err:
+            print(f"[Resume State Restore] {_st_err}")
+
         return jsonify({"status": "ok", "session_id": target_sid,
                         "id": conv.get("id"), "mode": surface,
                         "title": conv.get("title"), "messages": messages})

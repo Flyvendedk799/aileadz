@@ -11,6 +11,7 @@ import time
 from app1.tools import OPENAI_TOOLS, PROFILE_TOOLS, execute_tool, set_search_context
 from app1.memory_store import log_debug
 from . import render_multi_course_media, render_product_media, serialize_course_cards
+from . import result_set as _result_set
 from .card_text import tidy_answer
 from db_compat import close_flask_mysql_connection, refresh_flask_mysql_connection
 
@@ -657,7 +658,9 @@ def _detect_conversation_stage(sid, messages):
     latest_user = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
 
     # 3.1: Buying signal detection on latest message
-    if shown_count > 0 and _HIGH_INTENT_PATTERNS.search(latest_user):
+    # "bestil intet" / read-only lookups must NOT become ready_to_buy (L02/S02).
+    if (shown_count > 0 and _HIGH_INTENT_PATTERNS.search(latest_user)
+            and not _result_set.is_read_only_lookup(latest_user)):
         return "ready_to_buy"
 
     # 3.3: Rejection/frustration detection on latest message (only if results were shown)
@@ -919,7 +922,9 @@ def _classify_intent_local(user_query, messages, shown_count):
         return "correction"
 
     # 3.1: High buying intent — user wants to enroll/purchase
-    if shown_count > 0 and _HIGH_INTENT_PATTERNS.search(user_query):
+    # Negated "bestil intet" / "gem intet" stays a lookup, not buying (L02/S02).
+    if (shown_count > 0 and _HIGH_INTENT_PATTERNS.search(user_query)
+            and not _result_set.is_read_only_lookup(user_query)):
         return "buying"
 
     # Follow-up: references to previously shown courses
@@ -1053,13 +1058,20 @@ def provider_fallback_events(user_query, exc, company_id=None):
     return events
 
 
-def _track_shown_products(sid, compact_results):
-    """Add products to the shown products list for this session."""
+def _track_shown_products(sid, compact_results, *, search_args=None, replace_active=True):
+    """Add products to the historical shown list; optionally replace active_result_set.
+
+    Historical SHOWN_PRODUCTS accumulates (indices stay conversation-wide). The
+    active_result_set is replaced on each fresh search so physical→online does
+    not mix, and follow-ups resolve against the latest set (L02).
+    """
     if sid not in SHOWN_PRODUCTS:
         SHOWN_PRODUCTS[sid] = {"products": [], "last_active": time.time()}
     sp = SHOWN_PRODUCTS[sid]
     sp["last_active"] = time.time()
-    for cr in compact_results:
+    for cr in compact_results or []:
+        if not isinstance(cr, dict):
+            continue
         if not any(p.get("handle") == cr.get("handle") for p in sp["products"]):
             sp["products"].append({
                 "index": len(sp["products"]) + 1,
@@ -1078,37 +1090,59 @@ def _track_shown_products(sid, compact_results):
     except Exception as e:
         print(f"[Shown Products Persist Error] {e}")
 
+    # Conversation-scoped active set + versioned constraints (L01/L02/L11).
+    try:
+        state = SESSION_STATE.setdefault(sid, {})
+        if search_args:
+            _result_set.update_constraints_from_search_args(state, search_args)
+        if replace_active:
+            _result_set.replace_active_result_set(
+                state, compact_results,
+                filters=_result_set.get_search_constraints(state),
+            )
+    except Exception as e:
+        print(f"[Active Result Set Error] {e}")
+
     # 6.3: Update anonymous profile with viewed products
     if sid in ANONYMOUS_PROFILES:
         try:
             token = ANONYMOUS_PROFILES[sid].get("browser_token")
             if token:
-                new_viewed = [{"handle": cr.get("handle"), "title": cr.get("title")} for cr in compact_results[:3]]
+                new_viewed = [{"handle": cr.get("handle"), "title": cr.get("title")} for cr in (compact_results or [])[:3]]
                 _get_store().update_anonymous_interests(token, new_viewed=new_viewed)
         except Exception:
             pass
 
 
 def _build_shown_products_message(sid):
-    """Build an ephemeral system message listing all products shown in this session."""
+    """Build ephemeral system messages for active set + historical shown products.
+
+    Active result set is authoritative for follow-ups; the historical list is
+    labeled so the model does not treat old physical cards as "de foreslåede".
+    """
+    parts = []
+    active_msg = _result_set.build_active_set_message(SESSION_STATE.get(sid) or {})
+    if active_msg:
+        parts.append(active_msg["content"])
     sp = SHOWN_PRODUCTS.get(sid, {}).get("products", [])
-    if not sp:
+    if sp:
+        sp = sp[-10:]
+        compact = [{
+            "i": p.get("index"),
+            "t": p.get("title"),
+            "h": p.get("handle"),
+            "p": p.get("price"),
+            "v": p.get("vendor"),
+            "l": (p.get("locations") or [])[:2],
+        } for p in sp]
+        parts.append(
+            "HISTORISK VISTE KURSER (kun baggrund — brug IKKE til 'de foreslåede'/ordinaler "
+            "når et aktivt resultatsæt findes):\n"
+            + json.dumps(compact, ensure_ascii=False)
+        )
+    if not parts:
         return None
-    # Phase 3A: Cap shown products to 10 most recent
-    sp = sp[-10:]
-    compact = [{
-        "i": p.get("index"),
-        "t": p.get("title"),
-        "h": p.get("handle"),
-        "p": p.get("price"),
-        "v": p.get("vendor"),
-        "l": (p.get("locations") or [])[:2],
-    } for p in sp]
-    return {
-        "role": "system",
-        "content": "VISTE KURSER (JSON — brug index/handle til opfølgning, sammenligning, pris/lokation):\n"
-                   + json.dumps(compact, ensure_ascii=False),
-    }
+    return {"role": "system", "content": "\n\n".join(parts)}
 
 
 # ── S3: Smart Context Builder ──
@@ -1139,7 +1173,12 @@ _PRICE_COMPLAINT = _re.compile(
 def _build_smart_context(sid, messages, stage, intent):
     """S3: Build a compact situation assessment from conversation history.
     Analyzes implicit constraints, mood, topic evolution, and decision readiness.
-    Returns a system message or None."""
+    Returns a system message or None.
+
+    Budget/format preferences come from versioned conversation-scoped
+    search_constraints (updated from the latest user turn), not a forward scan
+    that can treat "ikke online" as an online preference (L02/L11/S02).
+    """
     user_msgs = [m.get("content", "") for m in messages if m.get("role") == "user" and m.get("content")]
     if not user_msgs:
         return None
@@ -1148,10 +1187,15 @@ def _build_smart_context(sid, messages, stage, intent):
     latest = user_msgs[-1] if user_msgs else ""
     parts = []
 
-    # 1. Detect implicit budget constraint from conversation history
-    budget_matches = _BUDGET_PATTERN.findall(all_user_text)
-    if budget_matches:
-        parts.append(f"Implicit budget: under {budget_matches[-1]} kr (nævnt i samtalen)")
+    # 1. Conversation-scoped constraints (authoritative for this thread)
+    state = SESSION_STATE.setdefault(sid, {})
+    try:
+        _result_set.update_constraints_from_user(state, latest)
+    except Exception:
+        pass
+    scoped = _result_set.format_preference_from_constraints(state)
+    if scoped:
+        parts.append(f"Søgekrav i DENNE samtale: {scoped}")
     elif _PRICE_COMPLAINT.search(all_user_text):
         parts.append("Brugeren har klaget over pris — prioritér billigere alternativer")
 
@@ -1176,8 +1220,10 @@ def _build_smart_context(sid, messages, stage, intent):
     elif enthusiasm_count >= 1 and _ENTHUSIASM_SIGNALS.search(latest):
         parts.append("Brugeren er entusiastisk — match energien og hjælp dem videre mod en beslutning")
 
-    # 4. Decision readiness assessment
-    shown_count = len(SHOWN_PRODUCTS.get(sid, {}).get("products", []))
+    # 4. Decision readiness — prefer active set size over cumulative history
+    ars = _result_set.get_active_result_set(state) or {}
+    active_count = len(ars.get("handles") or [])
+    shown_count = active_count or len(SHOWN_PRODUCTS.get(sid, {}).get("products", []))
     rejections = len(REJECTED_SEARCHES.get(sid, []))
     if shown_count >= 6 and rejections == 0:
         parts.append("Brugeren har set mange kurser uden at afvise — sandsynligvis tæt på en beslutning, hjælp med at vælge")
@@ -1186,15 +1232,16 @@ def _build_smart_context(sid, messages, stage, intent):
     elif shown_count == 0 and len(user_msgs) >= 3:
         parts.append("Flere beskeder uden søgning — brugeren har måske brug for guidning, ikke spørgsmål")
 
-    # 5. Implicit location/format preferences from history
-    for msg in user_msgs:
-        msg_lower = msg.lower()
-        if "online" in msg_lower or "e-learning" in msg_lower or "hjemmefra" in msg_lower:
-            parts.append("Brugeren har nævnt online/e-learning — husk dette som præference")
-            break
-        if "fysisk" in msg_lower or "fremmøde" in msg_lower:
-            parts.append("Brugeren foretrækker fysisk fremmøde — husk dette")
-            break
+    if _result_set.is_read_only_lookup(latest):
+        parts.append("READ-ONLY: brugeren forbyder bestilling/gem — kun opslag, ingen ordre- eller profilskrivning")
+
+    # 5. Ordinal against active set
+    ordinal = _result_set.resolve_ordinal(state, latest)
+    if ordinal:
+        parts.append(
+            f"Ordinal i aktivt sæt: #{ordinal.get('index')} → "
+            f"{ordinal.get('title')} ({ordinal.get('handle')}, {ordinal.get('vendor')})"
+        )
 
     if not parts:
         return None
@@ -1327,11 +1374,14 @@ def _known_course_titles():
         return []
 
 
-def _collect_turn_evidence(tool_results, buffered_course_cards):
+def _collect_turn_evidence(tool_results, buffered_course_cards, sid=None):
     """Build the chain-of-custody evidence base for THIS turn.
 
     Combines the raw tool-result JSON (what the model actually saw) with the
-    course cards streamed to the user (which carry the canonical titles/prices).
+    course cards streamed to the user (which carry the canonical titles/prices)
+    and the conversation-scoped active_result_set / focused course facts so
+    identity, amounts and availability claims can be checked even on follow-ups
+    that do not re-call search (QA step 3 / L01).
     Returns a flat list of JSON strings / dicts that grounding.claims_supported
     and scorers.score_live both accept. Never raises.
     """
@@ -1349,6 +1399,12 @@ def _collect_turn_evidence(tool_results, buffered_course_cards):
                 evidence.extend(card_group)
             elif card_group:
                 evidence.append(card_group)
+    except Exception:
+        pass
+    try:
+        if sid is not None:
+            for fact in _result_set.evidence_from_state(SESSION_STATE.get(sid) or {}):
+                evidence.append(fact)
     except Exception:
         pass
     return evidence
@@ -1438,11 +1494,13 @@ def _build_learning_context_message(logged_in_user, company_id, sid, supplier_ag
         if active:
             parts.append("Aktive leverandøraftaler: " + ", ".join(active))
     try:
-        shown = SHOWN_PRODUCTS.get(sid, {}).get("products", [])[:8]
-        if shown:
+        ars = _result_set.get_active_result_set(SESSION_STATE.get(sid) or {}) or {}
+        handles = [h for h in (ars.get("handles") or []) if h][:8]
+        if not handles:
+            shown = SHOWN_PRODUCTS.get(sid, {}).get("products", [])[:8]
             handles = [p.get("handle") for p in shown if p.get("handle")]
-            if handles:
-                parts.append("Viste produkter denne session: " + ", ".join(handles))
+        if handles:
+            parts.append("Aktive/viste produkter denne session: " + ", ".join(handles))
     except Exception:
         pass
     if not parts:
@@ -2450,7 +2508,11 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                     if _digest:
                         context_layers.append(_ctx.layer(
                             "mode_digest", _digest,
-                            header="TIDLIGERE SAMTALER (din hukommelse på tværs af sessioner — byg videre på den):",
+                            header=(
+                                "TIDLIGERE SAMTALER (kryds-session — baggrundskendskab. "
+                                "Må IKKE erstatte søgekrav, filtre eller resultatsæt i DENNE samtale. "
+                                "Når brugeren siger 'i denne samtale', ignorer Excel/budget/emne herfra):"
+                            ),
                             fence="TIDLIGERE SAMTALER",
                         ))
                     _other_surface = "chat" if surface == "profiler" else "profiler"
@@ -2532,10 +2594,35 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                 if profile_msg:
                     context_layers.append(_ctx.layer("profile", profile_msg["content"]))
 
-            # Shown products context
+            # Shown products context (active_result_set + historical)
             shown_msg = _build_shown_products_message(sid)
             if shown_msg:
                 context_layers.append(_ctx.layer("shown_products", shown_msg["content"]))
+
+            # L11: versioned search constraints for THIS conversation only
+            try:
+                _sc_state = SESSION_STATE.setdefault(sid, {})
+                _result_set.update_constraints_from_user(_sc_state, user_query)
+                _thread_msg = _result_set.build_thread_constraints_message(_sc_state)
+                if _thread_msg and (
+                    _result_set.asks_for_this_thread_constraints(user_query)
+                    or int((_result_set.get_search_constraints(_sc_state) or {}).get("version") or 0) > 0
+                ):
+                    context_layers.append(_ctx.layer(
+                        "thread_constraints", _thread_msg["content"]
+                    ))
+                # L01: ordinal / pronoun follow-up → bind focus when resolvable
+                _ord = _result_set.resolve_ordinal(_sc_state, user_query)
+                if _ord and _ord.get("handle"):
+                    _result_set.set_focused_course(
+                        _sc_state,
+                        handle=_ord["handle"],
+                        title=_ord.get("title") or "",
+                        vendor=_ord.get("vendor") or "",
+                        price=_ord.get("price"),
+                    )
+            except Exception as _tc_err:
+                print(f"[Thread Constraints] {_tc_err}")
 
             # 3.3: Rejection context — what the user didn't like
             rejection_msg = _build_rejection_context(sid)
@@ -2582,8 +2669,11 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                 guidance_parts.append("BRUGER IKKE LOGGET IND — profil-værktøjer er ikke tilgængelige.")
             context_layers.append(_ctx.layer("guidance", "\n".join(guidance_parts)))
 
-            # 2.6: Set search context — shown handles + user prefs for contextual search
-            shown_handles = {p.get("handle") for p in SHOWN_PRODUCTS.get(sid, {}).get("products", []) if p.get("handle")}
+            # 2.6: Set search context — active-set handles first, else historical
+            _ars_h = (_result_set.get_active_result_set(SESSION_STATE.get(sid) or {}) or {}).get("handles") or []
+            shown_handles = {h for h in _ars_h if h} or {
+                p.get("handle") for p in SHOWN_PRODUCTS.get(sid, {}).get("products", []) if p.get("handle")
+            }
             search_user_prefs = {}
             if logged_in_user and db_profile:
                 search_user_prefs = {
@@ -2942,7 +3032,12 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                                     _reasons[_r["handle"]] = _w
                         buffered_ui_html.append(render_multi_course_media(raw_products))
                         buffered_course_cards.append(serialize_course_cards(raw_products, reasons=_reasons))
-                        _track_shown_products(sid, tool_result_dict.get("results", []))
+                        # Fresh search replaces active_result_set (physical→online).
+                        _track_shown_products(
+                            sid, tool_result_dict.get("results", []),
+                            search_args=tool_result.arguments if isinstance(tool_result.arguments, dict) else None,
+                            replace_active=True,
+                        )
 
                 elif fn in ("get_course_details", "catalog_get_product"):
                     handle = (
@@ -2952,10 +3047,38 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                     )
                     if not handle and tool_result_dict.get("results"):
                         handle = tool_result_dict["results"][0].get("handle")
+                    # L01: bind detail/correction to this exact handle+provider.
+                    try:
+                        _prod = tool_result_dict.get("product") or {}
+                        if not _prod and tool_result_dict.get("results"):
+                            _prod = tool_result_dict["results"][0] or {}
+                        if handle:
+                            _result_set.set_focused_course(
+                                SESSION_STATE.setdefault(sid, {}),
+                                handle=handle,
+                                title=_prod.get("title") or "",
+                                vendor=_prod.get("vendor") or _prod.get("provider") or "",
+                                price=_prod.get("price") or _prod.get("price_min") or _prod.get("price_label"),
+                            )
+                    except Exception as _focus_err:
+                        print(f"[Focus Course] {_focus_err}")
                     resolved = resolve_products_for_ui(single_handle=handle)
                     if resolved:
-                        buffered_ui_html.append(render_product_media(resolved[0]))
-                        buffered_course_cards.append(serialize_course_cards([resolved[0]]))
+                        # Reject similarly-named substitutions when focus is set.
+                        _cards = serialize_course_cards([resolved[0]])
+                        _cards = _result_set.filter_cards_to_focus(
+                            _cards, SESSION_STATE.get(sid) or {}
+                        )
+                        if _cards:
+                            buffered_ui_html.append(render_product_media(resolved[0]))
+                            buffered_course_cards.append(_cards)
+                            _track_shown_products(
+                                sid, [{"handle": handle, "title": resolved[0].get("title"),
+                                       "vendor": resolved[0].get("vendor"),
+                                       "price": resolved[0].get("price"),
+                                       "locations": resolved[0].get("locations", [])}],
+                                replace_active=False,
+                            )
 
                 elif fn in ("update_user_profile", "forget_about_user"):
                     # forget_about_user only ever proposes (status "proposed"):
@@ -3216,6 +3339,19 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                 if buffer and state != "in_tag":
                     yield f"data: {json.dumps({'type': 'chunk', 'content': buffer})}\n\n"
 
+            # L01/step 3: when a focused course is bound, drop mismatched cards
+            # so prose and UI cannot advertise a similarly-named substitute.
+            try:
+                _focus_state = SESSION_STATE.get(sid) or {}
+                if _result_set.get_focused_course(_focus_state):
+                    for _gi, _grp in enumerate(list(buffered_course_cards)):
+                        if isinstance(_grp, list):
+                            buffered_course_cards[_gi] = _result_set.filter_cards_to_focus(
+                                _grp, _focus_state
+                            )
+            except Exception as _filt_err:
+                print(f"[Focus Card Filter] {_filt_err}")
+
             # Add reinforcement before final response when we have product cards
             if had_tool_calls and buffered_ui_html:
                 final_messages.append({
@@ -3229,7 +3365,7 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
             # the cards actually shown). Used by the disclaimer/self-eval after
             # streaming, and by the env-gated pre-stream corrective re-call below.
             _turn_evidence = _collect_turn_evidence(
-                runtime_result.tool_results, buffered_course_cards
+                runtime_result.tool_results, buffered_course_cards, sid=sid
             )
             # At most ONE grounding intervention per turn (hard guard against
             # double-correcting: a re-call here OR a disclaimer later, never both).
@@ -3424,7 +3560,7 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                                     for r in _rec["results"] if r.get("handle") and (r.get("match_reason") or r.get("recommendation_reason"))}
                         _raw = resolve_products_for_ui(compact_results=_rec["results"])
                         if _raw:
-                            _track_shown_products(sid, _rec["results"])
+                            _track_shown_products(sid, _rec["results"], replace_active=False)
                             try:
                                 _get_store().log_event(
                                     sid, "profiler_handoff",

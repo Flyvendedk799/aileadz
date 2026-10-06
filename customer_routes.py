@@ -167,9 +167,45 @@ def readiness():
         cur.close()
 
 
+LEAD_STATUSES = [
+    ("new", "Ny"),
+    ("contacted", "Kontaktet"),
+    ("demo_booked", "Demo aftalt"),
+    ("converted", "Kunde oprettet"),
+    ("closed", "Afsluttet"),
+]
+LEADS_PER_PAGE = 25
+
+
+def _admin_users(cur):
+    """Platform admins: the only people a lead or an account can be owned by."""
+    cur.execute("SELECT id,username FROM users WHERE role=%s ORDER BY username", ("admin",))
+    return list(cur.fetchall() or [])
+
+
+def _age_label(created_at):
+    """Days since a DATETIME (or its ISO text) as Danish text: i dag, 1 dag, N dage."""
+    try:
+        if isinstance(created_at, str):
+            created_at = datetime.datetime.fromisoformat(created_at[:19])
+        days = (datetime.datetime.now() - created_at).days
+    except Exception:
+        return "—"
+    if days <= 0:
+        return "i dag"
+    return "1 dag" if days == 1 else "%d dage" % days
+
+
 @customer_bp.route("/admin/kundeforloeb")
 @require_role("admin")
 def accounts():
+    status = request.args.get("status", "")
+    if status not in dict(LEAD_STATUSES):
+        status = ""
+    try:
+        page = max(1, int(request.args.get("page", "1")))
+    except ValueError:
+        page = 1
     cur = _cur()
     try:
         cur.execute(
@@ -177,9 +213,34 @@ def accounts():
             ("resolved",),
         )
         accounts = list(cur.fetchall() or [])
-        cur.execute("SELECT * FROM sales_enquiries ORDER BY created_at DESC LIMIT 100")
+        cur.execute("SELECT status,COUNT(*) AS n FROM sales_enquiries GROUP BY status")
+        lead_counts = {r["status"]: int(r["n"]) for r in (cur.fetchall() or [])}
+        lead_total = sum(lead_counts.values())
+        shown = lead_counts.get(status, 0) if status else lead_total
+        pages = max(1, -(-shown // LEADS_PER_PAGE))
+        page = min(page, pages)
+        where, params = ("WHERE e.status=%s", [status]) if status else ("", [])
+        cur.execute(
+            "SELECT e.*,u.username AS owner_name FROM sales_enquiries e LEFT JOIN users u ON u.id=e.owner_user_id "
+            + where
+            + " ORDER BY e.created_at DESC LIMIT %s OFFSET %s",
+            tuple(params) + (LEADS_PER_PAGE, (page - 1) * LEADS_PER_PAGE),
+        )
         leads = list(cur.fetchall() or [])
-        return render_template("fm/customer_accounts.html", accounts=accounts, leads=leads)
+        for lead in leads:
+            lead["age"] = _age_label(lead.get("created_at"))
+        return render_template(
+            "fm/customer_accounts.html",
+            accounts=accounts,
+            leads=leads,
+            lead_statuses=LEAD_STATUSES,
+            lead_counts=lead_counts,
+            lead_total=lead_total,
+            lead_status=status,
+            lead_page=page,
+            lead_pages=pages,
+            admin_users=_admin_users(cur),
+        )
     finally:
         cur.close()
 
@@ -206,6 +267,7 @@ def manage_account(company_id):
             else:
                 fields = (
                     "account_owner",
+                    "owner_user_id",
                     "account_email",
                     "offer_name",
                     "included_services",
@@ -217,6 +279,14 @@ def manage_account(company_id):
                     "notes",
                 )
                 data = {k: request.form.get(k, "").strip() for k in fields}
+                owner_name = _owner_username(cur, data["owner_user_id"])
+                if data["owner_user_id"]:
+                    data["account_owner"] = owner_name
+                elif "account_owner" not in request.form:
+                    # No picker value and no legacy text posted: keep the old free-text owner.
+                    cur.execute("SELECT account_owner FROM customer_accounts WHERE company_id=%s", (company_id,))
+                    data["account_owner"] = ((cur.fetchone() or {}).get("account_owner")) or ""
+                data["owner_user_id"] = int(data["owner_user_id"]) if data["owner_user_id"] else None
                 if data["stage"] not in ("onboarding", "pilot", "active", "renewal", "paused"):
                     abort(400)
                 if data["account_email"] and not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", data["account_email"]):
@@ -253,19 +323,40 @@ def manage_account(company_id):
             account=account,
             requests=requests,
             readiness=customer_success.readiness(cur, company_id),
+            admin_users=_admin_users(cur),
         )
     finally:
         cur.close()
+
+
+def _owner_username(cur, owner_user_id):
+    """Username of a platform admin picked as owner, empty for none; 400 for anyone else."""
+    if not owner_user_id:
+        return ""
+    try:
+        uid = int(owner_user_id)
+    except (TypeError, ValueError):
+        abort(400)
+    cur.execute("SELECT username FROM users WHERE id=%s AND role=%s", (uid, "admin"))
+    row = cur.fetchone()
+    if not row:
+        abort(400)
+    return row["username"]
 
 
 @customer_bp.route("/admin/demoforespoergsler/<enquiry_id>", methods=["POST"])
 @require_role("admin")
 def update_enquiry(enquiry_id):
     status = request.form.get("status")
-    if status not in ("new", "contacted", "demo_booked", "converted", "closed"):
+    if status not in dict(LEAD_STATUSES):
         abort(400)
     cur = _cur()
     try:
+        cur.execute("SELECT id FROM sales_enquiries WHERE id=%s", (enquiry_id,))
+        if not cur.fetchone():
+            abort(404)
+        owner_user_id = request.form.get("owner_user_id", "").strip()
+        _owner_username(cur, owner_user_id)
         cid = request.form.get("company_id") or None
         if cid:
             try:
@@ -276,10 +367,15 @@ def update_enquiry(enquiry_id):
         if status == "converted" and not cid:
             abort(400)
         cur.execute(
-            "UPDATE sales_enquiries SET status=%s,owner_note=%s,company_id=%s,updated_at=CURRENT_TIMESTAMP WHERE id=%s",
-            (status, request.form.get("note", "")[:4000], cid, enquiry_id),
+            "UPDATE sales_enquiries SET status=%s,owner_note=%s,owner_user_id=%s,company_id=%s,updated_at=CURRENT_TIMESTAMP WHERE id=%s",
+            (status, request.form.get("note", "")[:4000], int(owner_user_id) if owner_user_id else None, cid, enquiry_id),
         )
         current_app.mysql.connection.commit()
-        return redirect(url_for("customer_success.accounts"))
+        back = {}
+        if request.form.get("return_status") in dict(LEAD_STATUSES):
+            back["status"] = request.form["return_status"]
+        if request.form.get("return_page", "").isdigit():
+            back["page"] = int(request.form["return_page"])
+        return redirect(url_for("customer_success.accounts", **back))
     finally:
         cur.close()

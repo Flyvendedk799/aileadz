@@ -37,41 +37,91 @@
             </table>
         </div>
         <h2>Demoforespørgsler</h2>
-        {% for lead in leads %}
-            <article class="fm-card" style="padding:20px;margin-bottom:12px">
-                <h3>{{ lead.company_name }} · {{ lead.name }}</h3>
-                <a href="mailto:{{ lead.email }}">{{ lead.email }}</a>
-                <p>{{ lead.message }}</p>
-                <form method="post"
-                      action="{{ url_for('customer_success.update_enquiry',enquiry_id=lead.id) }}">
-                    <label class="fm-field">
-                        <span>Status</span>
-                        <select class="fm-select" name="status">
-                            {% for key,label in [('new','Ny'),('contacted','Kontaktet'),('demo_booked','Demo aftalt'),('converted','Kunde oprettet'),('closed','Afsluttet')] %}
-                                <option value="{{ key }}"
-                                        {% if lead.status==key %}selected{% endif %}>{{ label }}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
-                    <label class="fm-field">
-                        <span>Tilknyt virksomhed</span>
-                        <select class="fm-select" name="company_id">
-                            <option value="">Ingen endnu</option>
-                            {% for a in accounts %}
-                                <option value="{{ a.id }}"
-                                        {% if lead.company_id==a.id %}selected{% endif %}>{{ a.company_name }}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
-                    <label class="fm-field">
-                        <span>Ansvarlig og næste handling</span>
-                        <textarea class="fm-input" name="note" maxlength="4000">{{ lead.owner_note or '' }}</textarea>
-                    </label>
-                    <button class="btn btn-primary">Gem opfølgning</button>
-                </form>
-            </article>
+        <nav class="pg-subnav" aria-label="Filtrér demoforespørgsler efter status">
+            <a class="pg-tab {{ 'active' if not lead_status }}" href="{{ url_for('customer_success.accounts') }}">Alle <span class="tnum">{{ lead_total }}</span></a>
+            {% for key, label in lead_statuses %}
+                <a class="pg-tab {{ 'active' if lead_status == key }}" href="{{ url_for('customer_success.accounts', status=key) }}">{{ label }} <span class="tnum">{{ lead_counts.get(key, 0) }}</span></a>
+            {% endfor %}
+        </nav>
+        {% if leads %}
+        <div style="overflow-x:auto">
+            <table class="fm-table" id="lead-table">
+                <thead>
+                    <tr>
+                        <th>Virksomhed</th>
+                        <th>Kontakt</th>
+                        <th>Modtaget</th>
+                        <th>Status</th>
+                        <th>Ansvarlig</th>
+                        <th>Alder</th>
+                    </tr>
+                </thead>
+                {% for lead in leads %}
+                <tbody class="lead">
+                    <tr>
+                        <td>{{ lead.company_name }}</td>
+                        <td>{{ lead.name }} · <a href="mailto:{{ lead.email }}">{{ lead.email }}</a></td>
+                        <td>{{ (lead.created_at|string)[:10] }}</td>
+                        <td><span class="fm-badge {{ {'new':'amber','contacted':'teal','demo_booked':'teal','converted':'green','closed':''}.get(lead.status, '') }}">{{ dict(lead_statuses).get(lead.status, lead.status) }}</span></td>
+                        <td>{{ lead.owner_name or 'Ikke tildelt' }}</td>
+                        <td>{{ lead.age }}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="6" style="padding-top:0">
+                            <details>
+                                <summary>Se besked og opdatér</summary>
+                                {% if lead.message %}<p style="white-space:pre-line">{{ lead.message }}</p>{% endif %}
+                                <form method="post" action="{{ url_for('customer_success.update_enquiry', enquiry_id=lead.id) }}">
+                                    <input type="hidden" name="return_status" value="{{ lead_status }}">
+                                    <input type="hidden" name="return_page" value="{{ lead_page }}">
+                                    <label class="fm-field">
+                                        <span>Status</span>
+                                        <select class="fm-select" name="status">
+                                            {% for key, label in lead_statuses %}
+                                                <option value="{{ key }}" {% if lead.status == key %}selected{% endif %}>{{ label }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </label>
+                                    <label class="fm-field">
+                                        <span>Ansvarlig</span>
+                                        <select class="fm-select" name="owner_user_id">
+                                            <option value="">Ikke tildelt</option>
+                                            {% for u in admin_users %}
+                                                <option value="{{ u.id }}" {% if lead.owner_user_id == u.id %}selected{% endif %}>{{ u.username }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </label>
+                                    <label class="fm-field">
+                                        <span>Tilknyt virksomhed</span>
+                                        <select class="fm-select" name="company_id">
+                                            <option value="">Ingen endnu</option>
+                                            {% for a in accounts %}
+                                                <option value="{{ a.id }}" {% if lead.company_id == a.id %}selected{% endif %}>{{ a.company_name }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </label>
+                                    <label class="fm-field">
+                                        <span>Næste handling</span>
+                                        <textarea class="fm-input" name="note" maxlength="4000">{{ lead.owner_note or '' }}</textarea>
+                                    </label>
+                                    <button class="btn btn-primary">Gem opfølgning</button>
+                                </form>
+                            </details>
+                        </td>
+                    </tr>
+                </tbody>
+                {% endfor %}
+            </table>
+        </div>
+        {% if lead_pages > 1 %}
+        <nav class="cat-pager" aria-label="Sider med demoforespørgsler" style="display:flex;gap:14px;align-items:center;justify-content:center;margin-top:16px">
+            {% if lead_page > 1 %}<a class="btn btn-ghost" href="{{ url_for('customer_success.accounts', status=lead_status or None, page=lead_page - 1) }}">Forrige</a>{% endif %}
+            <span>Side {{ lead_page }} af {{ lead_pages }}</span>
+            {% if lead_page < lead_pages %}<a class="btn btn-ghost" href="{{ url_for('customer_success.accounts', status=lead_status or None, page=lead_page + 1) }}">Næste</a>{% endif %}
+        </nav>
+        {% endif %}
         {% else %}
-            <p>Ingen demoforespørgsler endnu.</p>
-        {% endfor %}
+            <p>{{ 'Ingen demoforespørgsler med den status.' if lead_status else 'Ingen demoforespørgsler endnu.' }}</p>
+        {% endif %}
     </div>
 {% endblock %}

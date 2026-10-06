@@ -34,6 +34,7 @@ REGISTRY_DDL = [
     f"""CREATE TABLE IF NOT EXISTS customer_accounts (
         company_id INT PRIMARY KEY,
         account_owner VARCHAR(255) NULL,
+        owner_user_id INT NULL,
         account_email VARCHAR(255) NULL,
         offer_name VARCHAR(255) NULL,
         included_services TEXT NULL,
@@ -74,6 +75,7 @@ REGISTRY_DDL = [
         message TEXT NULL,
         status VARCHAR(20) NOT NULL DEFAULT 'new',
         owner_note TEXT NULL,
+        owner_user_id INT NULL,
         company_id INT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP

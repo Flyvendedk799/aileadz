@@ -183,3 +183,57 @@ class CustomerLaunchTests(unittest.TestCase):
         self.assertTrue(result["success"], result)
         row = self.db.one("SELECT * FROM course_orders")
         self.assertEqual((row["user_id"], row["status"]), (1, "approved"))   # assigned by HR = approved
+
+
+class LeadAdminTests(unittest.TestCase):
+    def setUp(self):
+        self.db = PlatformDB()
+        self.app = make_app(self.db)
+        p = render_patches()
+        p.start()
+        self.addCleanup(p.stop)
+        self.addCleanup(self.db.raw.close)
+        self.db.execute("INSERT INTO companies (id,company_name) VALUES (7,'Firma')")
+        self.db.execute(
+            "INSERT INTO users (id,username,email,role) VALUES (3,'admin','a@example.invalid','admin'),"
+            "(4,'sales','s@example.invalid','admin'),(5,'learner','l@example.invalid','user')"
+        )
+        for i in range(60):
+            status = "converted" if i % 6 == 0 else "new"
+            self.db.execute(
+                "INSERT INTO sales_enquiries (id,name,email,company_name,message,status,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                ("lead-%03d" % i, "Kontakt %d" % i, "k%d@example.invalid" % i, "Firma %d" % i, "Besked", status, "2026-09-%02d 10:00:00" % (i % 28 + 1)),
+            )
+        self.admin = client_as(self.app, user="admin", user_id=3, role="admin")
+
+    def test_leads_are_a_paginated_table_filterable_by_status_with_counts(self):
+        page = self.admin.get("/admin/kundeforloeb").get_data(as_text=True)
+        self.assertEqual(page.count('<tbody class="lead">'), 25)
+        self.assertIn("Side 1 af 3", page)
+        converted = self.admin.get("/admin/kundeforloeb?status=converted").get_data(as_text=True)
+        self.assertEqual(converted.count('<tbody class="lead">'), 10)
+        self.assertNotIn("Side 1 af", converted)
+        self.assertNotIn("Ny</span>", converted)
+        self.assertEqual(self.admin.get("/admin/kundeforloeb?page=99").status_code, 200)
+
+    def test_owner_must_be_a_platform_admin(self):
+        ok = self.admin.post("/admin/demoforespoergsler/lead-001", data={"status": "contacted", "owner_user_id": "4"})
+        self.assertEqual(ok.status_code, 302)
+        self.assertEqual(self.db.one("SELECT owner_user_id FROM sales_enquiries WHERE id='lead-001'")["owner_user_id"], 4)
+        bad = self.admin.post("/admin/demoforespoergsler/lead-002", data={"status": "contacted", "owner_user_id": "5"})
+        self.assertEqual(bad.status_code, 400)
+        self.assertEqual(self.admin.post("/admin/demoforespoergsler/nope", data={"status": "new"}).status_code, 404)
+        page = self.admin.get("/admin/kundeforloeb").get_data(as_text=True)
+        self.assertIn('<option value="4"', page)
+        self.assertNotIn('<option value="5"', page)
+
+    def test_account_owner_is_picked_from_admins_and_milestones_use_the_checklist(self):
+        r = self.admin.post("/admin/kundeforloeb/7", data={"stage": "pilot", "owner_user_id": "4"})
+        self.assertEqual(r.status_code, 302)
+        row = self.db.one("SELECT account_owner,owner_user_id FROM customer_accounts WHERE company_id=7")
+        self.assertEqual((row["account_owner"], row["owner_user_id"]), ("sales", 4))
+        self.assertEqual(self.admin.post("/admin/kundeforloeb/7", data={"stage": "pilot", "owner_user_id": "5"}).status_code, 400)
+        page = self.admin.get("/admin/kundeforloeb/7").get_data(as_text=True)
+        self.assertIn("fm-checklist", page)
+        self.assertIn("milepæle", page)
+        self.assertNotIn("○", page)

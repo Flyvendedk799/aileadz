@@ -38,7 +38,8 @@ class SectionBase(Base):
         return resp.get_data(as_text=True)
 
     def shown(self, client):
-        return re.findall(r'data-section="([a-z_]+)"', self.page(client))
+        html = self.page(client)
+        return re.findall(r'data-section="([a-z_]+)"', html[html.index("<main"):])
 
     def hr(self):
         return self.client_as("hr", 3, "hr_manager")
@@ -296,7 +297,7 @@ class LearnerPageTests(SectionBase):
     def test_booked_page_shows_booking_change_and_attendance_in_one_place(self):
         self.set_state("booked")
         html = self.order_page()
-        self.assertEqual(re.findall(r'data-section="([a-z_]+)"', html), ["booking_card", "change_request", "attendance"])
+        self.assertEqual(re.findall(r'data-section="([a-z_]+)"', html[html.index('<main'):]), ["booking_card", "change_request", "attendance"])
         self.assertIn("Kontoret", html)
         self.assertIn('action="/min-ordre/ord-1/handling"', html)
         self.assertNotIn("/gennemfoert", html)
@@ -312,7 +313,7 @@ class LearnerPageTests(SectionBase):
         self.assertTrue(resp.headers["Location"].endswith("/min-ordre/ord-1#aendring"), resp.headers["Location"])
         self.assertEqual(self.db.one("SELECT status FROM course_order_changes")["status"], "pending")
         html = self.order_page()
-        self.assertEqual(re.findall(r'data-section="([a-z_]+)"', html), ["booking_card", "changes_list", "attendance"])
+        self.assertEqual(re.findall(r'data-section="([a-z_]+)"', html[html.index('<main'):]), ["booking_card", "changes_list", "attendance"])
         self.assertIn("Din afbestilling afventer svar fra udbyderen", html)
 
     def test_attendance_report_posts_back_and_shows_the_waiting_state(self):
@@ -336,7 +337,7 @@ class LearnerPageTests(SectionBase):
         self.db.execute("UPDATE learning_outcome_reviews SET status='completed', review_note='Bruger metoden dagligt'")
         html = self.order_page()
         self.assertIn("Bruger metoden dagligt", html)
-        self.assertEqual(re.findall(r'data-section="([a-z_]+)"', html), ["booking_card", "attendance", "outcome_summary"])
+        self.assertEqual(re.findall(r'data-section="([a-z_]+)"', html[html.index('<main'):]), ["booking_card", "attendance", "outcome_summary"])
 
 
 class HrDetailsPageTests(SectionBase):

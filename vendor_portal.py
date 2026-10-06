@@ -829,6 +829,25 @@ def _vendor_orders(vendor_id, tab):
     return rows
 
 
+def _pending_change_ids(order_ids):
+    """Order ids (of the given list) with an open change request: one grouped query."""
+    if not order_ids:
+        return set()
+    try:
+        cur = _db().cursor()
+        cur.execute(
+            "SELECT order_id FROM course_order_changes WHERE status = 'pending' AND order_id IN (%s) GROUP BY order_id"
+            % ",".join(["%s"] * len(order_ids)),
+            tuple(order_ids),
+        )
+        rows = list(cur.fetchall() or [])
+        cur.close()
+        return {r["order_id"] if isinstance(r, dict) else r[0] for r in rows}
+    except Exception as e:
+        logger.debug("vendor_orders: pending changes lookup failed: %s", e)
+        return set()
+
+
 @vendor_bp.route("/orders", methods=["GET"])
 @_vendor_login_required
 def vendor_orders():
@@ -847,9 +866,11 @@ def vendor_orders():
     except Exception as e:
         logger.warning("vendor_orders: load failed: %s", e)
         orders, load_error = [], True
+    pending_changes = _pending_change_ids([o["order_id"] for o in orders])
     for o in orders:
         st = lc.normalize_status(o.get("status"))
         o["state"] = st
+        o["change_pending"] = o["order_id"] in pending_changes
         o["label"] = lc.status_label(st, short=True)
         o["tone"] = lc.STATUS_TONES[st]
         o["can_book"] = st == lc.APPROVED

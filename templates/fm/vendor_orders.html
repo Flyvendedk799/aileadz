@@ -37,6 +37,7 @@
     .vp-flash.success { background: var(--fm-primary-tint); color: var(--fm-primary-700); }
     .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 700; background: var(--fm-surface-3, #eee); }
     .badge.pending { background: var(--fm-clay-tint); color: var(--fm-clay); }
+    .badge.ok { background: var(--fm-primary-tint); color: var(--fm-primary-700); }
     .vp-empty { text-align: center; padding: 40px 16px; color: var(--fm-ink-3); }
     .vp-decline { display: none; margin-top: 10px; width: 100%; }
     .vp-decline input { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--fm-line-2); border-radius: 8px; }
@@ -67,7 +68,7 @@
         <div class="main">
           <div class="t">{{ o.product_title }}</div>
           <div class="m">
-            <span class="badge {{ 'pending' if o.state == 'approved' }}">{{ o.label }}</span>
+            <span class="badge {{ 'ok' if o.state == 'approved' }}">{{ o.label }}</span>{% if o.change_pending %} <span class="badge pending" data-change-pending>Ændringsønske afventer</span>{% endif %}
             &nbsp;{{ o.user_name or '—' }}{% if o.company_name %} · {{ o.company_name }}{% endif %}
             {% if o.user_email %} · {{ o.user_email }}{% endif %}{% if o.user_phone %} · {{ o.user_phone }}{% endif %}
           </div>
@@ -80,10 +81,8 @@
           {% if o.request_notes %}<div class="m"><strong>Note fra deltageren:</strong> {{ o.request_notes }}</div>{% endif %}
           {% if o.cancel_reason %}<div class="m"><strong>Begrundelse:</strong> {{ o.cancel_reason }}</div>{% endif %}
         </div>
-        <div class="vp-actions"><a class="btn" href="{{ url_for('vendor.vendor_booking',order_id=o.order_id) }}">Booking og ændringer</a>
-          {% if o.can_book %}
-          <a class="btn primary" href="{{ url_for('vendor.vendor_booking',order_id=o.order_id) }}">Bekræft plads og oplysninger</a>
-          {% endif %}
+        <div class="vp-actions">
+          <a class="btn {{ 'primary' if o.can_book }}" href="{{ url_for('vendor.vendor_booking',order_id=o.order_id) }}">{{ 'Bekræft plads' if o.can_book else ('Se booking' if o.state == 'booked' else 'Se bestilling') }}</a>
           {% if o.can_complete %}
           <form method="POST" action="{{ url_for('vendor.vendor_order_complete', order_id=o.order_id) }}">
             <input type="hidden" name="tab" value="{{ tab }}">

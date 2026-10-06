@@ -400,3 +400,54 @@ class HrDetailsPageTests(SectionBase):
         self.assertEqual(hr["action_url"], "/hr/order/ord-1/details#aendring")
         learner = self.db.one("SELECT action_url FROM notifications WHERE user_id='ada' AND kind='order_change'")
         self.assertEqual(learner["action_url"], "/min-ordre/ord-1#aendring")
+
+
+class VendorPageTests(SectionBase):
+    """The vendor's booking page is a portal page with one primary action per order."""
+
+    def setUp(self):
+        super().setUp()
+        from tests.sqlite_platform import client_as
+
+        self.db.execute("INSERT INTO vendors (id, vendor_name, slug, contact_email, status) VALUES (11, 'Kursus ApS', 'kursus-aps', 'v@k.dk', 'active')")
+        self.db.execute("UPDATE course_orders SET vendor_id=11")
+        self.vendor = client_as(self.app, user_type="vendor", vendor_id=11, vendor_name="Kursus ApS")
+
+    def test_booking_page_has_the_portal_navigation_and_a_breadcrumb(self):
+        self.set_state("approved", booking=False)
+        html = self.vendor.get("/vendor/orders/ord-1/booking").get_data(as_text=True)
+        self.assertIn('class="vp-nav"', html)
+        self.assertIn('href="/vendor/analytics"', html)
+        self.assertIn('href="/vendor/profile"', html)
+        self.assertIn('class="vp-crumb"', html)
+        self.assertIn('data-section="book_form"', html)
+        self.assertNotIn("Klar til booking", html)
+
+    def test_flash_uses_the_portal_style_after_an_action(self):
+        self.set_state("approved", booking=False)
+        resp = self.vendor.post("/vendor/orders/ord-1/booking", data={"action": "book", "start_at": "2026-11-09T09:00", "location": "X"}, follow_redirects=True)
+        html = resp.get_data(as_text=True)
+        self.assertIn('class="vp-flash warning"', html)
+        self.assertIn("Datoen afviger fra den bestilte session", html)
+
+    def orders_page(self, tab="alle"):
+        return self.vendor.get("/vendor/orders?tab=" + tab).get_data(as_text=True)
+
+    def test_each_order_card_has_exactly_one_link_to_the_booking_view(self):
+        for status in ("approved", "booked", "completed"):
+            self.set_state(status, booking=False)
+            html = self.orders_page()
+            self.assertEqual(html.count('href="/vendor/orders/ord-1/booking"'), 1, status)
+            self.db.execute("DELETE FROM course_order_details")
+        self.set_state("approved", booking=False)
+        self.assertIn("Bekræft plads", self.orders_page())
+        self.set_state("booked", booking=False)
+        self.assertIn("Se booking", self.orders_page())
+
+    def test_pending_change_badge_and_approved_pill_colour(self):
+        self.set_state("approved", booking=False)
+        html = self.orders_page()
+        self.assertNotIn("data-change-pending", html)
+        self.assertIn('class="badge ok"', html)
+        self.set_state("booked", booking=False, change="cancel")
+        self.assertIn("Ændringsønske afventer", self.orders_page())

@@ -29,19 +29,25 @@ def _company(cur, company_id):
 
 @customer_bp.route("/for-virksomheder", methods=["GET", "POST"])
 def sales():
+    form = {"name": "", "email": "", "company_name": "", "message": ""}
+    errors = {}
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         email = request.form.get("email", "").strip()
         company = request.form.get("company_name", "").strip()
-        if (
-            request.form.get("website")
-            or not name
-            or not company
-            or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email)
-            or request.form.get("contact_consent") != "yes"
-        ):
-            flash("Udfyld navn, virksomhed og en gyldig e-mail, og bekræft at vi må kontakte dig.", "warning")
-        else:
+        form = {"name": name, "email": email, "company_name": company, "message": request.form.get("message", "")}
+        if request.form.get("website"):
+            # Honeypot: a bot gets the same confirmation as a person, and nothing is stored.
+            return redirect(url_for("customer_success.sales", sent=1))
+        if not name:
+            errors["name"] = "Skriv dit navn."
+        if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+            errors["email"] = "Skriv en gyldig e-mailadresse, fx navn@virksomhed.dk."
+        if not company:
+            errors["company_name"] = "Skriv virksomhedens navn."
+        if request.form.get("contact_consent") != "yes":
+            errors["contact_consent"] = "Bekræft, at vi må kontakte dig om forespørgslen."
+        if not errors:
             cur = _cur()
             try:
                 enquiry_id = str(uuid.uuid4())
@@ -56,11 +62,13 @@ def sales():
                     key="demo:" + enquiry_id,
                 )
                 current_app.mysql.connection.commit()
-                flash("Din demoforespørgsel er gemt. Vi vender tilbage for at aftale et tidspunkt.", "success")
                 return redirect(url_for("customer_success.sales", sent=1))
             finally:
                 cur.close()
-    return render_template("fm/sales.html", sent=request.args.get("sent") == "1")
+    return (
+        render_template("fm/sales.html", sent=request.args.get("sent") == "1", form=form, errors=errors),
+        400 if errors else 200,
+    )
 
 
 @customer_bp.route("/virksomhed/kundeforloeb", methods=["GET", "POST"])

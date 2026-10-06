@@ -1,3 +1,4 @@
+{%- import 'fm/_macros.html' as ui -%}
 <!DOCTYPE html>
 <html lang="da" data-theme="light">
 <head>
@@ -74,9 +75,9 @@
       {% endwith %}
 
       <form method="POST" action="{{ url_for('auth.register', tenant=tenant_slug) if tenant_slug else url_for('auth.register') }}">
-        <div class="fm-field"><label>Brugernavn</label><div class="iw"><i class="fa-solid fa-user"></i><input class="fm-input" name="username" placeholder="mette.krogh" required /></div></div>
-        <div class="fm-field"><label>E-mail</label><div class="iw"><i class="fa-solid fa-envelope"></i><input class="fm-input" name="email" type="email" placeholder="navn@virksomhed.dk" required /></div></div>
-        <div class="fm-field"><label>Adgangskode</label><div class="iw"><i class="fa-solid fa-lock"></i><input class="fm-input" name="password" type="password" placeholder="Mindst 10 tegn" required /></div></div>
+        <div class="fm-field"><label>Brugernavn</label><div class="iw"><i class="fa-solid fa-user"></i><input class="fm-input{{ ' is-invalid' if errors.get('username') }}" name="username" placeholder="mette.krogh" value="{{ form.get('username', '') }}" required {% if errors.get('username') %}aria-invalid="true" aria-describedby="err-username"{% endif %} /></div>{{ ui.field_error(errors, 'username') }}</div>
+        <div class="fm-field"><label>E-mail</label><div class="iw"><i class="fa-solid fa-envelope"></i><input class="fm-input{{ ' is-invalid' if errors.get('email') }}" name="email" type="email" placeholder="navn@virksomhed.dk" value="{{ form.get('email', '') }}" required {% if errors.get('email') %}aria-invalid="true" aria-describedby="err-email"{% endif %} /></div>{{ ui.field_error(errors, 'email') }}</div>
+        <div class="fm-field"><label>Adgangskode</label><div class="iw"><i class="fa-solid fa-lock"></i><input class="fm-input{{ ' is-invalid' if errors.get('password') }}" name="password" type="password" placeholder="Mindst 10 tegn" required {% if errors.get('password') %}aria-invalid="true" aria-describedby="err-password"{% endif %} /></div>{{ ui.field_error(errors, 'password') }}</div>
         <button type="submit" class="btn btn-primary btn-lg" style="width:100%;margin-top:6px">Opret konto <i class="fa-solid fa-arrow-right"></i></button>
       </form>
       <div class="fc-foot">Har du allerede en konto? <a href="{{ url_for('auth.login') }}">Log ind</a></div>

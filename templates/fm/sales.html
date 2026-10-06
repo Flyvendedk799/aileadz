@@ -1,4 +1,5 @@
 {% extends "fm_base.html" %}
+{% import 'fm/_macros.html' as ui %}
 {% block title %}Futurematch til virksomheder{% endblock %}
 {% block topbar_title %}Kompetenceudvikling fra behov til udbytte{% endblock %}
 {% block content %}
@@ -30,25 +31,30 @@
             <h2>Se jeres arbejdsgang i en demo</h2>
             <p>Fortæl kort om virksomheden og det, I vil løse. Vi kontakter jer for at aftale næste skridt. Formularen booker ikke automatisk et mødetidspunkt.</p>
             {% if sent %}
-                <p role="status">Tak. Din forespørgsel er registreret.</p>
+                <p role="status">Tak. Din forespørgsel er registreret. Vi vender tilbage for at aftale et tidspunkt.</p>
             {% endif %}
-            <form method="post">
+            {% if errors %}
+                <p role="alert" class="fm-field-error">Tjek felterne herunder, og prøv igen. Dine oplysninger er bevaret.</p>
+            {% endif %}
+            <form method="post" action="#demo" novalidate>
                 <label class="fm-field">
                     <span>Navn</span>
-                    <input class="fm-input" name="name" required maxlength="255">
+                    <input class="fm-input{{ ' is-invalid' if errors.get('name') }}" name="name" required maxlength="255" value="{{ form.name }}" {% if errors.get('name') %}aria-invalid="true" aria-describedby="err-name"{% endif %}>
+                    {{ ui.field_error(errors, 'name') }}
                 </label>
                 <label class="fm-field">
                     <span>Arbejdsmail</span>
-                    <input class="fm-input" name="email" type="email" required maxlength="255">
+                    <input class="fm-input{{ ' is-invalid' if errors.get('email') }}" name="email" type="email" required maxlength="255" value="{{ form.email }}" {% if errors.get('email') %}aria-invalid="true" aria-describedby="err-email"{% endif %}>
+                    {{ ui.field_error(errors, 'email') }}
                 </label>
                 <label class="fm-field">
                     <span>Virksomhed</span>
-                    <input class="fm-input" name="company_name" required maxlength="255">
+                    <input class="fm-input{{ ' is-invalid' if errors.get('company_name') }}" name="company_name" required maxlength="255" value="{{ form.company_name }}" {% if errors.get('company_name') %}aria-invalid="true" aria-describedby="err-company_name"{% endif %}>
+                    {{ ui.field_error(errors, 'company_name') }}
                 </label>
                 <label class="fm-field">
                     <span>Hvad vil I gerne forbedre?</span>
-                    <textarea class="fm-input" name="message" maxlength="4000">
-</textarea>
+                    <textarea class="fm-input" name="message" maxlength="4000">{{ form.message }}</textarea>
                 </label>
                 <div hidden>
                     <label>
@@ -59,6 +65,7 @@
                     <input type="checkbox" name="contact_consent" value="yes" required>
                     I må kontakte mig om denne forespørgsel. <a href="{{ url_for('pages.privacy') }}">Læs om behandling af oplysninger</a>.
                 </label>
+                {{ ui.field_error(errors, 'contact_consent') }}
                 <div style="margin-top:16px">
                     <button class="btn btn-primary">Send demoforespørgsel</button>
                 </div>

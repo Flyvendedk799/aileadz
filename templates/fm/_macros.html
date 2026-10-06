@@ -130,3 +130,7 @@
 
 {# Add-to-calendar (.ics) link. #}
 {% macro addtocal(ics_url, label='Tilføj til kalender') %}<a class="btn btn-ghost btn-sm" href="{{ ics_url }}"><i class="fa-regular fa-calendar-plus"></i> {{ label }}</a>{% endmacro %}
+
+{# --- Field-level error under an input. `errors` is a {field: message | [messages]} dict.
+       Pair the input with aria-invalid / aria-describedby="err-<field>". --- #}
+{% macro field_error(errors, field) %}{% if errors and errors.get(field) %}{% set _m = errors.get(field) %}{% for m in (_m if _m is not string else [_m]) %}<div class="fm-field-error" id="err-{{ field }}" role="alert">{{ m }}</div>{% endfor %}{% endif %}{% endmacro %}

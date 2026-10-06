@@ -724,6 +724,16 @@ def timeline():
                 (username, user_id),
             )
             rows = cur.fetchall() or []
+            pending_changes = set()
+            order_ids = [r.get('order_id') for r in rows if r.get('order_id')]
+            if order_ids:
+                # One grouped lookup for every order with an open change request.
+                cur.execute(
+                    "SELECT DISTINCT order_id FROM course_order_changes "
+                    "WHERE status = 'pending' AND order_id IN (%s)" % ",".join(["%s"] * len(order_ids)),
+                    tuple(order_ids),
+                )
+                pending_changes = {c.get('order_id') for c in (cur.fetchall() or [])}
             cur.close()
 
             now = datetime.datetime.now()
@@ -750,9 +760,12 @@ def timeline():
                     'status_label': _ORDER_STATUS_LABELS.get(raw_status, raw_status),
                     'state': state,
                     'approval_status': r.get('approval_status'),
-                    'approval_label': _ORDER_STATUS_LABELS.get(
-                        r.get('approval_status'), r.get('approval_status')
-                    ) if r.get('approval_status') else None,
+                    # The approval decision is only news while the order awaits it;
+                    # afterwards the order status already says it.
+                    'approval_label': (
+                        _lc.approval_label(r.get('approval_status')) or None
+                    ) if raw_status == _lc.PENDING_APPROVAL else None,
+                    'change_pending': r.get('order_id') in pending_changes,
                     'deadline': deadline,
                     'completion_date': completion_date,
                     'overdue': overdue,

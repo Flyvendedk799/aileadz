@@ -98,8 +98,8 @@
           <div class="tl-title">{{ it.title }}</div>
           <div class="tl-badges">
             <span class="fm-badge {{ state_badge.get(it.state, 'amber') }} dot">{{ it.status_label }}</span>
-            {% if it.approval_label and it.approval_status != it.status %}
-            <span class="fm-badge indigo"><i class="fa-solid fa-user-check"></i> {{ it.approval_label }}</span>
+            {% if it.change_pending %}
+            <span class="fm-badge amber"><i class="fa-solid fa-hourglass-half"></i> Ændring afventer svar</span>
             {% endif %}
           </div>
         </div>

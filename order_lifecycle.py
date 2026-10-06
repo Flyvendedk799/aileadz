@@ -93,6 +93,21 @@ STATUS_TONES = {  # fm badge colours
     CANCELLED: "",
 }
 
+# The approval decision is its own vocabulary (``order_approvals.status``), never
+# looked up in the order label maps above: the legacy alias ``pending`` means
+# "approved" for an ORDER but "awaiting a decision" for an approval.
+APPROVAL_STATUS_LABELS = {
+    "pending": "Afventer godkendelse",
+    "approved": "Godkendt",
+    "rejected": "Afvist",
+}
+
+
+def approval_label(status) -> str:
+    """Danish label of an ``order_approvals.status`` ('' when unknown or empty)."""
+    return APPROVAL_STATUS_LABELS.get(str(status or "").strip().lower(), "")
+
+
 # ── transitions ─────────────────────────────────────────────────────────────
 TRANSITIONS = {
     PENDING_APPROVAL: frozenset({APPROVED, REJECTED, CANCELLED}),

@@ -75,6 +75,49 @@ class DetailPageTests(Base):
         self.assertNotIn("Afventer betaling", html)
 
 
+class TimelineBadgeTests(Base):
+    """One honest status badge per card (the approval decision is not a second status)."""
+
+    def _timeline(self, status, approval=None, change=False):
+        self.db.execute("UPDATE course_orders SET status=%s WHERE order_id='ord-1'", (status,))
+        if approval:
+            self.db.execute("INSERT INTO order_approvals (order_id, company_id, status) VALUES ('ord-1', 7, %s)", (approval,))
+        if change:
+            self.db.execute("INSERT INTO course_order_changes (order_id, company_id, user_id, kind, status) "
+                            "VALUES ('ord-1', 7, 1, 'cancel', 'pending')")
+        return self.client_as("ada", 1).get("/min-tidslinje").get_data(as_text=True)
+
+    def _badges(self, html):
+        import re
+        return re.findall(r'<span class="fm-badge[^"]*">(?:<i[^>]*></i>)?\s*([^<]+)</span>', html.split('class="tl-badges"')[1].split("</div>")[0])
+
+    def test_pending_order_shows_only_afventer_godkendelse(self):
+        html = self._timeline("pending_approval", approval="pending")
+        self.assertEqual([b.strip() for b in self._badges(html)], ["Afventer godkendelse"])
+        self.assertNotIn("afventer booking", html)
+
+    def test_booked_order_shows_only_booket_even_with_an_approved_decision(self):
+        html = self._timeline("booked", approval="approved")
+        self.assertEqual([b.strip() for b in self._badges(html)], ["Booket"])
+
+    def test_completed_and_cancelled_orders_show_one_badge(self):
+        self.assertEqual([b.strip() for b in self._badges(self._timeline("completed", approval="approved"))], ["Gennemført"])
+        self.db.execute("DELETE FROM order_approvals")
+        self.assertEqual([b.strip() for b in self._badges(self._timeline("cancelled", approval="approved"))], ["Annulleret"])
+
+    def test_open_change_request_adds_its_own_badge(self):
+        html = self._timeline("booked", change=True)
+        self.assertEqual([b.strip() for b in self._badges(html)], ["Booket", "Ændring afventer svar"])
+
+    def test_approval_labels_come_from_order_lifecycle(self):
+        import order_lifecycle as lc
+        self.assertEqual(lc.approval_label("pending"), "Afventer godkendelse")
+        self.assertEqual(lc.approval_label("approved"), "Godkendt")
+        self.assertEqual(lc.approval_label("rejected"), "Afvist")
+        self.assertEqual(lc.approval_label(None), "")
+        self.assertEqual(lc.approval_label("noget"), "")
+
+
 class ActionTests(Base):
     def test_cancel_by_owner_and_refund(self):
         self.db.execute("INSERT INTO department_budgets (company_id, department, annual_budget, spent, fiscal_year) "

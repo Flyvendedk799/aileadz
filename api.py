@@ -1483,6 +1483,7 @@ def get_profile_orders_api():
     try:
         import MySQLdb.cursors
         from db_compat import refresh_flask_mysql_connection
+        import order_lifecycle
         from futurematch_ui import _ORDER_STATE, _ORDER_STATUS_LABELS, _ensure_timeline_tables
         mysql = getattr(current_app, 'mysql', None)
         refresh_flask_mysql_connection(mysql)
@@ -1521,9 +1522,10 @@ def get_profile_orders_api():
                     'status': raw_status,
                     'status_label': _ORDER_STATUS_LABELS.get(raw_status, raw_status),
                     'state': state,
-                    'approval_label': _ORDER_STATUS_LABELS.get(
-                        r.get('approval_status'), r.get('approval_status')
-                    ) if r.get('approval_status') else None,
+                    # Same rule as /min-tidslinje: only while the order awaits approval.
+                    'approval_label': (
+                        order_lifecycle.approval_label(r.get('approval_status')) or None
+                    ) if order_lifecycle.normalize_status(raw_status) == order_lifecycle.PENDING_APPROVAL else None,
                     'deadline': r.get('completion_deadline').isoformat() if r.get('completion_deadline') else None,
                     'overdue': overdue,
                     'price': float(price) if price is not None else None,

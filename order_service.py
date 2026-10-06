@@ -50,7 +50,7 @@ def _emit_event_safe(company_id, event_type, payload):
 
 
 def _send_email_safe(to_email, subject, template_name, company_id,
-                     dedupe_key=None, cursor=None, **context):
+                     dedupe_key=None, cursor=None, related_order_id=None, **context):
     """Stage durable business mail. Transactional staging errors abort the write."""
     if not to_email:
         return
@@ -61,7 +61,8 @@ def _send_email_safe(to_email, subject, template_name, company_id,
         key = dedupe_key or ('order:%s:%s:%s' % (context.get('order_id'),template_name,context.get('decision','')) if context.get('order_id') else None)
         if key and key.startswith('budget_overrun_alert:'):
             key += ':' + datetime.date.today().isoformat()
-        enqueue(to_email,subject,template_name,branding,company_id=company_id,dedupe_key=key,cursor=cursor,**context)
+        enqueue(to_email,subject,template_name,branding,company_id=company_id,dedupe_key=key,cursor=cursor,
+                related_order_id=related_order_id or context.get('order_id'),**context)
     except Exception as e:  # pragma: no cover - defensive
         logger.debug("order_service: email(%s) skipped: %s", template_name, e)
         if cursor is not None:

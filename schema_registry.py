@@ -88,6 +88,7 @@ REGISTRY_DDL = [
         dedupe_key VARCHAR(64) NOT NULL,
         report_schedule_id INT NULL,
         delivery_group VARCHAR(64) NULL,
+        order_id VARCHAR(50) NULL,
         state VARCHAR(20) NOT NULL DEFAULT 'pending',
         attempts INT NOT NULL DEFAULT 0,
         available_at DATETIME NOT NULL,

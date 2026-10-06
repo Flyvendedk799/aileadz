@@ -598,6 +598,7 @@ def change_notice(cur, row, change_id, phase, message, actor_user_id=None):
             row.get("company_id"),
             cursor=cur,
             dedupe_key=key,
+            related_order_id=row.get("order_id"),
             heading=title,
             message=message + "\n" + orders._app_base_url() + link,
         )

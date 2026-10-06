@@ -328,3 +328,4 @@ body:has(.fm-aip) .fm-foot{padding-right:150px}
 .fm-aip-msg{overflow-wrap:anywhere;min-width:0}
 .fm-confirm-card{max-width:100%}
 .fm-feedback button{min-width:32px;min-height:32px}
+.status-pill.grey { background: var(--fm-surface-3); color: var(--fm-ink-2); }

@@ -32,10 +32,14 @@
   .rec-media { height: 96px; display: grid; place-items: center; font-size: 26px; color: var(--fm-primary); background: linear-gradient(135deg, var(--fm-primary-tint), color-mix(in srgb,var(--fm-clay) 9%,transparent)); border-bottom: 1px solid var(--fm-line); position: relative; }
   .rec-match { position: absolute; top: 10px; right: 10px; display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 9px; border-radius: 999px; background: var(--fm-surface); border: 1px solid var(--fm-line); font-size: 10.5px; font-weight: 700; color: var(--fm-primary); font-family: var(--ff-mono); }
   .rec-body { padding: 14px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
-  .rec-body h3 { font-size: 14.5px; font-weight: 700; letter-spacing: -.015em; line-height: 1.25; }
+  .rec-card { min-width: 0; }
+  .rec-body { min-width: 0; }
+  .rec-body h3 { font-size: 14.5px; font-weight: 700; letter-spacing: -.015em; line-height: 1.25; overflow-wrap: anywhere; }
+  .rec-body .learn-vendor { overflow-wrap: anywhere; }
   .rec-why { font-size: 12px; color: var(--fm-ink-2); line-height: 1.45; }
   .rec-foot { display: flex; align-items: center; justify-content: space-between; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--fm-line); }
-  .rec-price { font-family: var(--ff-display); font-weight: 700; font-size: 15px; }
+  .rec-price { font-family: var(--ff-display); font-weight: 700; font-size: 15px; white-space: nowrap; }
+  .rec-foot { gap: 10px; flex-wrap: wrap; }
 
   .ring-big { width: 132px; height: 132px; border-radius: 999px; display: grid; place-items: center; margin: 0 auto; background: conic-gradient(var(--fm-primary) calc(var(--p,72) * 1%), var(--fm-surface-3) 0); }
   .ring-big > div { width: 104px; height: 104px; border-radius: 999px; background: var(--fm-surface); display: grid; place-items: center; flex-direction: column; text-align: center; }
@@ -88,10 +92,12 @@
         <!-- Two column: recommended + side -->
         <div class="split" style="margin-top:8px">
           <div>
-            <div class="fm-section-head"><div><span class="fm-eyebrow clay"><i class="fa-solid fa-wand-magic-sparkles"></i> Matchet til din profil</span><h2 class="fm-section-title">Anbefalet til dig</h2></div><a href="{{ url_for('futurematch.chat') }}" class="fm-badge teal">Spørg AI</a></div>
+            {% set _popular = (recommendation_source|default('popular')) != 'profile' %}
+            <div class="fm-section-head"><div>{% if _popular %}<span class="fm-eyebrow"><i class="fa-solid fa-fire"></i> Fra kataloget</span><h2 class="fm-section-title">Populært lige nu</h2>{% else %}<span class="fm-eyebrow clay"><i class="fa-solid fa-wand-magic-sparkles"></i> Matchet til din profil</span><h2 class="fm-section-title">Anbefalet til dig</h2>{% endif %}</div><a href="{{ url_for('futurematch.chat') }}" class="fm-badge teal">Spørg AI</a></div>
+            {% if _popular and recommendations %}<p class="muted" style="margin:-4px 0 12px;font-size:13px"><a href="{{ url_for('pages.profile') }}">Udfyld din profil for personlige forslag</a></p>{% endif %}
             {# Skeleton placeholder shown until reveal; replaced by real cards when present. #}
             {% if recommendations %}
-            <div class="fm-grid" style="grid-template-columns:repeat(3,1fr);gap:14px" data-reveal>
+            <div class="fm-grid fm-auto-grid" data-reveal>
               {% for r in recommendations %}
               <a class="rec-card" href="{{ url_for('catalog.product_detail', handle=r.handle) }}">
                 <div class="rec-media"><i class="fa-solid fa-graduation-cap"></i>{% if r.format %}<span class="rec-match"><i class="fa-solid fa-circle-nodes"></i> {{ r.format }}</span>{% endif %}</div>

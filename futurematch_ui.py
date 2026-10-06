@@ -447,6 +447,10 @@ def _home_skill_completeness(profile):
         return pct, sections, bool(skills)
 
 
+RECOMMENDATION_PROFILE = 'profile'
+RECOMMENDATION_POPULAR = 'popular'
+
+
 def _home_recommendations(profile, company_id, limit=_HOME_REC_LIMIT):
     """Cheap, non-LLM course recommendations for the learner home.
 
@@ -461,6 +465,7 @@ def _home_recommendations(profile, company_id, limit=_HOME_REC_LIMIT):
     profile = profile or {}
     skills = profile.get('skills') or []
     why = 'Populært i kataloget lige nu'
+    source = RECOMMENDATION_POPULAR
     products = []
     try:
         import catalog_service
@@ -469,6 +474,7 @@ def _home_recommendations(profile, company_id, limit=_HOME_REC_LIMIT):
             q = (skills[0].get('name') or '').strip()
             if q:
                 why = f'Matcher din kompetence: {q}'
+                source = RECOMMENDATION_PROFILE
         result = catalog_service.search_products(
             filters={'q': q} if q else {},
             page=1, per_page=limit, company_id=company_id,
@@ -480,6 +486,7 @@ def _home_recommendations(profile, company_id, limit=_HOME_REC_LIMIT):
                 filters={}, page=1, per_page=limit, company_id=company_id) or {}
             products = catalog_service.exclude_stale(result.get('products') or [])
             why = 'Populært i kataloget lige nu'
+            source = RECOMMENDATION_POPULAR
     except Exception as e:  # pragma: no cover - defensive
         current_app.logger.warning("home recommendations: %s", e)
         return []
@@ -494,8 +501,17 @@ def _home_recommendations(profile, company_id, limit=_HOME_REC_LIMIT):
             'price_label': p.get('price_label'),
             'format': p.get('format') or '',
             'why': why,
+            'source': source,
         })
     return recs
+
+
+def recommendation_source(recs):
+    """``'profile'`` when the learner's own skills drove the recommendations, else
+    ``'popular'`` (the catalogue's default ordering). The home header says which."""
+    if recs and all(r.get('source') == RECOMMENDATION_PROFILE for r in recs):
+        return RECOMMENDATION_PROFILE
+    return RECOMMENDATION_POPULAR
 
 
 @futurematch_bp.route('/min-laering')
@@ -640,6 +656,7 @@ def employee_home():
         show_welcome=show_welcome,
         orders=orders,
         recommendations=recommendations,
+        recommendation_source=recommendation_source(recommendations),
         hr_assignments=hr_assignments,
         skills_groups=skills_groups,
         skills_total=len(profile.get('skills') or []),

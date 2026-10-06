@@ -14,7 +14,7 @@
   </div>
 
   {% if categories %}
-  <div class="fm-grid" style="grid-template-columns:repeat(3,1fr)">
+  <div class="fm-grid fm-auto-grid">
     {% for category in categories %}
     <a href="{{ url_for('catalog.category_detail', slug=category.slug) }}" class="fm-card" style="text-decoration:none;color:inherit;padding:20px;display:flex;flex-direction:column;gap:14px;transition:transform var(--t),box-shadow var(--t)" data-reveal onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
       <div class="fm-spread"><span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:18px;background:color-mix(in srgb,var(--fm-primary) 12%,transparent);color:var(--fm-primary)"><i class="fa-solid fa-layer-group"></i></span><i class="fa-solid fa-arrow-right" style="color:var(--fm-ink-3)"></i></div>

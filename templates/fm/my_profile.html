@@ -392,7 +392,7 @@
           <button class="btn btn-primary" onclick="addCertification()">Gem</button>
           <button class="btn btn-ghost" onclick="toggleForm('addCert', false)">Annullér</button>
         </div>
-        <div class="fm-grid" id="certList" style="grid-template-columns:repeat(3,1fr)"><div class="muted" style="font-size:13px">Indlæser…</div></div>
+        <div class="fm-grid fm-auto-grid" id="certList"><div class="muted" style="font-size:13px">Indlæser…</div></div>
 
         <!-- Completed courses -->
         <div class="fm-section-head" id="courses" style="margin-top:24px"><div><span class="fm-eyebrow clay"><i class="fa-solid fa-award"></i> Gennemført</span><h2 class="fm-section-title">Kurser</h2></div><a href="{{ url_for('catalog.catalog_index') }}" class="fm-badge teal">Find flere</a></div>

@@ -4,6 +4,11 @@ A checkbox can document a setup review. It cannot manufacture a successful
 booking, delivery, or completed learner journey.
 """
 
+import datetime
+
+# How long the dashboard keeps a one-line "done" note after the last check was met.
+DONE_NOTE_DAYS = 14
+
 MANUAL_CHECKS = {
     "organisation": "Afdelinger og ledere er gennemgået",
     "approval_policy": "Godkendelsesregler er aftalt",
@@ -41,13 +46,15 @@ def readiness(cur, company_id):
             "done": members > 0 and missing == 0 and "organisation" in confirmations,
             "detail": "%s medarbejdere; %s mangler afdeling eller leder." % (members, missing),
             "url": "/companies/employees",
+            "cta": "Tilføj ledere og afdelinger",
         },
         {
             "key": "budget",
             "label": "Budget og godkendelser",
             "done": budgets > 0 and "approval_policy" in confirmations,
             "detail": "%s budgetter er sat. Godkendelsesregler skal være gennemgået." % budgets,
-            "url": "/hr/budgets",
+            "url": "/hr/budgets" if budgets == 0 else "/hr/approval-policies",
+            "cta": "Opret afdelingsbudgetter" if budgets == 0 else "Gennemgå godkendelsesregler",
         },
         {
             "key": "suppliers",
@@ -55,6 +62,7 @@ def readiness(cur, company_id):
             "done": "suppliers" in confirmations,
             "detail": "Kontroller relevante kommende hold og en kontaktvej til hver udbyder.",
             "url": "/hr/suppliers",
+            "cta": "Gennemgå leverandører",
         },
         {
             "key": "support",
@@ -62,6 +70,7 @@ def readiness(cur, company_id):
             "done": "support" in confirmations,
             "detail": "Aftal, hvem der ejer henvendelser og leverandøropfølgning.",
             "url": "/virksomhed/kundeforloeb",
+            "cta": "Aftal supportvej",
         },
         {
             "key": "request",
@@ -69,13 +78,15 @@ def readiness(cur, company_id):
             "done": requests > 0,
             "detail": "%s medarbejdere har bestilt et kursus." % requests,
             "url": "/hr/approvals",
+            "cta": "Se medarbejdernes bestillinger",
         },
         {
             "key": "booking",
             "label": "Første godkendte og bekræftede booking",
             "done": booked > 0,
             "detail": "%s bookinger med registreret bekræftelse." % booked,
-            "url": "/hr/",
+            "url": "/hr/approvals",
+            "cta": "Følg den første bestilling",
         },
         {
             "key": "mail",
@@ -83,6 +94,7 @@ def readiness(cur, company_id):
             "done": delivered > 0 and delivery_issues == 0,
             "detail": "%s afsendt; %s kræver handling. Kontroller også faktisk modtagelse hos kunden." % (delivered, delivery_issues),
             "url": "/hr/leveringer",
+            "cta": "Se mails og leveringer",
         },
         {
             "key": "outcome",
@@ -90,6 +102,7 @@ def readiness(cur, company_id):
             "done": completed > 0 and outcomes > 0,
             "detail": "%s bekræftede gennemførelser; %s vurderede kursusudbytter." % (completed, outcomes),
             "url": "/hr/roi",
+            "cta": "Se kursusudbytte",
         },
     ]
     return {
@@ -105,6 +118,38 @@ def readiness(cur, company_id):
         "delivery_issues": delivery_issues,
         "confirmations": confirmations,
     }
+
+
+def onboarding_card(cur, company_id, now=None):
+    """What the HR dashboard shows of "Kom i gang": the card while any check is open,
+    a one-line "Opstart gennemført" for ``DONE_NOTE_DAYS`` days once all are met, then
+    nothing. The day the last check was met is kept in ``schema_meta``; if a check
+    falls open again the card returns and the clock restarts."""
+    now = now or datetime.datetime.now()
+    result = readiness(cur, company_id)
+    state = {"complete": result["complete"], "total": result["total"], "show_card": True, "show_done_note": False}
+    key = "onboarding_completed:%s" % int(company_id)
+    cur.execute("SELECT meta_value FROM schema_meta WHERE meta_key=%s", (key,))
+    row = cur.fetchone()
+    stored = (row.get("meta_value") if isinstance(row, dict) else row[0]) if row else None
+    if not result["total"] or result["complete"] < result["total"]:
+        if row:
+            cur.execute("DELETE FROM schema_meta WHERE meta_key=%s", (key,))
+        return state
+    state["show_card"] = False
+    try:
+        done_on = datetime.date.fromisoformat(stored) if stored else None
+    except ValueError:
+        done_on = None
+    if done_on is None:
+        done_on = now.date()
+        cur.execute(
+            "INSERT INTO schema_meta (meta_key, meta_value) VALUES (%s, %s) "
+            "ON DUPLICATE KEY UPDATE meta_value = VALUES(meta_value)",
+            (key, done_on.isoformat()),
+        )
+    state["show_done_note"] = (now.date() - done_on).days < DONE_NOTE_DAYS
+    return state
 
 
 def notify_account_team(cur, *, title, message, key, company_id=None):

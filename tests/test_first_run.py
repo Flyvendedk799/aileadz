@@ -128,9 +128,10 @@ class HrOnboardingTests(unittest.TestCase):
     def test_template_renders_the_checklist_until_dismissed(self):
         import jinja2, os as _os
         env = jinja2.Environment(loader=jinja2.FileSystemLoader(_os.path.join(_os.path.dirname(__file__), "..", "templates")))
-        src = env.loader.get_source(env, "fm/hr.html")[0]
-        self.assertIn("Åbn jeres opstartsforløb", src)
+        src = env.loader.get_source(env, "fm/_onboarding_card.html")[0]
+        self.assertIn("Fortsæt i Kom i gang", src)
         self.assertIn("customer_success.readiness", src)
+        self.assertIn("fm/_onboarding_card.html", env.loader.get_source(env, "fm/hr.html")[0])
 
 
 if __name__ == "__main__":

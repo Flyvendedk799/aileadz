@@ -1,0 +1,31 @@
+{# Shared checklist: a progress bar ("5 af 8 punkter") and one row per item with an
+   accessible status icon (screen-reader text "Færdig"/"Mangler"), title, detail and a
+   specific action label.
+
+       {% from 'fm/_checklist.html' import checklist %}
+       {{ checklist(items, complete, total) }}
+
+   Each item is a mapping with `label` (title), `done` (bool) and optionally `detail`,
+   `url` and `cta` (the action label; the link shows only when both are set). Used by
+   fm/customer_readiness.html ("Kom i gang"); the admin account milestones reuse it. #}
+{% macro checklist(items, complete, total, noun='punkter') %}
+{% set _pct = ((complete * 100) // total) if total else 0 %}
+<div class="fm-checklist">
+  <div class="fm-checklist-progress" role="progressbar" aria-valuemin="0" aria-valuemax="{{ total }}" aria-valuenow="{{ complete }}" aria-label="{{ complete }} af {{ total }} {{ noun }}">
+    <span style="width:{{ _pct }}%"></span>
+  </div>
+  <p class="fm-checklist-count">{{ complete }} af {{ total }} {{ noun }}</p>
+  <ul class="fm-checklist-items">
+    {% for item in items %}
+    <li class="fm-checklist-item {{ 'done' if item.done else 'open' }}">
+      <span class="fm-checklist-icon"><i class="fa-solid {{ 'fa-circle-check' if item.done else 'fa-circle' }}" aria-hidden="true"></i><span class="fm-checklist-sr">{{ 'Færdig' if item.done else 'Mangler' }}: </span></span>
+      <div class="fm-checklist-body">
+        <h2>{{ item.label }}</h2>
+        {% if item.detail %}<p>{{ item.detail }}</p>{% endif %}
+      </div>
+      {% if item.url and item.cta %}<a class="btn {{ 'btn-ghost' if item.done else 'btn-primary' }} btn-sm" href="{{ item.url }}">{{ item.cta }}</a>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endmacro %}

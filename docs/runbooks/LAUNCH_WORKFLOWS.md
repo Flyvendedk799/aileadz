@@ -18,7 +18,7 @@ not proof of inbox delivery.
 | Quote/charge a course | `enrollment_service.quote_course`, `order_service` | current stable session ID and server-computed quote |
 | Report/verify attendance and assess outcome | `report_completion`, `complete_order`, `outcome_review` | the attendance and outcome sections of the order pages (`#deltagelse`, `#udbytte`) |
 | Recover delivery failures | `mail_delivery`, `scheduled_reports` | `/hr/leveringer` (company-scoped for HR, global for platform admin; filters on status, period and recipient/subject, 50 per page; retry only for failed and uncertain mails; order mails link to their order through `mail_outbox.order_id`; a banner appears when a pending mail has been due for more than 10 minutes) |
-| Review customer readiness | `customer_success.readiness` | `/hr/kom-i-gang` |
+| Review customer readiness ("Kom i gang") | `customer_success.readiness`, `onboarding_card` | `/hr/kom-i-gang` (shared checklist macro `fm/_checklist.html`, one action label per check); the HR dashboard card disappears at 8/8 and leaves "Opstart gennemført" for 14 days (`schema_meta` key `onboarding_completed:<company_id>`) |
 | Review supplier edits and branding | canonical catalogue draft approval; `branding_service` | existing vendor/admin catalogue and branding editors |
 | Sales/customer handover | `customer_routes`, `customer_accounts`, `customer_requests` | `/for-virksomheder`, `/admin/kundeforloeb`, `/virksomhed/kundeforloeb` |
 

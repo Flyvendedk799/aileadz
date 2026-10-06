@@ -1,0 +1,11 @@
+{# The "Kom i gang" card on the HR dashboard. `onboarding_card` comes from
+   customer_success.onboarding_card(): the card while any check is open, a one-line
+   "Opstart gennemført" for 14 days once all are met, then nothing. Without the
+   data (a failed lookup) the card is shown. #}
+{% if can('company.employees') %}
+{% if onboarding_card and onboarding_card.show_done_note %}
+<p class="muted" style="margin:0 0 14px"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Opstart gennemført. <a href="{{ url_for('customer_success.readiness') }}">Se Kom i gang</a> · <a href="{{ url_for('customer_success.account') }}">Jeres aftale og kundeansvarlige</a></p>
+{% elif not onboarding_card or onboarding_card.show_card %}
+<section class="fm-card" style="padding:20px;margin-bottom:18px"><h2>Kom i gang</h2><p>{% if onboarding_card %}{{ onboarding_card.complete }} af {{ onboarding_card.total }} punkter er på plads. {% endif %}Gennemgå jeres opsætning, og følg den første rigtige medarbejderrejse.</p><a class="btn btn-primary" href="{{ url_for('customer_success.readiness') }}">Fortsæt i Kom i gang</a> <a class="btn btn-ghost" href="{{ url_for('customer_success.account') }}">Jeres aftale og kundeansvarlige</a></section>
+{% endif %}
+{% endif %}

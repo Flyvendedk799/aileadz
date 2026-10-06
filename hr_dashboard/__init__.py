@@ -242,8 +242,26 @@ def create_hr_dashboard_blueprint():
             mc.close()
         except Exception:
             onboarding_dismissed = False
+        # "Kom i gang" card: shown while a check is open, a short note after the last one
+        # is met, then gone. Any failure falls back to showing the card.
+        onboarding_card = None
+        try:
+            import customer_success
+            import MySQLdb.cursors
+            oc = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            try:
+                onboarding_card = customer_success.onboarding_card(oc, company['id'])
+                current_app.mysql.connection.commit()
+            finally:
+                oc.close()
+        except Exception as e:
+            current_app.logger.debug("onboarding card unavailable: %s", e)
+            try:
+                current_app.mysql.connection.rollback()
+            except Exception:
+                pass
         return render_template('fm/hr.html', company=company, onboarding_dismissed=onboarding_dismissed,
-                               active_hr_page='dashboard', **ctx)
+                               onboarding_card=onboarding_card, active_hr_page='dashboard', **ctx)
 
     @hr_dashboard_bp.route('/onboarding/dismiss', methods=['POST'])
     def dismiss_onboarding():

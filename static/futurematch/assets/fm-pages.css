@@ -329,3 +329,18 @@ body:has(.fm-aip) .fm-foot{padding-right:150px}
 .fm-confirm-card{max-width:100%}
 .fm-feedback button{min-width:32px;min-height:32px}
 .status-pill.grey { background: var(--fm-surface-3); color: var(--fm-ink-2); }
+/* shared checklist (fm/_checklist.html) */
+.fm-checklist-progress { height: 8px; border-radius: 999px; background: var(--fm-surface-3); overflow: hidden; }
+.fm-checklist-progress > span { display: block; height: 100%; border-radius: 999px; background: var(--fm-primary); transition: width var(--t); }
+.fm-checklist-count { margin: 8px 0 14px; font-size: 13px; font-weight: 650; color: var(--fm-ink-2); }
+.fm-checklist-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.fm-checklist-item { display: flex; align-items: center; gap: 14px; padding: 16px 18px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); }
+.fm-checklist-item.done .fm-checklist-icon { color: var(--fm-success); }
+.fm-checklist-item.open .fm-checklist-icon { color: var(--fm-ink-3); }
+.fm-checklist-icon { flex: 0 0 auto; font-size: 20px; }
+.fm-checklist-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.fm-checklist-body { flex: 1; min-width: 0; }
+.fm-checklist-body h2 { margin: 0; font-size: 15px; }
+.fm-checklist-body p { margin: 3px 0 0; font-size: 13px; color: var(--fm-ink-2); }
+@media (max-width: 640px) { .fm-checklist-item { flex-wrap: wrap; } .fm-checklist-item .btn { width: 100%; justify-content: center; } }
+.fm-checklist { margin: 18px 0; }

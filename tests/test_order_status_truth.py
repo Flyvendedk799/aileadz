@@ -91,11 +91,11 @@ class RenderingPerStateTests(lo.Base):
                     self.assertEqual(resp.status_code, 200, (name, page))
                     html = resp.get_data(as_text=True)
                     self.assertEqual(status_badges(html), [label], (name, page))
-                    self.assertIsNone(ISO.search(html), (name, page))
+                    self.assertIsNone(ISO.search(re.sub(r'value="[^"]*"', "", html)), (name, page))
                     self.assertIsNone(BARE_KR.search(html), (name, page))
                     self.assertIn("12.500 kr.", html, (name, page))
                     # the pending-change chip appears exactly when a change is open
-                    self.assertEqual("Ændring afventer svar" in html, change and page != "hr", (name, page))
+                    self.assertEqual("Ændring afventer svar" in html, change, (name, page))
 
     def test_the_booked_date_reads_as_a_danish_date_with_time(self):
         self.put_in_state("booked", "approved", False)

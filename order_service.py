@@ -1792,7 +1792,7 @@ def _notify_manager_of_completion(row):
         msg = (f"{row.get('user_name') or row.get('username') or 'En medarbejder'} har gennemført "
                f"“{row.get('product_title')}”. Bekræft kompetenceløftet, så det tæller i kompetenceoverblikket.")
         common = dict(title="Bekræft kompetenceløft", message=msg, kind="skill_uplift",
-                      action_url="/hr/ordre/%s/udbytte" % row.get("order_id"),
+                      action_url="/hr/order/%s/details#udbytte" % row.get("order_id"),
                       dedupe_key="uplift:%s" % row.get("order_id"), dedupe_hours=None)
         if mgr:
             notify_user(cur, user_id=mgr, company_id=cid, **common)

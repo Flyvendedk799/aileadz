@@ -27,7 +27,7 @@ def run(now=None):
                 message="‘%s’ er godkendt, men pladsen er endnu ikke bekræftet. Kontakt udbyderen og registrer svaret."
                 % row["product_title"],
                 kind="booking_followup",
-                action_url="/ordre/%s/booking" % row["order_id"],
+                action_url="/hr/order/%s/details#booking" % row["order_id"],
                 dedupe_key="booking-followup:" + row["order_id"],
                 dedupe_hours=72,
             )
@@ -45,7 +45,7 @@ def run(now=None):
                     title="Bookingændring mangler svar",
                     message="Indhent bekræftelse på ændringsønsket. Den oprindelige booking gælder stadig.",
                     kind="booking_followup",
-                    action_url="/ordre/%s/booking" % row["order_id"],
+                    action_url="/hr/order/%s/details#aendring" % row["order_id"],
                     dedupe_key="change-followup:%s" % row["id"],
                     dedupe_hours=72,
                 )

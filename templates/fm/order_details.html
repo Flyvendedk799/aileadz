@@ -4,7 +4,6 @@
 {% block topbar_title %}Ordre #{{ order.order_id[:8] }}{% endblock %}
 {% block topbar_sub %}{{ order.product_title }} · {{ order.username }}{% endblock %}
 {% block content %}
-<div class="fm-wrap"><a class="btn btn-primary" href="{{ url_for('fulfillment.order_workflow',order_id=order.order_id) }}">Booking, ændringer og kursusudbytte</a></div>
 {% from 'fm/_macros.html' import crumbs %}
 <div class="fm-wrap">
 {% if admin_view %}
@@ -12,7 +11,7 @@
 {{ crumbs([('Adminoversigt', url_for('admin_dashboard.admin_home')), ('Fakturering', url_for('admin_dashboard.admin_billing', company_id=order.company_id) if order.company_id else url_for('admin_dashboard.admin_billing')), ('#' ~ order.order_id[:8], None)]) }}
 {% else %}
 {% set active_hr_page = 'approvals' %}{% include 'fm/_hr_subnav.html' %}
-{{ crumbs([('Oversigt', url_for('hr_dashboard.dashboard')), ('Fakturering', url_for('hr_dashboard.billing_overview')) if can_bill else ('Godkendelser', url_for('hr_dashboard.pending_approvals')), ('#' ~ order.order_id[:8], None)]) }}
+{{ crumbs([('Oversigt', url_for('hr_dashboard.dashboard')), ('Godkendelser', url_for('hr_dashboard.pending_approvals')), ('Ordre #' ~ order.order_id[:8], None)]) }}
 {% endif %}
 
   <div class="fm-spread" style="margin-bottom:14px;flex-wrap:wrap;gap:10px">
@@ -32,7 +31,10 @@
     </div>
   </div>
 
+  {% if sections %}{% include "fm/order_sections/_styles.html" %}{% endif %}
   <div class="split"><div class="stack">
+
+    {% if sections and sections.pending_change %}{% include "fm/order_sections/_changes_list.html" %}{% endif %}
 
     <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-graduation-cap"></i></span><h3>Kursusdetaljer</h3>
       <span class="fm-badge {{ status_tone }} dot" style="margin-left:auto">{{ status_label }}</span>{% if status == 'approved' %}<span class="fm-badge teal">Klar til booking</span>{% endif %}
@@ -51,6 +53,8 @@
       {% if order.cancel_reason %}<div class="kv"><span class="k">Begrundelse</span><span class="v">{{ order.cancel_reason }}</span></div>{% endif %}
       {% if order.request_notes %}<div class="kv"><span class="k">Note fra medarbejderen</span><span class="v">{{ order.request_notes }}</span></div>{% endif %}
     </div></div></div>
+
+    {% if sections %}{% for name in sections.visible %}{% if name != 'changes_list' or not sections.pending_change %}{% include "fm/order_sections/_" ~ name ~ ".html" %}{% endif %}{% endfor %}{% endif %}
 
     <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-clock-rotate-left"></i></span><h3>Historik</h3></div>
     <div class="fm-card-body">
@@ -121,7 +125,7 @@
       <div class="kv"><span class="k">Medarbejder-ID</span><span class="v">{{ order.employee_id or 'Ikke angivet' }}</span></div>
     </div></div></div>
 
-    {% if can_manage and next_statuses %}
+    {% if can_manage and (next_statuses or (sections and sections.show.change_request)) %}
     <div class="fm-card"><div class="fm-card-body">
       <div style="font-weight:700;margin-bottom:10px">Næste skridt</div>
       {% if 'approved' in next_statuses %}
@@ -130,18 +134,13 @@
       {% if 'rejected' in next_statuses %}
       <button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:8px" data-status="rejected" data-ask="Begrundelse (vises for medarbejderen)"><i class="fa-solid fa-ban"></i> Afvis</button>
       {% endif %}
-      {% if 'booked' in next_statuses %}
-      <button class="btn btn-primary btn-sm" style="width:100%;margin-bottom:8px" data-status="booked"><i class="fa-solid fa-calendar-check"></i> Marker som booket</button>
-      <p class="muted" style="font-size:12px;margin:-2px 0 8px">Brug denne, hvis udbyderen ikke selv bekræfter i portalen. Handlingen logges.</p>
-      {% endif %}
-      {% if held_message %}
-      <p class="muted" data-held-hint style="font-size:12.5px;margin:0 0 8px">{{ held_message }}</p>
-      {% endif %}
-      {% if 'completed' in next_statuses %}
-      <button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:8px" data-status="completed"><i class="fa-solid fa-circle-check"></i> Marker som gennemført</button>
+      {% if status == 'approved' %}
+      <a class="btn btn-primary btn-sm" style="width:100%;margin-bottom:8px;box-sizing:border-box;text-align:center" href="#booking"><i class="fa-solid fa-calendar-check"></i> Bekræft booking</a>
       {% endif %}
       {% if 'cancelled' in next_statuses %}
       <button class="btn btn-ghost btn-sm" style="width:100%" data-status="cancelled" data-ask="Årsag til annullering"><i class="fa-solid fa-xmark"></i> Annullér ordre</button>
+      {% elif sections and sections.show.change_request %}
+      <a class="btn btn-ghost btn-sm" style="width:100%;box-sizing:border-box;text-align:center" href="#anmod-aendring"><i class="fa-solid fa-xmark"></i> Anmod om afbestilling</a>
       {% endif %}
     </div></div>
     {% endif %}

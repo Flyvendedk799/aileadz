@@ -272,7 +272,7 @@ def request_change(ctx, order_id, kind, payload=None):
                 title="Bookingændring afventer svar",
                 message="En ændring til ‘%s’ kræver bekræftelse. Budget og booking er uændrede indtil da." % row["product_title"],
                 kind="order_change",
-                action_url="/hr/order/%s/details" % order_id,
+                action_url="/hr/order/%s/details#aendring" % order_id,
                 dedupe_key="change:%s" % change_id,
                 dedupe_hours=None,
             )
@@ -481,7 +481,7 @@ def report_completion(ctx, order_id, *, note="", evidence_url=""):
                 message="%s har meldt ‘%s’ gennemført. Bekræft deltagelse og kompetenceudbytte."
                 % (row.get("user_name") or row.get("username"), row["product_title"]),
                 kind="attendance",
-                action_url="/hr/ordre/%s/udbytte" % order_id,
+                action_url="/hr/order/%s/details#deltagelse" % order_id,
                 dedupe_key="attendance:%s" % order_id,
                 dedupe_hours=None,
             )
@@ -561,7 +561,7 @@ def change_notice(cur, row, change_id, phase, message):
 
     title = "Nyt om bookingændring: " + row["product_title"]
     key = "booking-change:%s:%s" % (change_id, phase)
-    url = "/ordre/%s/booking" % row["order_id"]
+    url = "/min-ordre/%s#aendring" % row["order_id"]
     notify_user(
         cur,
         user_id=row.get("user_id"),
@@ -579,7 +579,7 @@ def change_notice(cur, row, change_id, phase, message):
         cur.execute("SELECT contact_email FROM vendors WHERE id=%s", (row["vendor_id"],))
         vendor = cur.fetchone() or {}
         if vendor.get("contact_email"):
-            contacts[vendor["contact_email"]] = "/vendor/orders/%s/booking" % row["order_id"]
+            contacts[vendor["contact_email"]] = "/vendor/orders/%s/booking#aendring" % row["order_id"]
     for email, link in contacts.items():
         orders._send_email_safe(
             email,

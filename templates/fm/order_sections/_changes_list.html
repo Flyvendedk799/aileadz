@@ -1,4 +1,5 @@
 <div id="aendring" data-section="changes_list">
+{% if sections.pending_change %}<h2 class="os-lead">Ændring afventer svar</h2>{% endif %}
 {% for c in sections.changes %}
     <section class="fm-card os-card{% if c.status == 'pending' %} os-pending{% endif %}" data-change-id="{{ c.id }}" data-change-status="{{ c.status }}">
         <h3>{{ change_kind_label(c.kind) }} · {{ change_status_label(c.status) }}</h3>

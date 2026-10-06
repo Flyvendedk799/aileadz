@@ -897,9 +897,8 @@ def create_hr_dashboard_blueprint():
             history = order_service.get_history(_ctx, order_id)
             import order_fulfillment
             _booking = order_fulfillment.booking_for(order_id)
-            import order_timing
-            _held_message = (order_timing.not_yet_held_message(order, _booking)
-                             if _lc.normalize_status(order.get('status')) == _lc.BOOKED else None)
+            from fulfillment_routes import order_sections
+            _sections = order_sections(_ctx, order, post_url=url_for('fulfillment.order_action', order_id=order_id))
             _status = _lc.normalize_status(order.get('status'))
             _bill = _lc.normalize_billing(order.get('billing_status'))
             return render_template('fm/order_details.html',
@@ -919,8 +918,12 @@ def create_hr_dashboard_blueprint():
                                    # Same capabilities as update_billing / update_company_order_status.
                                    can_bill=can('company.billing'),
                                    can_manage=can('hr.manage'),
-                                   next_statuses=[s for s in _lc.allowed_targets(_status, actors={'manager'}) if s != _lc.COMPLETED or not _held_message],
-                                   held_message=_held_message)
+                                   # Booking, completion and cancelling a booked order only go through the
+                                   # guarded sections (book form, verify, change request).
+                                   next_statuses=[s for s in _lc.allowed_targets(_status, actors={'manager'})
+                                                  if s in (_lc.APPROVED, _lc.REJECTED)
+                                                  or (s == _lc.CANCELLED and _status != _lc.BOOKED)],
+                                   sections=_sections)
 
         except Exception as e:
             current_app.logger.error(f"Error loading company order details: {e}")

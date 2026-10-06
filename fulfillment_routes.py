@@ -234,6 +234,19 @@ def order_sections(ctx, row, *, vendor=False, post_url=None):
     }
 
 
+def order_page_url(order_id, actors, anchor=""):
+    """The one order page of the strongest role among ``actors``."""
+    if "vendor" in actors:
+        url = url_for("vendor.vendor_booking", order_id=order_id)
+    elif "manager" in actors:
+        url = url_for("hr_dashboard.company_order_details", order_id=order_id)
+    elif "admin" in actors:
+        url = url_for("admin_dashboard.admin_order_detail", order_id=order_id)
+    else:
+        url = url_for("futurematch.my_order", order_id=order_id)
+    return url + ("#" + anchor if anchor else "")
+
+
 def workflow(ctx, order_id, *, vendor=False):
     row = orders.get_order(ctx, order_id)
     if not row or not orders.actors_for(ctx, row):
@@ -253,6 +266,20 @@ def workflow(ctx, order_id, *, vendor=False):
         post_url=target,
         vendor_mode=vendor,
     )
+
+
+@fulfillment_bp.route("/ordre/<order_id>/handling", methods=["POST"])
+@login_required
+def order_action(order_id):
+    """Every action posted from the HR and admin order pages."""
+    ctx = orders.OrderContext.from_session(source="order_page")
+    row = orders.get_order(ctx, order_id)
+    actors = orders.actors_for(ctx, row) if row else set()
+    if not actors:
+        abort(404)
+    result, anchor = perform_action(ctx, order_id, request.form)
+    flash_result(result)
+    return redirect(order_page_url(order_id, actors, anchor))
 
 
 @fulfillment_bp.route("/ordre/<order_id>/booking", methods=["GET", "POST"])

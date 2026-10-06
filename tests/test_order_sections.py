@@ -336,3 +336,67 @@ class LearnerPageTests(SectionBase):
         html = self.order_page()
         self.assertIn("Bruger metoden dagligt", html)
         self.assertEqual(re.findall(r'data-section="([a-z_]+)"', html), ["booking_card", "attendance", "outcome_summary"])
+
+
+class HrDetailsPageTests(SectionBase):
+    """HR resolves changes and books on /hr/order/<id>/details; no legacy shortcuts."""
+
+    def details(self, client=None):
+        resp = (client or self.hr()).get("/hr/order/ord-1/details")
+        self.assertEqual(resp.status_code, 200)
+        return resp.get_data(as_text=True)
+
+    def test_a_pending_change_is_shown_first_and_can_be_accepted_there(self):
+        self.set_state("booked", change="cancel")
+        html = self.details()
+        self.assertIn("Ændring afventer svar", html)
+        self.assertLess(html.index('data-section="changes_list"'), html.index("Kursusdetaljer"))
+        self.assertIn("Accepter ændring", html)
+        change = self.db.one("SELECT id FROM course_order_changes")
+        resp = self.hr().post(
+            "/ordre/ord-1/handling",
+            data={"action": "resolve", "change_id": change["id"], "decision": "accept", "note": "Udbyderen bekræftede", "fee": "0"},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(resp.headers["Location"].endswith("/hr/order/ord-1/details#aendring"), resp.headers["Location"])
+        self.assertEqual(self.db.one("SELECT status FROM course_order_changes")["status"], "accepted")
+        self.assertEqual(self.db.one("SELECT status FROM course_orders")["status"], "cancelled")
+
+    def test_a_booked_order_offers_no_direct_cancel_or_complete(self):
+        self.set_state("booked")
+        html = self.details()
+        for legacy in ('data-status="completed"', 'data-status="cancelled"', 'data-status="booked"', "Marker som gennemført", "Marker som booket", "Annullér ordre"):
+            self.assertNotIn(legacy, html)
+        self.assertIn("Anmod om afbestilling", html)
+        self.assertIn('data-section="change_request"', html)
+        self.assertIn('data-section="attendance"', html)
+        self.assertNotIn("/ordre/ord-1/booking", html)
+
+    def test_an_approved_order_offers_booking_and_a_direct_cancel(self):
+        self.set_state("approved", booking=False)
+        html = self.details()
+        self.assertIn('data-section="book_form"', html)
+        self.assertIn('data-status="cancelled"', html)
+        self.assertNotIn("Marker som booket", html)
+
+    def test_a_completed_order_shows_the_outcome_review_to_hr(self):
+        self.set_state("completed", review=True)
+        html = self.details()
+        self.assertIn('data-section="outcome_review"', html)
+        self.assertNotIn('data-status="completed"', html)
+
+    def test_breadcrumb_has_one_parent_matching_the_active_tab(self):
+        self.set_state("booked")
+        html = self.details()
+        crumb = html.split('<nav class="crumb"')[1].split("</nav>")[0]
+        self.assertIn("/hr/approvals", crumb)
+        self.assertIn("Ordre #ord-1", crumb)
+        self.assertNotIn("/hr/billing", crumb)
+
+    def test_notifications_and_mails_link_to_each_roles_own_order_page(self):
+        self.set_state("booked")
+        self.learner().post("/min-ordre/ord-1/handling", data={"action": "change", "kind": "cancel", "note": "Syg"})
+        hr = self.db.one("SELECT action_url FROM notifications WHERE user_id='hr' AND kind='order_change'")
+        self.assertEqual(hr["action_url"], "/hr/order/ord-1/details#aendring")
+        learner = self.db.one("SELECT action_url FROM notifications WHERE user_id='ada' AND kind='order_change'")
+        self.assertEqual(learner["action_url"], "/min-ordre/ord-1#aendring")

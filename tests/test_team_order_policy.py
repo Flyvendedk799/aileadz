@@ -135,7 +135,7 @@ class TeamOrderFlowTests(Base):
         self.assertTrue(rows[0]["group_order_id"])
         self.assertEqual({r["username"] for r in rows}, {"ada", "bo"})
         self.assertTrue(all(r["status"] == "pending_approval" for r in rows))   # each goes through approval
-        self.assertTrue(all("Bestilt af ada" in r["request_notes"] for r in rows))
+        self.assertTrue(all("Bestilt af Ada Hansen" in r["request_notes"] for r in rows))
 
     def test_an_employee_cannot_get_a_managers_order_auto_approved(self):
         self.policy(tp.LINKED)

@@ -80,11 +80,16 @@ def _resolve_identity(cur, username=None, user_id=None):
 def notify_user(cur, *, title, message="", username=None, user_id=None,
                 company_id=None, kind="info", action_url=None, is_urgent=False,
                 sender_user_id=None, dedupe_key=None, dedupe_hours=24,
-                image_url=None):
-    """Create one notification for one user. Returns the new id or None."""
+                image_url=None, actor_user_id=None):
+    """Create one notification for one user. Returns the new id or None.
+
+    ``actor_user_id`` is the person whose action caused the card: nobody is notified
+    about their own action, so that recipient is skipped."""
     try:
         username, user_id = _resolve_identity(cur, username, user_id)
         if not username:
+            return None
+        if actor_user_id is not None and user_id is not None and int(actor_user_id) == int(user_id):
             return None
         if _dedupe_hit(cur, username, dedupe_key, dedupe_hours):
             return None
@@ -132,7 +137,8 @@ def role_recipients(cur, company_id, roles=None):
 
 def notify_roles(cur, company_id, roles, *, title, message="", **kw):
     """Fan a card out to every active member holding one of ``roles``.
-    Returns the number of notifications created."""
+    Returns the number of notifications created. ``actor_user_id`` (see ``notify_user``)
+    leaves the person who caused the card out."""
     if not company_id:
         return 0
     n = 0
@@ -152,7 +158,7 @@ def insert_company_notification(cur, company_id, *, title, message="",
                                 recipient_user_id=None, target_roles=None,
                                 sender_user_id=None, is_urgent=False,
                                 action_url=None, kind="info", dedupe_key=None,
-                                dedupe_hours=24 * 14):
+                                dedupe_hours=24 * 14, actor_user_id=None):
     """Drop-in for the old ``INSERT INTO company_notifications`` call sites.
 
     ``recipient_user_id`` set  -> one notification for that user.
@@ -165,12 +171,32 @@ def insert_company_notification(cur, company_id, *, title, message="",
     common = dict(title=title, message=message, kind=kind,
                   action_url=action_url, is_urgent=is_urgent,
                   sender_user_id=sender_user_id, dedupe_key=dedupe_key,
-                  dedupe_hours=dedupe_hours)
+                  dedupe_hours=dedupe_hours, actor_user_id=actor_user_id)
     if recipient_user_id:
         return 1 if notify_user(cur, user_id=recipient_user_id, company_id=company_id,
                                 **common) else 0
     return notify_roles(cur, company_id, list(target_roles) if target_roles else None,
                         **common)
+
+
+def resolve_by_dedupe_key(cur, dedupe_key, company_id=None):
+    """A card whose question has been answered (an approval that was decided) stops
+    being unread and urgent for EVERY recipient. Returns the number of rows closed."""
+    if not dedupe_key:
+        return 0
+    sql = ("UPDATE notifications SET `read` = 1, is_urgent = 0, read_at = COALESCE(read_at, NOW()) "
+           "WHERE dedupe_key = %s AND (`read` = 0 OR is_urgent = 1)")
+    params = [str(dedupe_key)[:191]]
+    if company_id:
+        sql += " AND company_id = %s"
+        params.append(company_id)
+    try:
+        cur.execute(sql, tuple(params))
+        return cur.rowcount or 0
+    except Exception as e:
+        propagate_transaction_abort(e)
+        logger.debug("resolve_by_dedupe_key failed: %s", e)
+        return 0
 
 
 # ── reading ────────────────────────────────────────────────────────────────

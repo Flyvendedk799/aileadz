@@ -207,6 +207,62 @@ def _send_budget_overrun_emails_safe(company_id, *, department, spent,
         logger.debug("order_service: budget-overrun email skipped: %s", e)
 
 
+def _person_name(cur, row):
+    """The name to show for the learner of an order row: full name, else the order's own
+    ``user_name``, else the username. Never raises."""
+    from person_names import display_name
+    username = (row.get("username") or "").strip()
+    name = display_name(cur, _int_or_none(row.get("company_id")), user_id=_int_or_none(row.get("user_id")),
+                        username=username or None)
+    if (not name or name == username) and (row.get("user_name") or "").strip():
+        return row["user_name"].strip()
+    return name or username
+
+
+def _approval_recipients(cur, company_id, requester_user_id, department):
+    """Who is told in-app that an order awaits approval: HR/company admins, the requester's
+    own manager and the head of the requester's department. One entry per person."""
+    from notification_service import role_recipients, HR_ROLES
+    people = {}
+    for r in role_recipients(cur, company_id, HR_ROLES):
+        people[_int_or_none(r.get("user_id"))] = r
+    try:
+        cur.execute(
+            "SELECT cu.user_id AS user_id, COALESCE(u.username, cu.username) AS username "
+            "FROM company_users cu LEFT JOIN users u ON u.id = cu.user_id "
+            "WHERE cu.company_id = %s AND cu.status = 'active' AND ("
+            " cu.user_id = (SELECT m.manager_user_id FROM company_users m WHERE m.company_id = %s AND m.user_id = %s LIMIT 1)"
+            " OR (cu.role = 'department_head' AND cu.department = %s AND cu.department <> ''))",
+            (company_id, company_id, requester_user_id, department or ""),
+        )
+        for r in cur.fetchall() or []:
+            uid = _int_or_none(r.get("user_id") if isinstance(r, dict) else r[0])
+            if uid is not None and uid not in people:
+                people[uid] = {"user_id": uid, "username": r.get("username") if isinstance(r, dict) else r[1]}
+    except Exception as e:
+        propagate_transaction_abort(e)
+        logger.debug("order_service: manager recipients skipped: %s", e)
+    return [r for r in people.values() if r.get("username")]
+
+
+def _notify_approvers_safe(cur, company_id, requester_user_id, department, title, message, *,
+                           action_url=None, dedupe_key=None):
+    """Urgent in-app card for everyone who can decide this approval (see ``_approval_recipients``);
+    nobody gets it twice and the requester never gets it about their own order. Never raises."""
+    if not company_id:
+        return
+    try:
+        from notification_service import notify_user
+        for r in _approval_recipients(cur, company_id, requester_user_id, department):
+            notify_user(cur, title=str(title)[:255], message=str(message), username=r["username"],
+                        user_id=r.get("user_id"), company_id=company_id, kind="order", is_urgent=True,
+                        action_url=action_url, dedupe_key=dedupe_key, dedupe_hours=24 if dedupe_key else None,
+                        actor_user_id=requester_user_id)
+    except Exception as e:  # pragma: no cover - defensive
+        propagate_transaction_abort(e)
+        logger.debug("order_service: approver notification skipped: %s", e)
+
+
 def _notify_company_admins_safe(cur, company_id, title, message, is_urgent=0,
                                 action_url=None, dedupe_key=None):
     """In-app card for the company's HR/admins. Never raises.
@@ -478,6 +534,12 @@ def _write_audit(cur, *, company_id, user_id, action, resource_id, description="
 def _record_history(cur, row, *, kind, from_value, to_value, ctx, note=None):
     """Append to order_status_history (who changed what, when). Never raises."""
     try:
+        label = ctx.actor_label or ctx.username or ""
+        if ctx.actor_kind == "user" and ctx.user_id and (not ctx.actor_label or ctx.actor_label == ctx.username):
+            # People read names, not login handles ("Hanne HR", not "hr").
+            from person_names import display_name
+            label = display_name(cur, _int_or_none(row.get("company_id")) or ctx.company_id,
+                                 user_id=ctx.user_id, username=label or None, default=label)
         cur.execute(
             """
             INSERT INTO order_status_history
@@ -487,7 +549,7 @@ def _record_history(cur, row, *, kind, from_value, to_value, ctx, note=None):
             """,
             (row.get("order_id"), _int_or_none(row.get("company_id")), kind,
              from_value, to_value, ctx.user_id, _actor_kind_label(ctx),
-             (ctx.actor_label or ctx.username or "")[:255],
+             label[:255],
              (note or None) and str(note)[:500]),
         )
     except Exception as e:  # pragma: no cover - history must never fail the op
@@ -1026,13 +1088,15 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
 
         # In-app notification to HR/admins when an order needs their approval
         # (shares this transaction so it commits atomically with the order).
+        requester_name = None
         if needs_approval and ctx.company_id:
-            _notify_company_admins_safe(
-                cur, ctx.company_id,
+            from person_names import display_name
+            requester_name = display_name(cur, ctx.company_id, user_id=ctx.user_id, username=ctx.username,
+                                          default=user_name or "en medarbejder")
+            _notify_approvers_safe(
+                cur, ctx.company_id, ctx.user_id, dept,
                 "Ny bestilling afventer godkendelse",
-                f"{product_title} er bestilt af {ctx.username or 'en medarbejder'} "
-                f"og afventer godkendelse.",
-                is_urgent=1,
+                f"{product_title} er bestilt af {requester_name} og afventer godkendelse.",
                 action_url="/hr/approvals",
                 dedupe_key="approval-needed:%s" % order_id,
             )
@@ -1064,7 +1128,7 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
                 product_title=product_title,
                 price=price_f,
                 department=dept,
-                requester=ctx.username or user_name or "", cursor=cur,
+                requester=requester_name or user_name or ctx.username or "", cursor=cur,
             )
 
         if not needs_approval:
@@ -1477,6 +1541,11 @@ def _apply_transition(cur, ctx, row, new, actors, *, note=None, reason=None):
         description=f"{old}->{new} charged={charged} refunded={refunded}",
     )
 
+    # The approval question has been answered: its card stops being unread/urgent for everyone.
+    if old == lc.PENDING_APPROVAL and new != lc.PENDING_APPROVAL:
+        from notification_service import resolve_by_dedupe_key
+        resolve_by_dedupe_key(cur, "approval-needed:%s" % order_id, _int_or_none(row.get("company_id")))
+
     # In-app notifications (same transaction).
     try:
         from notification_service import notify_user, notify_roles, HR_ROLES
@@ -1487,29 +1556,32 @@ def _apply_transition(cur, ctx, row, new, actors, *, note=None, reason=None):
                         user_id=_int_or_none(row.get("user_id")),
                         company_id=_int_or_none(row.get("company_id")), kind="order",
                         action_url=order_url(order_id, absolute=False),
-                        dedupe_key="order:%s:%s" % (order_id, new), dedupe_hours=None)
+                        dedupe_key="order:%s:%s" % (order_id, new), dedupe_hours=None,
+                        actor_user_id=ctx.user_id)
         cid = _int_or_none(row.get("company_id"))
         if cid and new == lc.BOOKED:
             # HR hears about a booking too, except the HR person who made it.
             from notification_service import role_recipients
             booker = "Udbyderen" if "vendor" in actors else "HR"
+            learner_name = _person_name(cur, row) or "medarbejderen"
             for rcpt in role_recipients(cur, cid, HR_ROLES):
                 if ctx.actor_kind != "vendor" and ctx.user_id is not None and _int_or_none(rcpt.get("user_id")) == ctx.user_id:
                     continue
                 notify_user(cur, title="Plads bekræftet",
-                            message=f"{booker} har bekræftet pladsen på “{row.get('product_title')}” til {row.get('user_name') or row.get('username') or 'medarbejderen'}.",
+                            message=f"{booker} har bekræftet pladsen på “{row.get('product_title')}” til {learner_name}.",
                             username=rcpt["username"], user_id=rcpt["user_id"], company_id=cid, kind="order",
                             action_url="/hr/order/%s/details" % order_id,
                             dedupe_key="order-booked-hr:%s" % order_id, dedupe_hours=None)
         if cid and new == lc.CANCELLED and ("vendor" in actors or "owner" in actors):
-            who = "Udbyderen" if "vendor" in actors else (row.get("username") or "Medarbejderen")
+            who = "Udbyderen" if "vendor" in actors else (_person_name(cur, row) or "Medarbejderen")
             notify_roles(cur, cid, HR_ROLES,
                          title="Bestilling annulleret",
                          message=f"{who} har annulleret “{row.get('product_title')}”."
                                  + (f" Årsag: {reason}" if reason else ""),
                          kind="order", is_urgent=("vendor" in actors),
                          action_url="/hr/order/%s/details" % order_id,
-                         dedupe_key="order-cancelled:%s" % order_id, dedupe_hours=None)
+                         dedupe_key="order-cancelled:%s" % order_id, dedupe_hours=None,
+                         actor_user_id=ctx.user_id)
     except Exception as e:  # notifications must never break the transition
         logger.debug("order_service: transition notifications skipped: %s", e)
 
@@ -1891,7 +1963,7 @@ def _notify_manager_of_completion(row):
                     (cid, uid))
         r = cur.fetchone()
         mgr = _int_or_none(r.get("manager_user_id") if isinstance(r, dict) else (r[0] if r else None))
-        msg = (f"{row.get('user_name') or row.get('username') or 'En medarbejder'} har gennemført "
+        msg = (f"{_person_name(cur, row) or 'En medarbejder'} har gennemført "
                f"“{row.get('product_title')}”. Bekræft kompetenceløftet, så det tæller i kompetenceoverblikket.")
         common = dict(title="Bekræft kompetenceløft", message=msg, kind="skill_uplift",
                       action_url="/hr/order/%s/details#udbytte" % row.get("order_id"),

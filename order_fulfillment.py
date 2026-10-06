@@ -275,8 +275,10 @@ def request_change(ctx, order_id, kind, payload=None):
                 action_url="/hr/order/%s/details#aendring" % order_id,
                 dedupe_key="change:%s" % change_id,
                 dedupe_hours=None,
+                actor_user_id=ctx.user_id,
             )
-        change_notice(cur, row, change_id, "requested", "Et ændringsønske afventer svar. Den oprindelige booking gælder indtil accept.")
+        change_notice(cur, row, change_id, "requested", "Et ændringsønske afventer svar. Den oprindelige booking gælder indtil accept.",
+                      actor_user_id=ctx.user_id)
         orders._record_history(cur, row, kind="change", from_value=kind, to_value="requested", ctx=ctx, note=payload["note"])
         conn.commit()
         return {
@@ -409,6 +411,7 @@ def resolve_change(ctx, order_id, change_id, accept, *, note="", fee=0, new_refe
             change_id,
             "accepted" if accept else "rejected",
             ("Ændringen er bekræftet: " if accept else "Ændringen er afvist: ") + note,
+            actor_user_id=ctx.user_id,
         )
         conn.commit()
         if info:
@@ -479,11 +482,12 @@ def report_completion(ctx, order_id, *, note="", evidence_url=""):
                 HR_ROLES,
                 title="Deltagelse afventer bekræftelse",
                 message="%s har meldt ‘%s’ gennemført. Bekræft deltagelse og kompetenceudbytte."
-                % (row.get("user_name") or row.get("username"), row["product_title"]),
+                % (orders._person_name(cur, row), row["product_title"]),
                 kind="attendance",
                 action_url="/hr/order/%s/details#deltagelse" % order_id,
                 dedupe_key="attendance:%s" % order_id,
                 dedupe_hours=None,
+                actor_user_id=ctx.user_id,
             )
         conn.commit()
         return {
@@ -555,9 +559,14 @@ def outcome_review(ctx, order_id, ratings, *, note=""):
         cur.close()
 
 
-def change_notice(cur, row, change_id, phase, message):
-    """A change is a distinct event, never deduped against the original booking."""
+def change_notice(cur, row, change_id, phase, message, actor_user_id=None):
+    """A change is a distinct event, never deduped against the original booking.
+
+    ``actor_user_id`` is who caused it: a learner who asks for a change is not told about
+    their own request (no card, no e-mail); the supplier and HR are."""
     from notification_service import notify_user
+
+    own_action = actor_user_id is not None and row.get("user_id") is not None and int(actor_user_id) == int(row["user_id"])
 
     title = "Nyt om bookingændring: " + row["product_title"]
     key = "booking-change:%s:%s" % (change_id, phase)
@@ -573,8 +582,9 @@ def change_notice(cur, row, change_id, phase, message):
         action_url=url,
         dedupe_key=key,
         dedupe_hours=None,
+        actor_user_id=actor_user_id,
     )
-    contacts = {row.get("user_email"): url} if row.get("user_email") else {}
+    contacts = {row.get("user_email"): url} if row.get("user_email") and not own_action else {}
     if row.get("vendor_id"):
         cur.execute("SELECT contact_email FROM vendors WHERE id=%s", (row["vendor_id"],))
         vendor = cur.fetchone() or {}

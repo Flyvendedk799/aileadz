@@ -173,6 +173,7 @@ def assign_path(cur, ctx, company_id, path_id, user_ids, *, due_date=None, sende
             action_url="/min-laering/forloeb/%s" % progress_id,
             kind="assignment",
             dedupe_key=None,
+            actor_user_id=sender_id,
         )
         refresh_assignment(cur, progress_id, company_id)
         conn.commit()
@@ -326,6 +327,10 @@ def assign_course_to_people(cur, ctx, company_id, handle, user_ids, *, due_date=
         people.append(emp)
     import order_service
 
+    from person_names import display_name
+
+    assigner_name = display_name(cur, company_id, user_id=ctx.user_id, username=ctx.username,
+                                 default=ctx.actor_label or "HR")
     conn = order_service._get_connection()
     events = []
     try:
@@ -341,7 +346,7 @@ def assign_course_to_people(cur, ctx, company_id, handle, user_ids, *, due_date=
                     "participant_count": len(people),
                     "group_order_id": group_id,
                     "expected_price": expected_price,
-                    "notes": "Bestilt af %s til teamet" % (ctx.actor_label or ctx.username or "HR"),
+                    "notes": "Bestilt af %s til teamet" % assigner_name,
                 },
                 deferred_events=events,
             )

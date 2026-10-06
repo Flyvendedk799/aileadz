@@ -217,6 +217,12 @@
 .fm-aip-fab:hover{filter:brightness(1.05)}
 .fm-wrap:has(.fm-aip){padding-bottom:84px}
 body:has(.fm-aip) .fm-foot{padding-right:150px}
+/* On laptop widths the floating button would sit on the last table column ("Afventer godk." on /hr/team):
+   shrink it to an icon and keep the last column's content clear of it. */
+@media (min-width:721px) and (max-width:1500px){
+  .fm-aip-fab span{display:none}.fm-aip-fab{padding:14px;font-size:16px}
+  .fm-wrap:has(.fm-aip) .fm-table th:last-child,.fm-wrap:has(.fm-aip) .fm-table td:last-child{padding-right:76px}
+}
 @media (max-width:720px){.fm-aip{right:14px;bottom:14px}.fm-aip-fab span{display:none}.fm-aip-fab{padding:14px;font-size:16px}}
 .fm-aip-panel{position:absolute;right:0;bottom:62px;width:360px;max-width:88vw;height:460px;max-height:72vh;
   display:flex;flex-direction:column;border:1px solid var(--fm-line);border-radius:16px;overflow:hidden;

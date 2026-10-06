@@ -399,6 +399,12 @@ class HrDetailsPageTests(SectionBase):
         self.learner().post("/min-ordre/ord-1/handling", data={"action": "change", "kind": "cancel", "note": "Syg"})
         hr = self.db.one("SELECT action_url FROM notifications WHERE user_id='hr' AND kind='order_change'")
         self.assertEqual(hr["action_url"], "/hr/order/ord-1/details#aendring")
+        # Nobody is told about their own action: no "Nyt om bookingændring" for the requester ...
+        self.assertIsNone(self.db.one("SELECT 1 AS x FROM notifications WHERE user_id='ada' AND kind='order_change'"))
+        # ... but HR's answer is news to her, and links to her own order page.
+        change = self.db.one("SELECT id FROM course_order_changes")
+        self.hr().post("/ordre/ord-1/handling", data={"action": "resolve", "change_id": change["id"],
+                                                      "decision": "reject", "note": "Ikke muligt"})
         learner = self.db.one("SELECT action_url FROM notifications WHERE user_id='ada' AND kind='order_change'")
         self.assertEqual(learner["action_url"], "/min-ordre/ord-1#aendring")
 

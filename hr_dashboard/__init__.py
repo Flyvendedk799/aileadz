@@ -875,7 +875,7 @@ def create_hr_dashboard_blueprint():
             cur.execute("""
                 SELECT 
                     co.*, 
-                    u.username, u.email,
+                    u.username, u.email, cu.full_name,
                     cu.department, cu.job_title, cu.employee_id
                 FROM course_orders co
                 JOIN users u ON co.user_id = u.id

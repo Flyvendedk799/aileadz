@@ -75,3 +75,51 @@ class PublicFormTests(unittest.TestCase):
         self.assertIn('value="n@x.dk"', html)
         self.assertNotIn("kort-pw9", html)
         self.assertIn("mindst 10 tegn", html)
+
+
+class PublicDashboardTests(unittest.TestCase):
+    def setUp(self):
+        import perf_cache
+        perf_cache.cache_clear()
+        self.db = PlatformDB()
+        self.app = make_app(self.db)
+        p = render_patches()
+        p.start()
+        self.addCleanup(p.stop)
+        self.addCleanup(self.db.raw.close)
+
+    def test_anonymous_root_renders_the_public_dashboard_without_session_data(self):
+        r = self.app.test_client().get("/")
+        html = r.get_data(as_text=True)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("Find det rigtige kursus", html)
+        self.assertIn("For virksomheder", html)
+        self.assertIn('action="/catalog"', html)
+        self.assertNotIn("Mine bestillinger", html)
+
+    def test_logged_in_root_redirects_as_before(self):
+        r = client_as(self.app, user="learner", user_id=1).get("/")
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(r.headers["Location"].endswith("/dashboard"))
+
+    def test_dashboard_deep_link_still_goes_to_login(self):
+        r = self.app.test_client().get("/dashboard")
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("/login", r.headers["Location"])
+
+    def test_blocks_are_cached_and_hold_only_catalogue_data(self):
+        import public_dashboard
+        from unittest import mock
+        product = {"handle": "h", "title": "T", "vendor": "V", "price_label": "100 kr.", "variants": [
+            {"date": "12. december 2099", "city": "Aarhus"}]}
+        with mock.patch("catalog_service.search_products", return_value={"products": [product]}) as sp, \
+                mock.patch("catalog_service.exclude_stale", side_effect=lambda p: p), \
+                mock.patch("catalog_service.get_categories", return_value=[{"name": "Ledelse", "slug": "ledelse", "count": 3}]), \
+                mock.patch("catalog_service.get_products", return_value=[product]):
+            first = public_dashboard.public_blocks()
+            second = public_dashboard.public_blocks()
+        self.assertEqual(sp.call_count, 1)
+        self.assertEqual(first, second)
+        self.assertEqual(first["popular"][0]["title"], "T")
+        self.assertEqual(first["sessions"][0]["date"], "2099-12-12")
+        self.assertEqual(first["categories"][0]["slug"], "ledelse")

@@ -557,7 +557,13 @@ def create_app():
 
     @app.route('/')
     def home():
-        return redirect(url_for('dashboard.dashboard'))
+        # Logged-in users keep today's destination (the dashboard routes them on);
+        # a logged-out visitor sees the public dashboard instead of a login bounce.
+        from flask import render_template, session
+        if session.get('user'):
+            return redirect(url_for('dashboard.dashboard'))
+        import public_dashboard
+        return render_template('fm/public_dashboard.html', **public_dashboard.public_blocks())
 
     # One status vocabulary for every template (N-1.1).
     import order_lifecycle

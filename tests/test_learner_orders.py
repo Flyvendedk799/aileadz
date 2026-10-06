@@ -55,7 +55,7 @@ class DetailPageTests(Base):
     def test_owner_sees_status_and_actions(self):
         html = self.client_as("ada", 1).get("/min-ordre/ord-1").get_data(as_text=True)
         self.assertIn("Booket", html)
-        self.assertIn("Anmod om afbestilling", html)
+        self.assertIn("Anmod om ændring eller afbestilling", html)
         self.assertIn("Indsend deltagelse til bekræftelse", html)
         self.assertIn("Tilføj til kalender", html)
         self.assertIn("Faktureres eksternt", html)
@@ -219,7 +219,11 @@ class ActionTests(Base):
     def test_cancel_request_on_a_booked_order_flashes_info_and_shows_the_banner(self):
         c = self.client_as("ada", 1)
         html = c.get("/min-ordre/ord-1").get_data(as_text=True)
-        self.assertIn("Vil du anmode om afbestilling? Udbyderen skal acceptere, og der kan være et gebyr.", html)
+        # After booking there is one path: the change section (no direct cancel button).
+        self.assertIn("Anmod om ændring eller afbestilling", html)
+        self.assertIn('id="anmod-aendring"', html)
+        self.assertNotIn("my_order_cancel", html)
+        self.assertNotIn("/min-ordre/ord-1/annuller", html)
         self.assertNotIn("afventer svar fra udbyderen", html)
         resp = c.post("/min-ordre/ord-1/annuller", data={"reason": "Syg"}, follow_redirects=True)
         html = resp.get_data(as_text=True)
@@ -228,7 +232,7 @@ class ActionTests(Base):
         self.assertNotIn("Ordren er annulleret.", html)
         self.assertIn("Din afbestilling afventer svar fra udbyderen. Din plads og budgettet er uændret, indtil den er accepteret.", html)
         self.assertIn("Booket", html)
-        self.assertNotIn("Anmod om afbestilling</button>", html)
+        self.assertNotIn("Anmod om ændring eller afbestilling", html)
         self.assertEqual(self.db.one("SELECT status FROM course_orders")["status"], "booked")
 
     def test_unbooked_order_keeps_the_plain_cancel_text_and_cancels(self):

@@ -196,6 +196,7 @@ def order_sections(ctx, row, *, vendor=False, post_url=None):
         "changes_list": bool(changes),
         "attendance": status in (orders.lc.BOOKED, orders.lc.COMPLETED),
         "outcome_review": status == orders.lc.COMPLETED and may_review and bool(review),
+        "outcome_summary": status == orders.lc.COMPLETED and not may_review and (review or {}).get("status") == "completed",
     }
     approval_url = None
     if show["pending"] and manager and not vendor:
@@ -209,7 +210,7 @@ def order_sections(ctx, row, *, vendor=False, post_url=None):
         "order_id": order_id,
         "status": status,
         "actors": actors,
-        "visible": [name for name in ("pending", "booking_card", "book_form", "change_request", "changes_list", "attendance", "outcome_review") if show[name]],
+        "visible": [name for name in ("pending", "booking_card", "book_form", "changes_list", "change_request", "attendance", "outcome_review", "outcome_summary") if show[name]],
         "show": show,
         "fulfillment": fulfillment,
         "booking": booking,

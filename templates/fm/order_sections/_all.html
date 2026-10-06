@@ -1,10 +1,5 @@
 {# Every section that is valid for this order, actor and state, in reading order. #}
-<style>
-    .os-card { padding: 20px; margin-bottom: 16px; }
-    .os-card [hidden] { display: none !important; }
-    .os-pending { border-color: var(--fm-amber, #c98a1b); }
-    .os-card form + form { margin-top: 14px; }
-</style>
+{% include "fm/order_sections/_styles.html" %}
 {% if 'pending' in sections.visible %}{% include "fm/order_sections/_pending.html" %}{% endif %}
 {% if 'booking_card' in sections.visible %}{% include "fm/order_sections/_booking_card.html" %}{% endif %}
 {% if 'book_form' in sections.visible %}{% include "fm/order_sections/_book_form.html" %}{% endif %}
@@ -12,3 +7,4 @@
 {% if 'change_request' in sections.visible %}{% include "fm/order_sections/_change_request.html" %}{% endif %}
 {% if 'attendance' in sections.visible %}{% include "fm/order_sections/_attendance.html" %}{% endif %}
 {% if 'outcome_review' in sections.visible %}{% include "fm/order_sections/_outcome_review.html" %}{% endif %}
+{% if 'outcome_summary' in sections.visible %}{% include "fm/order_sections/_outcome_summary.html" %}{% endif %}

@@ -276,3 +276,63 @@ class HrBooksByDefaultTests(SectionBase):
         self.assertIn("Klar til booking", self.page(self.hr()))
         resp = self.hr().get("/hr/order/ord-1/details")
         self.assertIn("Klar til booking", resp.get_data(as_text=True))
+
+
+class LearnerPageTests(SectionBase):
+    """The learner never needs /ordre/<id>/booking: everything is on /min-ordre/<id>."""
+
+    def order_page(self, client=None):
+        return (client or self.learner()).get("/min-ordre/ord-1").get_data(as_text=True)
+
+    def test_page_links_nowhere_near_the_old_console(self):
+        for status in ("pending_approval", "approved", "booked", "completed", "cancelled"):
+            self.set_state(status, booking=status in ("booked", "completed"))
+            html = self.order_page()
+            self.assertNotIn("/ordre/ord-1/booking", html, status)
+            self.assertNotIn("Booking, ændringer og kursusudbytte", html, status)
+            self.db.execute("DELETE FROM course_order_details")
+
+    def test_booked_page_shows_booking_change_and_attendance_in_one_place(self):
+        self.set_state("booked")
+        html = self.order_page()
+        self.assertEqual(re.findall(r'data-section="([a-z_]+)"', html), ["booking_card", "change_request", "attendance"])
+        self.assertIn("Kontoret", html)
+        self.assertIn('action="/min-ordre/ord-1/handling"', html)
+        self.assertNotIn("/gennemfoert", html)
+
+    def test_pending_page_explains_the_wait(self):
+        self.set_state("pending_approval", booking=False)
+        self.assertIn("booking kan først ske, når bestillingen er godkendt", self.order_page())
+
+    def test_change_request_posts_back_to_the_page_at_the_change_section(self):
+        self.set_state("booked")
+        resp = self.learner().post("/min-ordre/ord-1/handling", data={"action": "change", "kind": "cancel", "note": "Syg"})
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(resp.headers["Location"].endswith("/min-ordre/ord-1#aendring"), resp.headers["Location"])
+        self.assertEqual(self.db.one("SELECT status FROM course_order_changes")["status"], "pending")
+        html = self.order_page()
+        self.assertEqual(re.findall(r'data-section="([a-z_]+)"', html), ["booking_card", "changes_list", "attendance"])
+        self.assertIn("Din afbestilling afventer svar fra udbyderen", html)
+
+    def test_attendance_report_posts_back_and_shows_the_waiting_state(self):
+        self.set_state("booked")
+        resp = self.learner().post(
+            "/min-ordre/ord-1/handling", data={"action": "report", "evidence_note": "Jeg deltog"}
+        )
+        self.assertTrue(resp.headers["Location"].endswith("/min-ordre/ord-1#deltagelse"))
+        self.assertEqual(self.db.one("SELECT completion_state FROM course_order_details")["completion_state"], "reported")
+        self.assertIn("Deltagelse indsendt – afventer bekræftelse", self.order_page())
+
+    def test_only_the_owner_may_use_the_endpoint(self):
+        self.set_state("booked")
+        self.assertEqual(self.client_as("bo", 2).post("/min-ordre/ord-1/handling", data={"action": "report", "evidence_note": "x"}).status_code, 404)
+        self.assertEqual(self.learner().post("/min-ordre/ord-1/handling", data={"action": "verify", "note": "x"}).status_code, 403)
+        self.assertEqual(self.learner().post("/min-ordre/ord-1/handling", data={"action": "review"}).status_code, 403)
+
+    def test_completed_page_shows_the_confirmed_outcome_to_the_learner(self):
+        self.set_state("completed", review=True)
+        self.assertNotIn("Kursusudbytte", self.order_page())
+        self.db.execute("UPDATE learning_outcome_reviews SET status='completed', review_note='Bruger metoden dagligt'")
+        html = self.order_page()
+        self.assertIn("Bruger metoden dagligt", html)
+        self.assertEqual(re.findall(r'data-section="([a-z_]+)"', html), ["booking_card", "attendance", "outcome_summary"])

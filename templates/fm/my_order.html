@@ -6,6 +6,7 @@
 {% block topbar_sub %}Ordre {{ order.order_id[:8] }} · {{ status_label }}{% endblock %}
 
 {% block extra_head %}
+{% include "fm/order_sections/_styles.html" %}
 <style>
   .mo-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; align-items: start; }
   @media (max-width: 900px) { .mo-grid { grid-template-columns: 1fr; } }
@@ -23,7 +24,6 @@
 {% endblock %}
 
 {% block content %}
-<div class="fm-wrap"><a class="btn btn-primary" href="{{ url_for('fulfillment.order_workflow',order_id=order.order_id) }}">Booking, ændringer og kursusudbytte</a></div>
 <div class="fm-wrap">
   <div class="crumb"><a href="{{ url_for('futurematch.employee_home') }}">Min læring</a><i class="fa-solid fa-chevron-right"></i><a href="{{ url_for('futurematch.timeline') }}">Mine bestillinger</a><i class="fa-solid fa-chevron-right"></i><span>{{ order.order_id[:8] }}</span></div>
 
@@ -51,8 +51,6 @@
             <span class="fm-badge teal"><i class="fa-solid fa-hourglass-half"></i> Deltagelse indsendt – afventer bekræftelse</span>
             <div style="margin-top:6px;color:var(--fm-ink-2)">HR eller udbyderen bekræfter, at du har deltaget. Du behøver ikke gøre mere.</div>
           </div>
-          {% elif held_message %}
-          <p class="mo-hint" data-held-hint>{{ held_message }}</p>
           {% endif %}
           {% if pending_change %}
           <div class="mo-pending" role="status" style="margin-top:12px;padding:10px 12px;border:1px solid var(--fm-line);border-radius:10px;background:var(--fm-surface);font-size:13.5px">
@@ -78,24 +76,19 @@
             {% if has_date and status in ['approved','booked'] %}
             {{ addtocal(url_for('futurematch.my_order_ics', order_id=order.order_id)) }}
             {% endif %}
-            {% if can_complete %}
-            <form method="post" action="{{ url_for('futurematch.my_order_complete', order_id=order.order_id) }}" style="flex-basis:100%">
-              <label class="fm-field"><span>Hvad gennemførte du?</span>
-                <textarea class="fm-input" name="evidence_note" maxlength="4000" required></textarea></label>
-              <label class="fm-field"><span>Link til kursusbevis (valgfrit)</span>
-                <input class="fm-input" type="url" name="evidence_url"></label>
-              <button class="btn btn-primary btn-sm" type="submit"><i class="fa-solid fa-circle-check"></i> Indsend deltagelse til bekræftelse</button>
-            </form>
-            {% endif %}
             {% if can_cancel %}
-            <form method="post" action="{{ url_for('futurematch.my_order_cancel', order_id=order.order_id) }}" onsubmit="return confirm('{{ 'Vil du anmode om afbestilling? Udbyderen skal acceptere, og der kan være et gebyr.' if status == 'booked' else 'Vil du annullere denne bestilling?' }}');">
-              <button class="btn btn-ghost btn-sm" type="submit"><i class="fa-solid fa-ban"></i> {{ 'Anmod om afbestilling' if status == 'booked' else 'Annullér' }}</button>
+            <form method="post" action="{{ url_for('futurematch.my_order_cancel', order_id=order.order_id) }}" onsubmit="return confirm('Vil du annullere denne bestilling?');">
+              <button class="btn btn-ghost btn-sm" type="submit"><i class="fa-solid fa-ban"></i> Annullér</button>
             </form>
+            {% elif can_request_change %}
+            <a class="btn btn-ghost btn-sm" href="#anmod-aendring"><i class="fa-solid fa-ban"></i> Anmod om ændring eller afbestilling</a>
             {% endif %}
             <a class="btn btn-ghost btn-sm" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comments"></i> Spørg AI'en om ordren</a>
           </div>
         </div>
       </div>
+
+      {% for name in sections.visible %}{% if name not in ['book_form', 'outcome_review'] %}{% include "fm/order_sections/_" ~ name ~ ".html" %}{% endif %}{% endfor %}
 
       {% if moment %}
       <div class="fm-card" style="margin-top:16px" id="completion">

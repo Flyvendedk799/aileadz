@@ -3,6 +3,8 @@
 Routes (all on the ``futurematch`` blueprint, login required, owner only):
 
 * ``GET  /min-ordre/<order_id>``              status, history, vendor, date, actions
+* ``POST /min-ordre/<order_id>/handling``     every action of the order page (change request,
+                                              attendance report, resolving a supplier change)
 * ``POST /min-ordre/<order_id>/annuller``     cancel (budget refunded exactly once)
 * ``POST /min-ordre/<order_id>/gennemfoert``  "Markér som gennemført"
 * ``POST /min-ordre/<order_id>/kompetencer``  save the skills the learner accepted
@@ -49,13 +51,6 @@ def _can_cancel(status):
     return lc.normalize_status(status) in lc.OPEN_STATUSES
 
 
-def _can_complete(status, row=None, booking=None):
-    """Attendance can be reported on a booked order once the course has taken place."""
-    if lc.normalize_status(status) != lc.BOOKED:
-        return False
-    return order_timing.not_yet_held_message(row or {}, booking) is None
-
-
 def register_learner_order_routes(bp):
     @bp.route("/min-ordre/<order_id>")
     def my_order(order_id):
@@ -84,22 +79,13 @@ def register_learner_order_routes(bp):
             vendor_name = (product or {}).get("vendor") or ""
         except Exception:
             pass
-        from order_fulfillment import details
-        conn = current_app.mysql.connection
-        import MySQLdb.cursors
-        detail_cur = conn.cursor(MySQLdb.cursors.DictCursor)
-        try:
-            fulfillment = details(detail_cur,order_id)
-            detail_cur.execute("SELECT * FROM course_order_changes WHERE order_id=%s ORDER BY created_at DESC",(order_id,))
-            changes = list(detail_cur.fetchall() or [])
-        finally:
-            detail_cur.close()
-        pending_change = next((c for c in changes if (c.get("status") or "") == "pending"), None)
-        booking = fulfillment.get("booking_json") or {}
-        reported = fulfillment.get("completion_state") == "reported"
-        held_message = order_timing.not_yet_held_message(row, booking) if status == lc.BOOKED else None
+        from fulfillment_routes import order_sections
+        sections = order_sections(_ctx(), row, post_url=url_for("futurematch.my_order_action", order_id=order_id))
+        fulfillment = sections["fulfillment"]
+        pending_change = sections["pending_change"]
+        reported = sections["completion_state"] == "reported"
         return render_template(
-            "fm/my_order.html", fulfillment=fulfillment, changes=changes,
+            "fm/my_order.html", fulfillment=fulfillment, sections=sections,
             order=row,
             status=status,
             status_label=lc.status_label(status),
@@ -107,17 +93,31 @@ def register_learner_order_routes(bp):
             status_tone=lc.STATUS_TONES[status],
             history=history,
             vendor_name=vendor_name,
-            can_cancel=_can_cancel(status) and not pending_change,
+            can_cancel=status in (lc.PENDING_APPROVAL, lc.APPROVED) and not pending_change,
+            can_request_change=sections["show"]["change_request"],
             pending_change=pending_change,
-            can_complete=_can_complete(status, row, booking) and not reported,
             completion_reported=reported and status == lc.BOOKED,
-            held_message=held_message,
             has_date=bool(row.get("variant_date")),
             moment=moment,
             just_completed=request.args.get("completed") == "1" and status == lc.COMPLETED,
             billing_label=lc.BILLING_LEARNER_LABELS[lc.normalize_billing(row.get("billing_status"))],
             status_labels=lc.STATUS_LABELS_SHORT,
         )
+
+    @bp.route("/min-ordre/<order_id>/handling", methods=["POST"])
+    def my_order_action(order_id):
+        """Every learner action of the order page (change request, attendance report,
+        resolving a supplier change) through the one shared action handler."""
+        if not session.get("user"):
+            flash("Log ind for at se din bestilling.", "danger")
+            return redirect(url_for("auth.login"))
+        row, actors, ctx = _load(order_id)
+        if not row or "owner" not in actors:
+            abort(404)
+        from fulfillment_routes import flash_result, perform_action
+        result, anchor = perform_action(ctx, order_id, request.form)
+        flash_result(result)
+        return redirect(url_for("futurematch.my_order", order_id=order_id) + ("#" + anchor if anchor else ""))
 
     @bp.route("/min-ordre/<order_id>/annuller", methods=["POST"])
     def my_order_cancel(order_id):

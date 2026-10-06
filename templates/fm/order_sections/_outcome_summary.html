@@ -1,0 +1,6 @@
+{% set review = sections.review %}
+<section class="fm-card os-card" id="udbytte" data-section="outcome_summary">
+    <h2>Kursusudbytte</h2>
+    <p>HR eller din leder har bekræftet udbyttet af kurset.</p>
+    {% if review.review_note %}<p>{{ review.review_note }}</p>{% endif %}
+</section>

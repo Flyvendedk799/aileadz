@@ -299,3 +299,119 @@ class ActiveResultSetNoResultsClearTests(unittest.TestCase):
         cleared = rs.get_active_result_set(state)
         self.assertEqual(cleared["handles"], [])
         self.assertEqual(cleared["products"], [])
+
+
+class OrderIdIntegrityFollowupTests(unittest.TestCase):
+    """L09 live follow-up: exact SQL UUID must not resolve to Excel/pending."""
+
+    SQL_ID = "c94a261f-7ba6-46ee-9a4a-04f9a04fab2a"
+    EXCEL_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    PROMPT = (
+        f"Læs kun den eksisterende ordre {SQL_ID}. "
+        "Hvad er dens status? Foretag ingen ændringer."
+    )
+
+    def test_extract_full_uuid_from_danish_status_prompt(self):
+        from app1 import tools as T
+        self.assertEqual(T.extract_order_id_from_text(self.PROMPT), self.SQL_ID)
+
+    def test_ensure_order_id_recovers_when_model_omits_or_truncates(self):
+        from app1 import tools as T
+        recovered = T.ensure_order_id_arg({}, user_text=self.PROMPT)
+        self.assertEqual(recovered["order_id"], self.SQL_ID)
+        truncated = T.ensure_order_id_arg({"order_id": self.SQL_ID[:8]}, user_text=self.PROMPT)
+        self.assertEqual(truncated["order_id"], self.SQL_ID)
+
+    def test_ensure_does_not_replace_unrelated_full_uuid(self):
+        from app1 import tools as T
+        # If the model already passed a different full UUID, keep it (no silent swap).
+        other = "11111111-2222-3333-4444-555555555555"
+        out = T.ensure_order_id_arg({"order_id": other}, user_text=self.PROMPT)
+        self.assertEqual(out["order_id"], other)
+
+    def test_check_approval_returns_sql_order_not_excel_pending(self):
+        """Fresh-chat specific-ID path echoes SQL identity, never Excel pending."""
+        from app1 import tools as T
+        import order_lifecycle as lc
+
+        sql_row = {
+            "order_id": self.SQL_ID,
+            "product_title": "Administering a SQL Database",
+            "product_handle": "sql-admin",
+            "price": "21000",
+            "status": getattr(lc, "APPROVED", "approved"),
+            "created_at": "2026-10-06",
+            "company_id": 1,
+        }
+
+        class _FakeCur:
+            def execute(self, sql, params=None):
+                self._sql = sql
+
+            def fetchone(self):
+                return None  # no approval row
+
+            def fetchall(self):
+                return []
+
+            def close(self):
+                pass
+
+        class _FakeConn:
+            def cursor(self, *a, **k):
+                return _FakeCur()
+
+        class _FakeMysql:
+            connection = _FakeConn()
+
+        class _FakeApp:
+            mysql = _FakeMysql()
+
+        import flask as flask_mod
+
+        args = T.ensure_order_id_arg({}, user_text=self.PROMPT)
+        self.assertEqual(args["order_id"], self.SQL_ID)
+
+        sess = {"user_id": 9, "company_id": 1, "user": "abe"}
+        with mock.patch.object(flask_mod, "session", sess), \
+             mock.patch.object(flask_mod, "current_app", _FakeApp()), \
+             mock.patch("order_service.OrderContext") as OC, \
+             mock.patch("order_service.get_order", return_value=sql_row) as go:
+            OC.from_session.return_value = mock.Mock()
+            raw = T._execute_check_approval_status(args)
+        data = json.loads(raw)
+        self.assertEqual(data["status"], "ok")
+        self.assertEqual(data["requested_order_id"], self.SQL_ID)
+        self.assertEqual(data["resolved_order_id"], self.SQL_ID)
+        self.assertEqual(data["order_id"], self.SQL_ID)
+        self.assertTrue(data.get("identity_verified"))
+        self.assertIn("SQL", data.get("course") or data.get("product_title") or "")
+        self.assertNotIn("Excel", data.get("course") or "")
+        blob = json.dumps(data)
+        self.assertNotIn(self.EXCEL_ID, blob)
+        self.assertNotIn("Excel Videregående", blob)
+        go.assert_called()
+
+
+class OrderStatusToolRoutingTests(unittest.TestCase):
+    def test_uuid_status_prompt_forces_approval_tool(self):
+        from ai_tool_registry import get_employee_tool_selection
+        from app1.tools import OPENAI_TOOLS
+
+        names = {t["function"]["name"] for t in OPENAI_TOOLS if t.get("type") == "function"}
+        self.assertIn("check_order_approval_status", names)
+
+        prompt = (
+            "Læs kun den eksisterende ordre c94a261f-7ba6-46ee-9a4a-04f9a04fab2a. "
+            "Hvad er dens status? Foretag ingen ændringer."
+        )
+        tools, meta = get_employee_tool_selection(
+            logged_in=True,
+            company_id=1,
+            intent="discovery",
+            user_query=prompt,
+            shown_count=0,
+        )
+        tool_names = {t["function"]["name"] for t in tools if t.get("type") == "function"}
+        self.assertIn("check_order_approval_status", tool_names)
+        self.assertEqual(meta.get("forced_tool"), "check_order_approval_status")

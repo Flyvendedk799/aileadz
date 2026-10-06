@@ -263,3 +263,75 @@ class EvidenceAndMessagesTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CrossChatDigestBleedTests(unittest.TestCase):
+    """L11 live follow-up: reopening leadership must not inherit Excel/budget."""
+
+    def test_should_suppress_digests_on_this_thread_summary(self):
+        prompt = (
+            "Opsummer kun de senest gældende søgekrav i denne samtale: "
+            "emne, format og prisgrænse. Skeln mellem det hypotetiske "
+            "katalogopslag og oplysninger, der faktisk er gemt på min profil. "
+            "Gem eller ændr intet."
+        )
+        self.assertTrue(rs.asks_for_this_thread_constraints(prompt))
+        self.assertTrue(rs.should_suppress_cross_session_digests(prompt))
+        self.assertFalse(rs.should_suppress_cross_session_digests(
+            "Find online Excel under 5000 kr.",
+        ))
+
+    def test_reopen_leadership_keeps_own_constraints_not_excel(self):
+        """Simulate chat A (leadership) then chat B (Excel); A state untouched."""
+        leadership = {}
+        excel_chat = {}
+        rs.update_constraints_from_user(
+            leadership,
+            "Find op til tre kurser i ledelse med fysisk fremmøde i København. "
+            "Sæt budgettet til under 6.250,50 kr inklusive moms.",
+        )
+        rs.update_constraints_from_user(
+            leadership,
+            "Jeg ændrer søgningen: kun online, ikke fysisk fremmøde. Behold prisgrænsen.",
+        )
+        rs.replace_active_result_set(leadership, ONLINE)
+
+        rs.update_constraints_from_user(
+            excel_chat,
+            "Find online Excel-kurser under 5.000 kr.",
+        )
+        rs.replace_active_result_set(excel_chat, [
+            _course("excel-1", "Excel videregående", "SuperUsers", "4.999", ["Online"]),
+        ])
+
+        # "Reopen" leadership: only leadership state is restored (resume path).
+        restored = {
+            "search_constraints": dict(leadership["search_constraints"]),
+            "active_result_set": dict(leadership["active_result_set"]),
+        }
+        msg = rs.build_thread_constraints_message(restored)["content"]
+        self.assertIn("ledelse", msg.lower())
+        self.assertIn("6250.5", msg)
+        self.assertIn("online", msg.lower())
+        self.assertNotIn("Excel", msg)
+        self.assertNotIn("5000", msg)
+
+        # Digest-like bleed must be ignored when summarizing this thread.
+        self.assertTrue(rs.should_suppress_cross_session_digests(
+            "Opsummer kun de senest gældende søgekrav i denne samtale."
+        ))
+
+    def test_topic_extracted_from_user_text_without_search_tool(self):
+        state = {}
+        rs.update_constraints_from_user(state, "Find kurser i ledelse online under 6000 kr.")
+        c = rs.get_search_constraints(state)
+        self.assertEqual(c.get("topic"), "ledelse")
+        self.assertEqual(c.get("format"), "online")
+        self.assertEqual(c.get("price_max"), 6000.0)
+
+        state_b = {}
+        rs.update_constraints_from_user(state_b, "Online Excel under 5.000 kr tak.")
+        cb = rs.get_search_constraints(state_b)
+        self.assertEqual(cb.get("topic"), "Excel")
+        self.assertEqual(cb.get("price_max"), 5000.0)
+        self.assertNotEqual(c.get("topic"), cb.get("topic"))

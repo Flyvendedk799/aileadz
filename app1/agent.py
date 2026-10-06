@@ -2502,27 +2502,38 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
 
                 # Cross-session memory: this surface's digest, plus what the other
                 # surface learned (the profiler's picture helps the advisor too).
+                # L11: when the user asks for *this* conversation's search
+                # constraints, omit digests entirely — they previously leaked
+                # another chat's Excel/budget into the leadership reopen answer.
                 _digest = ""
+                _suppress_digests = _result_set.should_suppress_cross_session_digests(user_query)
                 try:
-                    _digest = _conv.load_mode_summary(logged_in_user, surface)
-                    if _digest:
+                    if not _suppress_digests:
+                        _digest = _conv.load_mode_summary(logged_in_user, surface)
+                        if _digest:
+                            context_layers.append(_ctx.layer(
+                                "mode_digest", _digest,
+                                header=(
+                                    "TIDLIGERE SAMTALER (kryds-session — baggrundskendskab. "
+                                    "Må IKKE erstatte søgekrav, filtre eller resultatsæt i DENNE samtale. "
+                                    "Når brugeren siger 'i denne samtale', ignorer Excel/budget/emne herfra):"
+                                ),
+                                fence="TIDLIGERE SAMTALER",
+                            ))
+                        _other_surface = "chat" if surface == "profiler" else "profiler"
+                        _other_digest = _conv.load_mode_summary(logged_in_user, _other_surface)
+                        if _other_digest:
+                            context_layers.append(_ctx.layer(
+                                "other_mode_digest", _other_digest,
+                                header=("FRA PROFILSAMTALERNE:" if _other_surface == "profiler"
+                                        else "FRA KURSUSRÅDGIVNINGEN:"),
+                                fence="TIDLIGERE SAMTALER",
+                            ))
+                    else:
                         context_layers.append(_ctx.layer(
-                            "mode_digest", _digest,
-                            header=(
-                                "TIDLIGERE SAMTALER (kryds-session — baggrundskendskab. "
-                                "Må IKKE erstatte søgekrav, filtre eller resultatsæt i DENNE samtale. "
-                                "Når brugeren siger 'i denne samtale', ignorer Excel/budget/emne herfra):"
-                            ),
-                            fence="TIDLIGERE SAMTALER",
-                        ))
-                    _other_surface = "chat" if surface == "profiler" else "profiler"
-                    _other_digest = _conv.load_mode_summary(logged_in_user, _other_surface)
-                    if _other_digest:
-                        context_layers.append(_ctx.layer(
-                            "other_mode_digest", _other_digest,
-                            header=("FRA PROFILSAMTALERNE:" if _other_surface == "profiler"
-                                    else "FRA KURSUSRÅDGIVNINGEN:"),
-                            fence="TIDLIGERE SAMTALER",
+                            "thread_constraints_veto",
+                            "Kryds-session digests er bevidst udeladt denne tur. "
+                            "Svar kun ud fra SØGEKRAV I DENNE SAMTALE og trådens egne beskeder.",
                         ))
                 except Exception as e:
                     print(f"[Digest Load Error] {e}")
@@ -2602,10 +2613,14 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
             # L11: versioned search constraints for THIS conversation only
             try:
                 _sc_state = SESSION_STATE.setdefault(sid, {})
+                # L09/L11: keep the raw user turn for order-ID recovery and
+                # conversation-scoped constraint updates.
+                _sc_state["_turn_user_query"] = user_query or ""
                 _result_set.update_constraints_from_user(_sc_state, user_query)
                 _thread_msg = _result_set.build_thread_constraints_message(_sc_state)
+                _ask_thread = _result_set.asks_for_this_thread_constraints(user_query)
                 if _thread_msg and (
-                    _result_set.asks_for_this_thread_constraints(user_query)
+                    _ask_thread
                     or int((_result_set.get_search_constraints(_sc_state) or {}).get("version") or 0) > 0
                 ):
                     context_layers.append(_ctx.layer(

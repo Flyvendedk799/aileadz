@@ -911,7 +911,12 @@ OPENAI_TOOLS = [
                 "properties": {
                     "order_id": {
                         "type": "string",
-                        "description": "Ordre-ID (de første 8 tegn). Valgfrit — udelad for at se alle afventende."
+                        "description": (
+                            "Fuldt ordre-UUID når brugeren angiver et bestemt id "
+                            "(fx c94a261f-7ba6-46ee-9a4a-04f9a04fab2a). Send ALTID det "
+                            "fulde id fra brugerens besked — aldrig et andet kursus' id. "
+                            "Udelad kun når brugeren beder om en oversigt uden id."
+                        ),
                     }
                 },
                 "required": []
@@ -1593,6 +1598,78 @@ def set_search_context(shown_handles=None, user_prefs=None, blocked_vendors=None
     _current_user_prefs = user_prefs or {}
     _current_blocked_vendors = blocked_vendors or set()
     _current_supplier_agreements = supplier_agreements or {}
+
+
+# UUID / opaque order ids users paste into chat (L09).
+_ORDER_ID_RE = re.compile(
+    r"\b([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\b"
+)
+_ORDER_ID_PREFIX_RE = re.compile(r"\b([0-9a-fA-F]{8,31})\b")
+
+
+def extract_order_id_from_text(text):
+    """Return the first full UUID order id in ``text``, else a long hex prefix, else None."""
+    if not text:
+        return None
+    m = _ORDER_ID_RE.search(text)
+    if m:
+        return m.group(1)
+    # Prefer explicit "ordre <hex>" prefixes over random hex tokens.
+    labelled = re.search(
+        r"(?:ordre|order(?:_id)?|bestilling)\s*[#: ]*([0-9a-fA-F-]{8,})",
+        text,
+        re.IGNORECASE,
+    )
+    if labelled:
+        cand = labelled.group(1).strip("-")
+        full = _ORDER_ID_RE.search(cand)
+        if full:
+            return full.group(1)
+        if len(cand) >= 8:
+            return cand
+    return None
+
+
+def _turn_user_query_for_session(session_id):
+    """Best-effort raw user turn text for the active chat session."""
+    if not session_id:
+        return ""
+    try:
+        from app1 import agent as _agent
+        state = (_agent.SESSION_STATE or {}).get(session_id) or {}
+        q = state.get("_turn_user_query") or ""
+        if q:
+            return q
+        # Fall back to the last user message in memory (fresh chat / resume).
+        for msg in reversed((_agent.CHAT_MEMORY or {}).get(session_id) or []):
+            if isinstance(msg, dict) and msg.get("role") == "user" and msg.get("content"):
+                return msg["content"]
+    except Exception:
+        pass
+    return ""
+
+
+def ensure_order_id_arg(args, session_id=None, user_text=None):
+    """L09: never let a specific-ID question fall through to the pending list.
+
+    If the model omitted or truncated the UUID, recover it from the user turn.
+    Never invent / substitute a different order id.
+    """
+    out = dict(args or {})
+    current = (out.get("order_id") or "").strip()
+    text = user_text if user_text is not None else _turn_user_query_for_session(session_id)
+    extracted = extract_order_id_from_text(text)
+
+    if extracted:
+        # Prefer the full UUID from the user message over a truncated tool arg.
+        if (not current
+                or (len(extracted) >= 32 and len(current) < len(extracted)
+                    and extracted.lower().startswith(current.lower().rstrip("-")))
+                or (len(extracted) >= 32 and current.lower() != extracted.lower()
+                    and len(current) < 32)):
+            out["order_id"] = extracted
+            out["_order_id_recovered_from_user_text"] = True
+    return out
 
 
 def apply_discount(price_raw, vendor_name):
@@ -6418,12 +6495,20 @@ def _execute_check_approval_status(args):
             "requested_order_id": requested_order_id,
             "resolved_order_id": resolved_id,
             "order_id": resolved_id,
+            "identity_verified": True,
+            "source": "course_orders",
             "course": row.get("product_title"),
+            "product_title": row.get("product_title"),
             "product_handle": row.get("product_handle"),
             "price": str(row.get("price")),
             "order_status": order_status,
             "order_status_text": lc.status_label(order_status),
             "created_at": str(row.get("created_at")) if row.get("created_at") else None,
+            "message": (
+                f"Ordre {resolved_id}: {row.get('product_title')} — "
+                f"{lc.status_label(order_status)}. "
+                "Brug KUN denne ordre; erstat aldrig med en anden (fx Excel) fra listen."
+            ),
         }
         if approval:
             status_map = {
@@ -6449,8 +6534,10 @@ def _execute_check_approval_status(args):
                 "approval_status_text": None,
                 "approval_row_present": False,
                 "message": (
-                    "Ordren er fundet. Der er ingen separat godkendelsesanmodning — "
-                    "brug order_status_text som den kanoniske status."
+                    f"Ordre {resolved_id}: {row.get('product_title')} — "
+                    f"{lc.status_label(order_status)}. "
+                    "Ingen separat godkendelsesanmodning — brug order_status_text "
+                    "som kanonisk status. Erstat aldrig med en anden ordre."
                 ),
             })
         return json.dumps(payload, ensure_ascii=False, default=str)
@@ -7374,6 +7461,7 @@ def execute_tool(tool_call, username=None, session_id=None):
         elif function_name == "analyze_skill_gaps":
             return _execute_analyze_skill_gaps(args)
         elif function_name == "check_order_approval_status":
+            args = ensure_order_id_arg(args, session_id=session_id)
             return _execute_check_approval_status(args)
         elif function_name == "get_department_budget":
             return _execute_get_department_budget(args)

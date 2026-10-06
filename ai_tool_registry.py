@@ -793,6 +793,17 @@ def _by_name(tools: Iterable[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     return {tool_name(t): _normalize_chat_tool(t) for t in tools}
 
 
+
+_ORDER_UUID_RE = __import__("re").compile(
+    r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
+)
+
+
+def _re_search_uuid(text: str) -> bool:
+    """True when the user pasted a full order UUID (L09 status lookup)."""
+    return bool(_ORDER_UUID_RE.search(text or ""))
+
+
 def _has_any(text: str, words: Iterable[str]) -> bool:
     text = (text or "").lower()
     return any(word in text for word in words)
@@ -1080,7 +1091,19 @@ def get_employee_tool_selection(
     # Tvang samles som kandidater og afgøres til sidst i _resolve_forced_tool:
     # kun præcis én matchende gren må tvinge (TR-01).
     forced_candidates: List[str] = []
-    is_approval_query = _has_any(query, ("godkend", "approval", "afventer", "ordrestatus"))
+    # L09: force the order-status tool for UUID lookups and "ordre … status"
+    # prompts — previously only "ordrestatus"/"godkend" matched, so a fresh
+    # chat asking for c94a… status fell through to buying tools / digests and
+    # narrated the pending Excel order instead.
+    _uuid_in_query = bool(_re_search_uuid(query))
+    _order_status_ask = _has_any(query, (
+        "godkend", "approval", "afventer", "ordrestatus", "order status",
+        "status på min ordre", "status pa min ordre", "status for ordren",
+        "status for min", "dens status", "ordre status",
+    )) or (
+        _uuid_in_query and _has_any(query, ("status", "ordre", "bestilling", "order"))
+    )
+    is_approval_query = _order_status_ask or _uuid_in_query
 
     # CORE tools are ALWAYS on the menu so the MODEL — not a brittle keyword/regex
     # gate — decides when to use them. The keyword branches below only ADD

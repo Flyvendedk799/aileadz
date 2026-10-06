@@ -4,6 +4,7 @@
 {% block topbar_title %}Ordre #{{ order.order_id[:8] }}{% endblock %}
 {% block topbar_sub %}{{ order.product_title }} · {{ order.username }}{% endblock %}
 {% block content %}
+<div class="fm-wrap"><a class="btn btn-primary" href="{{ url_for('fulfillment.order_workflow',order_id=order.order_id) }}">Booking, ændringer og kursusudbytte</a></div>
 {% from 'fm/_macros.html' import crumbs %}
 <div class="fm-wrap">
 {% if admin_view %}

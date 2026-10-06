@@ -1467,6 +1467,8 @@ def toggle_learning_path_step(username, path_id, step_order, done=None):
     for idx, s in enumerate(steps):
         s_order = s.get("order", idx + 1)
         if s_order == step_order:
+            if s.get('completion_source') == 'verified_order':
+                return path
             current_done = bool(s.get("done", False))
             new_done = (not current_done) if done is None else bool(done)
             s["done"] = new_done

@@ -31,6 +31,143 @@ logger = logging.getLogger(__name__)
 _ENGINE = "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 
 REGISTRY_DDL = [
+    f"""CREATE TABLE IF NOT EXISTS customer_accounts (
+        company_id INT PRIMARY KEY,
+        account_owner VARCHAR(255) NULL,
+        account_email VARCHAR(255) NULL,
+        offer_name VARCHAR(255) NULL,
+        included_services TEXT NULL,
+        success_criteria TEXT NULL,
+        pilot_end DATE NULL,
+        renewal_date DATE NULL,
+        next_review DATE NULL,
+        stage VARCHAR(30) NOT NULL DEFAULT 'onboarding',
+        notes TEXT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) {_ENGINE}""",
+    f"""CREATE TABLE IF NOT EXISTS company_launch_checks (
+        company_id INT NOT NULL,
+        check_key VARCHAR(60) NOT NULL,
+        note TEXT NOT NULL,
+        confirmed_by INT NULL,
+        confirmed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (company_id, check_key)
+    ) {_ENGINE}""",
+    f"""CREATE TABLE IF NOT EXISTS customer_requests (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        company_id INT NOT NULL,
+        user_id INT NOT NULL,
+        kind VARCHAR(30) NOT NULL,
+        note TEXT NOT NULL,
+        quantity INT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'open',
+        resolution TEXT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        resolved_at DATETIME NULL,
+        INDEX idx_customer_request (company_id, status)
+    ) {_ENGINE}""",
+    f"""CREATE TABLE IF NOT EXISTS sales_enquiries (
+        id VARCHAR(36) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) NOT NULL,
+        company_name VARCHAR(255) NOT NULL,
+        message TEXT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'new',
+        owner_note TEXT NULL,
+        company_id INT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) {_ENGINE}""",
+
+    f"""CREATE TABLE IF NOT EXISTS mail_outbox (
+        id VARCHAR(36) PRIMARY KEY,
+        company_id INT NULL,
+        to_email VARCHAR(255) NOT NULL,
+        subject VARCHAR(500) NOT NULL,
+        payload_json LONGTEXT NOT NULL,
+        dedupe_key VARCHAR(64) NOT NULL,
+        report_schedule_id INT NULL,
+        delivery_group VARCHAR(64) NULL,
+        state VARCHAR(20) NOT NULL DEFAULT 'pending',
+        attempts INT NOT NULL DEFAULT 0,
+        available_at DATETIME NOT NULL,
+        locked_until DATETIME NULL,
+        claim_id VARCHAR(36) NULL,
+        last_error VARCHAR(500) NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        sent_at DATETIME NULL,
+        UNIQUE KEY uk_mail_dedupe (dedupe_key),
+        INDEX idx_mail_pending (state, available_at),
+        INDEX idx_mail_company (company_id, state),
+        INDEX idx_mail_schedule (report_schedule_id, delivery_group)
+    ) {_ENGINE}""",
+
+    f"""CREATE TABLE IF NOT EXISTS course_order_changes (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NULL,
+        order_id VARCHAR(50) NOT NULL,
+        company_id INT NULL,
+        kind VARCHAR(20) NOT NULL,
+        requested_by INT NULL,
+        requested_kind VARCHAR(20) NOT NULL,
+        payload_json LONGTEXT NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        decision_note TEXT NULL,
+        resolved_by VARCHAR(255) NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        resolved_at DATETIME NULL,
+        INDEX idx_change_order (order_id, status),
+        INDEX idx_change_company (company_id, status)
+    ) {_ENGINE}""",
+    f"""CREATE TABLE IF NOT EXISTS learning_outcome_reviews (
+        order_id VARCHAR(50) PRIMARY KEY,
+        company_id INT NOT NULL,
+        user_id INT NOT NULL,
+        manager_user_id INT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'open',
+        baseline_json LONGTEXT NULL,
+        reflection TEXT NULL,
+        review_note TEXT NULL,
+        reviewed_by INT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        reviewed_at DATETIME NULL,
+        INDEX idx_outcome_company (company_id, status)
+    ) {_ENGINE}""",
+
+    f"""CREATE TABLE IF NOT EXISTS learning_assignment_steps (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        progress_id INT NOT NULL,
+        company_id INT NOT NULL,
+        user_id INT NOT NULL,
+        path_version INT NOT NULL DEFAULT 1,
+        position INT NOT NULL,
+        step_type VARCHAR(20) NOT NULL,
+        course_handle VARCHAR(255) NULL,
+        title VARCHAR(500) NOT NULL,
+        order_id VARCHAR(50) NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'not_started',
+        last_error TEXT NULL,
+        completed_at DATETIME NULL,
+        UNIQUE KEY uk_assignment_step (progress_id, position),
+        INDEX idx_assignment_order (order_id),
+        INDEX idx_assignment_learner (company_id, user_id)
+    ) {_ENGINE}""",
+    f"""CREATE TABLE IF NOT EXISTS course_order_details (
+        order_id VARCHAR(50) PRIMARY KEY,
+        user_id INT NULL,
+        company_id INT NULL,
+        session_id VARCHAR(191) NULL,
+        quote_json LONGTEXT NULL,
+        booking_json LONGTEXT NULL,
+        completion_state VARCHAR(20) NOT NULL DEFAULT 'none',
+        evidence_note TEXT NULL,
+        evidence_url VARCHAR(1000) NULL,
+        reported_at DATETIME NULL,
+        verified_at DATETIME NULL,
+        verified_by VARCHAR(255) NULL,
+        INDEX idx_order_details_company (company_id)
+    ) {_ENGINE}""",
+
     f"""CREATE TABLE IF NOT EXISTS company_chat_messages (
         id BIGINT AUTO_INCREMENT PRIMARY KEY,
         company_id INT NOT NULL,
@@ -466,6 +603,12 @@ def run_data_migrations(conn):
                 _set_flag(cur, "ai_memory_sqlite_import_v1")
                 conn.commit()
                 ran.append("ai_memory_sqlite_import_v1")
+            if not _flag_done(cur, 'learning_assignment_snapshots_v1'):
+                from learning_path_service import snapshot_legacy_assignments
+                snapshot_legacy_assignments(conn)
+                _set_flag(cur, 'learning_assignment_snapshots_v1')
+                conn.commit()
+                ran.append('learning_assignment_snapshots_v1')
             if not _flag_done(cur, "skill_history_user_ids_v1"):
                 try:
                     cur.execute(SKILL_HISTORY_BACKFILL_SQL)

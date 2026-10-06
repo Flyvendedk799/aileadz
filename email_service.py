@@ -328,6 +328,7 @@ def render_branded_email(template_name: str, branding: Optional[dict] = None, **
 </body></html>
 """,
     }
+    templates['business_update'] = templates['announcement']
     body_tpl = templates.get(template_name, templates['welcome'])
     ctx = {
         'company_name': branding.get('company_name', 'Futurematch'),
@@ -536,6 +537,8 @@ def send_branded_email(
     company_id=None,
     dedupe_key: Optional[str] = None,
     attachments: Optional[list] = None,
+    raise_delivery_errors: bool = False,
+    message_id: Optional[str] = None,
     **context,
 ) -> bool:
     """Send a branded email. Returns True on success, False on no-op/failure.
@@ -607,6 +610,8 @@ def send_branded_email(
             sender=(from_name, default_sender),
             reply_to=reply,
         )
+        if message_id:
+            msg.extra_headers = {"Message-ID": message_id}
         for fname, data, mimetype in (attachments or []):
             msg.attach(fname, mimetype, data)
         mail.send(msg)
@@ -624,6 +629,8 @@ def send_branded_email(
             to_email, template_name, 'error', company_id=company_id, error=str(e),
             dedupe_key=dedupe_key,
         )
+        if raise_delivery_errors:
+            raise
         return False
 
 

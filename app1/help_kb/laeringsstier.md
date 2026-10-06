@@ -21,3 +21,8 @@ Jo mere komplet din profil og dine udviklingsmål er, jo bedre passer stien til 
 - Har du ingen gemte stier, står der "Ingen gemte læringsstier endnu".
 - Gemte læringsstier vises også i Mind-Map.
 - Hvert kursus på stien bestilles og godkendes som alle andre kurser.
+
+## Forløb tildelt af HR
+Tildelte forløb ligger på Min læring. Åbn forløbet for at se de konkrete trin, deres bestillinger og eventuelle fejl. Forløbet beholder de trin, der gjaldt ved tildelingen, også hvis HR senere ændrer skabelonen. Mangler et hold, kan du vælge dato og sted og anmode om en plads fra trinnet. Kursustrin afsluttes, når HR eller udbyderen bekræfter deltagelsen; vejledningstrin kan du selv afkrydse.
+
+En bekræftet kursusgennemførelse opdaterer også matchende kursustrin i dine personlige AI-planer. Personlige afkrydsninger er planlægning og er ikke i sig selv dokumentation for compliance. Interne kurser findes på /interne-kurser og følger samme tilmeldingsforløb.

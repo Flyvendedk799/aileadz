@@ -1553,9 +1553,10 @@ def create_order_api():
                 return jsonify({'error': f'Missing required field: {f}'}), 400
 
         # Route through the single authorized order_service so the API path no
-        # longer skips approvals/budgets. The API actor is treated as
-        # manager-level (company_admin), so budget-aware approval still applies.
-        from order_service import create_order as _svc_create_order, OrderContext
+        # longer skips approvals/budgets. The canonical wrapper resolves the
+        # active employee by email and applies that employee's approval policy.
+        from order_service import OrderContext
+        from enrollment_service import create_order as _svc_create_order
         ctx = OrderContext.from_api_g(source='api')
         ctx.department = (data.get('department') or '').strip() or None
 
@@ -1570,33 +1571,15 @@ def create_order_api():
             user_name=data['user_name'],
             user_phone=data.get('user_phone', ''),
             status=data.get('status', 'pending'),
-            extra={'department': (data.get('department') or '')},
+            extra={'department': (data.get('department') or ''),'session_id':data.get('session_id'),'expected_price':data.get('expected_price')},
         )
 
         if not result.get('success'):
-            return jsonify({'error': 'Ordren kunne ikke oprettes'}), 500
+            return jsonify({'error': result.get('message') or 'Ordren kunne ikke oprettes','code':result.get('error')}), 400
 
         order_id = result.get('order_id')
 
-        # Fire webhook
-        _fire_webhook(g.company_id, 'order.created', {'order_id': order_id, 'product': data['product_title']})
-
-        # Best-effort order-confirmation email — mirrors the chatbot/HR path
-        # (order_handler), which sends it via email_service.send_order_confirmation.
-        # Fully guarded: a missing mail backend is a clean no-op and an email
-        # failure NEVER affects the order response.
-        try:
-            from email_service import send_order_confirmation
-            send_order_confirmation(
-                {
-                    'order_id': order_id,
-                    'product': {'title': data['product_title']},
-                    'user': {'email': data['user_email'], 'name': data['user_name']},
-                },
-                company_id=g.company_id,
-            )
-        except Exception:
-            pass
+        # Canonical lifecycle already emitted the event after committing.
 
         return jsonify({
             'success': True, 'message': 'Ordren er oprettet',
@@ -1958,69 +1941,30 @@ def bulk_enroll():
         data = request.get_json()
         employee_ids = data.get('employee_ids', [])
         product_handle = data.get('product_handle', '')
-        product_title = data.get('product_title', '')
 
         if not employee_ids or not product_handle:
             return jsonify({'error': 'employee_ids and product_handle required'}), 400
         if len(employee_ids) > 200:
             return jsonify({'error': 'Højst 200 medarbejdere pr. samlet tilmelding'}), 400
 
-        # Route every enrollment through the single authorized order_service so
-        # approvals/budgets are no longer skipped. The API actor is manager-
-        # level, but each order is attributed to the employee + their department
-        # so budget-aware approval applies per department.
-        from order_service import create_order as _svc_create_order, OrderContext
-
-        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-        created_orders = []
-
-        for eid in employee_ids:
-            # Verify employee belongs to company
-            cur.execute("""
-                SELECT user_id, full_name, email, department FROM company_users
-                WHERE user_id = %s AND company_id = %s AND status = 'active'
-            """, (eid, g.company_id))
-            emp = cur.fetchone()
-            if not emp:
-                continue
-
-            ctx = OrderContext(
-                company_id=g.company_id,
-                user_id=emp.get('user_id'),
-                username=emp.get('full_name'),
-                company_role='company_admin',  # API actor; manager-level
-                department=emp.get('department', ''),
-                source='api',
-            )
-            result = _svc_create_order(
-                ctx,
-                product_handle=product_handle,
-                product_title=product_title,
-                price=data.get('price', 0),
-                variant_date=data.get('variant_date', ''),
-                variant_location=data.get('variant_location', ''),
-                user_email=emp.get('email', ''),
-                user_name=emp.get('full_name', ''),
-                user_phone='',
-                status=data.get('status', 'pending'),
-                extra={'department': emp.get('department', '')},
-            )
-            if result.get('success'):
-                created_orders.append({'order_id': result.get('order_id'),
-                                       'employee': emp['full_name']})
-
-        cur.close()
-
-        if created_orders:
-            _fire_webhook(g.company_id, 'order.created', {
-                'bulk': True, 'count': len(created_orders), 'product': product_title
-            })
+        from order_service import OrderContext
+        from learning_path_service import assign_course_to_people
+        cur=current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        try:
+            result=assign_course_to_people(cur,OrderContext.from_api_g(source='api_assignment'),g.company_id,
+                                          product_handle,employee_ids,session_id=data.get('session_id'),due_date=data.get('due_date'),expected_price=data.get('expected_price'))
+            current_app.mysql.connection.commit()
+        finally:cur.close()
+        created_orders=[r for r in result['results'] if r.get('success')]
 
         return jsonify({
-            'success': True,
+            'success': bool(created_orders) and not result['order_failures'],
             'enrolled': len(created_orders),
-            'orders': created_orders
-        })
+            'failed': result['order_failures'], 'skipped':result['skipped'],
+            'message':result.get('message') or ('Orders created.' if created_orders else 'No active participants could be enrolled.'),
+            'results':result['results'], 'orders': created_orders
+        }), 200 if created_orders else 400
+
     except Exception as e:
         return jsonify({'error': f'Bulk enroll failed: {str(e)}'}), 500
 
@@ -2655,11 +2599,13 @@ def _build_openapi_spec():
                             'employee_ids': {'type': 'array', 'maxItems': 200,
                                              'items': {'type': 'integer'}},
                             'product_handle': {'type': 'string'},
+                            'session_id': {'type':'string','description':'Stable catalogue session identifier.'},
+                            'expected_price': {'type':'number','description':'Optional accepted per-person price; changes require reconfirmation.'},
                             'product_title': {'type': 'string'},
-                            'price': {'type': 'number', 'default': 0},
+                            'price': {'type': 'number', 'description':'Compatibility field; current catalogue/agreement price is authoritative.'},
                             'variant_date': {'type': 'string'},
                             'variant_location': {'type': 'string'},
-                            'status': {'type': 'string', 'default': 'pending'},
+                            'status': {'type': 'string', 'description':'Compatibility field; employee approval policy determines initial status.'},
                         }}}},
                 },
                 'responses': {
@@ -2898,15 +2844,17 @@ def _build_openapi_spec():
                     'required': ['product_handle', 'product_title', 'user_email', 'user_name'],
                     'properties': {
                         'product_handle': {'type': 'string'},
+                        'session_id': {'type':'string','description':'Stable catalogue session identifier.'},
+                        'expected_price': {'type':'number','description':'Optional accepted price; the server computes the charge.'},
                         'product_title': {'type': 'string'},
                         'user_email': {'type': 'string', 'format': 'email'},
                         'user_name': {'type': 'string'},
-                        'price': {'type': 'number', 'default': 0},
+                        'price': {'type': 'number', 'description':'Compatibility field; current catalogue/agreement price is authoritative.'},
                         'department': {'type': 'string'},
                         'variant_date': {'type': 'string'},
                         'variant_location': {'type': 'string'},
                         'user_phone': {'type': 'string'},
-                        'status': {'type': 'string', 'default': 'pending'},
+                        'status': {'type': 'string', 'description':'Compatibility field; employee approval policy determines initial status.'},
                     },
                 },
                 'Webhook': {

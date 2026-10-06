@@ -56,7 +56,7 @@ def _coalesce(*values, default=None):
     return default
 
 
-def _row_to_branding(row: dict, slug: str = '') -> dict:
+def _row_to_branding(row: dict, slug: str = '', *, preview=False) -> dict:
     if not row:
         return dict(DEFAULT_BRANDING)
 
@@ -68,7 +68,7 @@ def _row_to_branding(row: dict, slug: str = '') -> dict:
             draft = {}
     draft = draft or {}
 
-    use_draft = row.get('branding_status') == 'draft' and draft
+    use_draft = preview and row.get('branding_status') == 'draft' and draft
     src = draft if use_draft else row
 
     primary = _coalesce(
@@ -213,7 +213,7 @@ def is_whitelabel_active(company_id: int, *, platform_override: bool = False) ->
         return False
 
 
-def get_branding(company_id: int) -> dict:
+def get_branding(company_id: int, *, preview=False) -> dict:
     conn = current_app.mysql.connection
     if not conn:
         return dict(DEFAULT_BRANDING)
@@ -221,7 +221,7 @@ def get_branding(company_id: int) -> dict:
         row = _fetch_branding_row(conn, company_id)
         if not row:
             return dict(DEFAULT_BRANDING)
-        return _row_to_branding(row, row.get('company_slug') or '')
+        return _row_to_branding(row, row.get('company_slug') or '', preview=preview)
     except Exception as e:
         current_app.logger.error(f"get_branding: {e}")
         return dict(DEFAULT_BRANDING)

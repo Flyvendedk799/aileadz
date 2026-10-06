@@ -79,12 +79,9 @@
           {% if o.request_notes %}<div class="m"><strong>Note fra deltageren:</strong> {{ o.request_notes }}</div>{% endif %}
           {% if o.cancel_reason %}<div class="m"><strong>Begrundelse:</strong> {{ o.cancel_reason }}</div>{% endif %}
         </div>
-        <div class="vp-actions">
+        <div class="vp-actions"><a class="btn" href="{{ url_for('vendor.vendor_booking',order_id=o.order_id) }}">Booking og ændringer</a>
           {% if o.can_book %}
-          <form method="POST" action="{{ url_for('vendor.vendor_order_book', order_id=o.order_id) }}">
-            <input type="hidden" name="tab" value="{{ tab }}">
-            <button class="btn primary" type="submit"><i class="fa-solid fa-check"></i> Bekræft plads</button>
-          </form>
+          <a class="btn primary" href="{{ url_for('vendor.vendor_booking',order_id=o.order_id) }}">Bekræft plads og oplysninger</a>
           {% endif %}
           {% if o.state == 'booked' or o.can_complete and o.state != 'approved' %}
           <form method="POST" action="{{ url_for('vendor.vendor_order_complete', order_id=o.order_id) }}">

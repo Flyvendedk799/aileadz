@@ -315,7 +315,8 @@ class CancelAndBudgetTests(OrderFlowBase):
     def test_completed_order_cannot_be_cancelled(self):
         oid = self.create()["order_id"]
         svc.set_status(self.hr(), oid, "approved")
-        svc.complete_order(self.learner(), oid)
+        svc.book_order(self.hr(), oid)
+        svc.complete_order(self.hr(), oid)
         self.assertEqual(svc.cancel_order(self.learner(), oid)["error"], "bad_transition")
 
 
@@ -326,7 +327,7 @@ class CompletionTests(OrderFlowBase):
         svc.book_order(svc.OrderContext.for_vendor(11), oid)
         with mock.patch.object(svc, "_completion_moment", return_value={"skill_proposals": [{"name": "PRINCE2", "level": "mellem"}],
                                                                          "next_steps": [], "review_url": "/x"}):
-            res = svc.complete_order(self.learner(), oid)
+            res = svc.complete_order(self.hr(), oid)
         self.assertTrue(res["success"])
         self.assertEqual(res["status"], "completed")
         row = self.order(oid)
@@ -344,8 +345,9 @@ class CompletionTests(OrderFlowBase):
     def test_complete_is_idempotent_and_counters_do_not_double(self):
         oid = self.create()["order_id"]
         svc.set_status(self.hr(), oid, "approved")
-        svc.complete_order(self.learner(), oid)
-        again = svc.complete_order(self.learner(), oid)
+        svc.book_order(self.hr(), oid)
+        svc.complete_order(self.hr(), oid)
+        again = svc.complete_order(self.hr(), oid)
         self.assertTrue(again["success"])
         self.assertTrue(again["already_completed"])
         self.assertEqual(self.db.one("SELECT total_courses_completed AS n FROM company_users WHERE user_id=1")["n"], 1)
@@ -421,7 +423,10 @@ class EndToEndTests(OrderFlowBase):
         with mock.patch("completion_service.completion_moment",
                         return_value={"skill_proposals": [{"name": "Projektledelse", "level": "mellem"}],
                                       "next_steps": [], "review_url": None}):
-            done = svc.complete_order(self.learner(), oid)
+            reported = svc.complete_order(self.learner(), oid)
+            self.assertTrue(reported["reported"])
+            self.assertEqual(self.order(oid)["status"], "booked")
+            done = svc.complete_order(self.hr(), oid)
         self.assertTrue(done["success"])
         self.assertEqual(done["skill_proposals"][0]["name"], "Projektledelse")
         # skill recorded for the learner (history is keyed on users.id)

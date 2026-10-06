@@ -635,6 +635,38 @@ def vendor_profile():
 # ---------------------------------------------------------------------------
 # Submit catalog (CSV -> existing admin import-drafts queue)
 # ---------------------------------------------------------------------------
+@vendor_bp.route('/courses/<handle>/edit',methods=['GET','POST'])
+@_vendor_login_required
+def vendor_course_edit(handle):
+    product=catalog.get_product_any(handle)
+    vendor=session.get('vendor_name') or ''
+    if not product or not catalog._same_vendor(product.get('vendor'),vendor):
+        from flask import abort
+        abort(404)
+    if request.method=='POST':
+        try:
+            if not request.form.get('revision') or catalog.product_revision(product)!=request.form['revision']:
+                raise ValueError('Kurset er ændret. Genindlæs siden og gennemgå de aktuelle oplysninger.')
+            fields=catalog.session_fields_from_form(request.form)
+            fields.update(title=request.form.get('title','').strip()[:255],summary=request.form.get('summary','').strip()[:4000])
+            if not fields['title']:raise ValueError('Angiv en kursustitel.')
+            candidate=dict(product.get('raw') or {},**fields,handle=handle,vendor=vendor)
+            draft=catalog.save_import_draft({'products':[candidate],'errors':[],'warnings':[],
+                    'direct_edit':True,'forced_vendor':vendor,'edit_fields':fields,'expected_revision':request.form['revision']},
+                    filename='Kursusrettelse: '+product['title'],uploaded_by='vendor:'+str(session['vendor_id']))
+            cur=_db().cursor()
+            try:
+                cur.execute("INSERT INTO vendor_submissions (vendor_id,job_id,filename,row_count,status) VALUES (%s,%s,%s,1,'pending')",(session['vendor_id'],draft['job_id'],'Kursusrettelse: '+product['title']))
+                _db().commit()
+            finally:cur.close()
+            flash('Rettelsen er indsendt. Den publicerede version er uændret indtil godkendelse.','success')
+            return redirect(url_for('vendor.vendor_dashboard'))
+        except (ValueError,TimeoutError) as exc:
+            flash(str(exc) if isinstance(exc,ValueError) else 'Kataloget er optaget. Prøv igen om lidt.','warning')
+            return render_template('fm/vendor_course_edit.html',product={**product,'title':request.form.get('title'),'summary':request.form.get('summary')},**catalog.session_editor_context(product,request.form)),400
+    return render_template('fm/vendor_course_edit.html',product=product,**catalog.session_editor_context(product))
+
+
 @vendor_bp.route("/submit-catalog", methods=["GET", "POST"])
 @_vendor_login_required
 def vendor_submit():
@@ -820,7 +852,7 @@ def vendor_orders():
         o["tone"] = lc.STATUS_TONES[st]
         o["can_book"] = st == lc.APPROVED
         o["can_decline"] = st in (lc.APPROVED, lc.BOOKED)
-        o["can_complete"] = st in (lc.APPROVED, lc.BOOKED)
+        o["can_complete"] = st == lc.BOOKED
     return render_template(
         "fm/vendor_orders.html", vendor_name=session.get("vendor_name") or "", orders=orders, tab=tab,
         tabs=_ORDER_TABS, load_error=load_error,
@@ -833,7 +865,7 @@ def _order_action(order_id, fn_name):
         return None, None
     import order_service
     if fn_name == "book":
-        return ctx, order_service.book_order(ctx, order_id)
+        return ctx, order_service.book_order(ctx, order_id, booking=request.form.to_dict())
     if fn_name == "complete":
         return ctx, order_service.complete_order(ctx, order_id)
     if fn_name == "decline":
@@ -856,6 +888,13 @@ def _order_action_response(order_id, fn_name, ok_msg):
     else:
         flash(res.get("message") or "Handlingen kunne ikke gennemføres.", "danger")
     return redirect(url_for("vendor.vendor_orders", tab=request.form.get("tab") or "afventer"))
+
+
+@vendor_bp.route('/orders/<order_id>/booking',methods=['GET','POST'])
+@_vendor_login_required
+def vendor_booking(order_id):
+    from fulfillment_routes import workflow
+    return workflow(_active_vendor_ctx(),order_id,vendor=True)
 
 
 @vendor_bp.route("/orders/<order_id>/book", methods=["POST"])

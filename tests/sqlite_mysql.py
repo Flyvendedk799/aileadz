@@ -43,6 +43,23 @@ def _convert(row):
     return d
 
 SCHEMA = """
+CREATE TABLE company_supplier_agreements (id INTEGER PRIMARY KEY AUTOINCREMENT,company_id INTEGER,vendor_name TEXT,discount_type TEXT,discount_value REAL,agreement_name TEXT,agreement_reference TEXT,valid_from TEXT,valid_until TEXT,min_participants INTEGER DEFAULT 1,is_active INTEGER DEFAULT 1);
+CREATE TABLE company_supplier_preferences (id INTEGER PRIMARY KEY AUTOINCREMENT,company_id INTEGER,vendor_name TEXT,is_active INTEGER DEFAULT 1,notes TEXT);
+CREATE TABLE company_courses (id INTEGER PRIMARY KEY AUTOINCREMENT,company_id INTEGER,title TEXT,description TEXT,price REAL DEFAULT 0,external_url TEXT,location TEXT,skill_tags TEXT,is_active INTEGER DEFAULT 1,instructor TEXT,format TEXT,duration_hours REAL,department TEXT);
+CREATE TABLE user_learning_paths (id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT,title TEXT,goal TEXT,steps TEXT,total_cost INTEGER,total_duration_days INTEGER,source TEXT DEFAULT 'ai',status TEXT DEFAULT 'aktiv',created_at TEXT DEFAULT CURRENT_TIMESTAMP,updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE customer_accounts (company_id INTEGER PRIMARY KEY,account_owner TEXT,account_email TEXT,offer_name TEXT,included_services TEXT,success_criteria TEXT,pilot_end TEXT,renewal_date TEXT,next_review TEXT,stage TEXT DEFAULT 'onboarding',notes TEXT,updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE company_launch_checks (company_id INTEGER,check_key TEXT,note TEXT,confirmed_by INTEGER,confirmed_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(company_id,check_key));
+CREATE TABLE customer_requests (id INTEGER PRIMARY KEY AUTOINCREMENT,company_id INTEGER,user_id INTEGER,kind TEXT,note TEXT,quantity INTEGER,status TEXT DEFAULT 'open',resolution TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP,resolved_at TEXT);
+CREATE TABLE sales_enquiries (id TEXT PRIMARY KEY,name TEXT,email TEXT,company_name TEXT,message TEXT,status TEXT DEFAULT 'new',owner_note TEXT,company_id INTEGER,created_at TEXT DEFAULT CURRENT_TIMESTAMP,updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
+
+CREATE TABLE mail_outbox (id TEXT PRIMARY KEY,company_id INTEGER,to_email TEXT,subject TEXT,payload_json TEXT,dedupe_key TEXT UNIQUE,report_schedule_id INTEGER,delivery_group TEXT,state TEXT DEFAULT 'pending',attempts INTEGER DEFAULT 0,available_at TEXT,locked_until TEXT,claim_id TEXT,last_error TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP,sent_at TEXT);
+
+CREATE TABLE course_order_changes (id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER,order_id TEXT,company_id INTEGER,kind TEXT,requested_by INTEGER,requested_kind TEXT,payload_json TEXT,status TEXT DEFAULT 'pending',decision_note TEXT,resolved_by TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP,resolved_at TEXT);
+CREATE TABLE learning_outcome_reviews (order_id TEXT PRIMARY KEY,company_id INTEGER,user_id INTEGER,manager_user_id INTEGER,status TEXT DEFAULT 'open',baseline_json TEXT,reflection TEXT,review_note TEXT,reviewed_by INTEGER,created_at TEXT DEFAULT CURRENT_TIMESTAMP,reviewed_at TEXT);
+
+CREATE TABLE learning_assignment_steps (id INTEGER PRIMARY KEY AUTOINCREMENT, progress_id INTEGER, company_id INTEGER, user_id INTEGER, path_version INTEGER DEFAULT 1, position INTEGER, step_type TEXT, course_handle TEXT, title TEXT, order_id TEXT, status TEXT DEFAULT 'not_started', last_error TEXT, completed_at TEXT, UNIQUE(progress_id,position));
+CREATE TABLE course_order_details (order_id TEXT PRIMARY KEY,user_id INTEGER, company_id INTEGER, session_id TEXT, quote_json TEXT, booking_json TEXT, completion_state TEXT DEFAULT 'none', evidence_note TEXT, evidence_url TEXT, reported_at TEXT, verified_at TEXT, verified_by TEXT);
+
 CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT,
   email TEXT, credits INTEGER DEFAULT 0, role TEXT DEFAULT 'user', email_notifications INTEGER DEFAULT 1,
   first_login_completed INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
@@ -55,13 +72,13 @@ CREATE TABLE company_users (id INTEGER PRIMARY KEY AUTOINCREMENT, company_id INT
 CREATE TABLE vendors (id INTEGER PRIMARY KEY AUTOINCREMENT, vendor_name TEXT, slug TEXT, contact_email TEXT,
   status TEXT DEFAULT 'active');
 CREATE TABLE course_orders (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id TEXT UNIQUE, company_id INTEGER,
-  user_id INTEGER, username TEXT, product_handle TEXT, product_title TEXT, price REAL, variant_date TEXT,
+  user_id INTEGER, username TEXT, product_handle TEXT, product_title TEXT, price REAL, internal_course_id INTEGER, variant_date TEXT,
   variant_location TEXT, status TEXT DEFAULT 'approved', budget_charged INTEGER DEFAULT 0,
   completion_status TEXT, completion_date TEXT, completion_deadline TEXT, started_at TEXT,
   department TEXT, approved_by INTEGER, payment_status TEXT DEFAULT 'not_paid', payment_date TEXT,
   invoice_number TEXT, billing_notes TEXT, billing_note TEXT, vendor_id INTEGER,
   billing_status TEXT DEFAULT 'not_invoiced', invoice_date TEXT, invoice_due_date TEXT,
-  payment_method TEXT, payment_reference TEXT, booked_at TEXT, booked_by TEXT, cancel_reason TEXT,
+  payment_method TEXT, payment_reference TEXT, booked_at TEXT, booked_by TEXT, cancel_reason TEXT, cancellation_fee REAL DEFAULT 0,
   request_notes TEXT, group_order_id TEXT, course_source TEXT DEFAULT 'external', user_email TEXT,
   user_name TEXT, user_phone TEXT, chatbot_session_id TEXT, chatbot_queries_before_order INTEGER DEFAULT 0,
   recommended_by_tool TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
@@ -104,6 +121,8 @@ CREATE TABLE schema_meta (meta_key TEXT PRIMARY KEY, meta_value TEXT, updated_at
 
 
 def translate(sql: str) -> str:
+    if re.match(r"\s*(UPDATE|DELETE|INSERT)\b", sql, re.I) and re.search(r"\bFOR UPDATE\b", sql, re.I):
+        raise AssertionError("MySQL only permits FOR UPDATE on a SELECT")
     s = sql
     s = s.replace("%%", "%")
     s = re.sub(r"%s", "?", s)

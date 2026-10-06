@@ -493,6 +493,9 @@ HR_TOOLS.extend([
             "parameters": {
                 "type": "object",
                 "properties": {
+                    "expected_path_version": {"type":"integer","description":"Bekræftet version af læringsforløbet."},
+                    "session_id": {"type":"string","description":"Stabilt hold-id fra kataloget."},
+                    "expected_price": {"type":"number","description":"Bekræftet pris pr. deltager."},
                     "employee_ids": {
                         "type": "array",
                         "items": {"type": "integer"},
@@ -940,6 +943,9 @@ HR_TOOLS.extend([
             "parameters": {
                 "type": "object",
                 "properties": {
+                    "expected_path_version": {"type":"integer","description":"Bekræftet version af læringsforløbet."},
+                    "session_id": {"type":"string","description":"Stabilt hold-id fra kataloget."},
+                    "expected_price": {"type":"number","description":"Bekræftet pris pr. deltager."},
                     "employee_id": {"type": "integer", "description": "user_id på medarbejderen i virksomheden."},
                     "product_handle": {"type": "string", "description": "Kursets handle fra kataloget."},
                     "product_title": {"type": "string", "description": "Kursets titel fra kataloget."},
@@ -2765,8 +2771,8 @@ def _execute_assign_learning_path_to_team(args):
     if path_id:
         try:
             cur.execute("""
-                SELECT path_name FROM learning_paths
-                WHERE id = %s AND (company_id = %s OR company_id IS NULL)
+                SELECT path_name, version FROM learning_paths
+                WHERE id = %s AND company_id = %s
             """, (path_id, company_id))
             prow = cur.fetchone()
             if not prow:
@@ -2778,6 +2784,18 @@ def _execute_assign_learning_path_to_team(args):
             print(f"[HR_TOOLS][assign_path] path lookup failed: {exc}")
             return json.dumps({"error": "Kunne ikke slå læringsstien op."})
     content_name = path_name or course_handle
+    confirmation_args = {}
+    if path_id:
+        confirmation_args['expected_path_version'] = int(prow.get('version') or 1)
+    else:
+        from enrollment_service import quote_course
+        try:
+            quote = quote_course(course_handle, company_id, session_id=args.get('session_id'), participants=len(valid_ids))
+        except ValueError as exc:
+            cur.close()
+            return json.dumps({'error': 'quote_required', 'message': str(exc)})
+        confirmation_args = {'session_id': quote['session_id'], 'expected_price': quote['price']}
+        content_name = quote['product_title']
 
     # ── Confirmation gate: preview only without confirm. ──
     if not bool(args.get('confirm')):
@@ -2785,6 +2803,8 @@ def _execute_assign_learning_path_to_team(args):
         return json.dumps({
             "needs_confirmation": True,
             "action": "assign_learning_path",
+            "confirmation_args": confirmation_args,
+            "price_per_person": confirmation_args.get('expected_price'),
             "path_id": path_id,
             "course_handle": course_handle,
             "content_name": content_name,
@@ -2797,76 +2817,26 @@ def _execute_assign_learning_path_to_team(args):
             ),
         }, default=str)
 
-    # ── Execute: progress rows + nudges, idempotent on existing rows. ──
-    assigned = 0
-    nudged = 0
-    conn = current_app.mysql.connection
-    for uid in valid_ids:
-        try:
-            # Skip if an identical assignment already exists (idempotent bulk).
-            if path_id:
-                cur.execute("""
-                    SELECT id FROM employee_learning_progress
-                    WHERE user_id = %s AND company_id = %s AND learning_path_id = %s
-                """, (uid, company_id, path_id))
-            else:
-                cur.execute("""
-                    SELECT id FROM employee_learning_progress
-                    WHERE user_id = %s AND company_id = %s AND course_handle = %s
-                """, (uid, company_id, course_handle))
-            if cur.fetchone():
-                continue
-            cur.execute("""
-                INSERT INTO employee_learning_progress
-                    (user_id, company_id, learning_path_id, course_handle,
-                     content_type, content_name, status, progress_percentage, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, 'not_started', 0, NOW())
-            """, (
-                uid, company_id, path_id, course_handle,
-                'learning_path' if path_id else 'course', content_name,
-            ))
-            assigned += 1
-        except Exception as exc:
-            print(f"[HR_TOOLS][assign_path] progress insert skipped for user {uid}: {exc}")
-            continue
-
-        # Nudge notification per employee (best-effort).
-        try:
-            from notification_service import insert_company_notification
-            if insert_company_notification(
-                    cur, company_id, recipient_user_id=uid,
-                    sender_user_id=session.get('user_id'),
-                    title="Ny læring tildelt",
-                    message=f"Du er blevet tildelt '{content_name}'. Gå i gang når du er klar.",
-                    action_url="/min-laering", kind="assignment", dedupe_key=None):
-                nudged += 1
-        except Exception as exc:
-            print(f"[HR_TOOLS][assign_path] nudge skipped for user {uid}: {exc}")
-
+    from order_service import OrderContext
+    import learning_path_service
+    ctx = OrderContext.from_session(source='hr_ai_assignment')
     try:
-        conn.commit()
-    except Exception as exc:
-        print(f"[HR_TOOLS][assign_path] commit failed: {exc}")
-        try:
-            conn.rollback()
-        except Exception:
-            pass
+        if path_id:
+            result = learning_path_service.assign_path(cur, ctx, company_id, path_id, valid_ids,
+                                                      due_date=args.get('due_date'), sender_id=ctx.user_id, expected_version=args.get('expected_path_version'))
+        else:
+            result = learning_path_service.assign_course_to_people(cur, ctx, company_id, course_handle, valid_ids,
+                                                                  due_date=args.get('due_date'), session_id=args.get('session_id'), expected_price=args.get('expected_price'))
+        current_app.mysql.connection.commit()
+        return json.dumps({'success': not result.get('order_failures'), 'content_name': content_name,
+                           'rejected_user_ids': rejected_ids, **result,
+                           'message_da': '%s tildelinger, %s bestillinger, %s kræver opfølgning. Åbn forløbet for at vælge manglende hold.' %
+                           (result.get('assigned',0),result.get('orders',0),result.get('order_failures',0))},default=str)
+    except Exception:
+        current_app.mysql.connection.rollback()
+        return json.dumps({'error':'Tildelingen kunne ikke gennemføres. Kontroller status før du prøver igen.'})
+    finally:
         cur.close()
-        return json.dumps({"error": "Tildelingen kunne ikke gemmes."})
-    cur.close()
-
-    return json.dumps({
-        "success": True,
-        "content_name": content_name,
-        "assigned": assigned,
-        "already_assigned": len(valid_ids) - assigned,
-        "nudges_sent": nudged,
-        "rejected_user_ids": rejected_ids,
-        "message_da": (
-            f"'{content_name}' tildelt til {assigned} medarbejder(e); {nudged} notifikation(er) sendt."
-            + (f" {len(rejected_ids)} id'er blev afvist (ikke i din virksomhed)." if rejected_ids else "")
-        ),
-    }, default=str)
 
 
 # ── Confirm-gated write tools (plan #13) ──────────────────────────────────────
@@ -4135,9 +4105,9 @@ def _execute_create_order_for_employee(args):
     try:
         cur.execute(
             """
-            SELECT user_id, full_name, username AS email
-            FROM company_users
-            WHERE company_id = %s AND status = 'active' AND user_id = %s
+            SELECT cu.user_id,cu.full_name,COALESCE(cu.email,u.email) AS email,u.username,cu.department
+            FROM company_users cu JOIN users u ON u.id=cu.user_id
+            WHERE cu.company_id = %s AND cu.status = 'active' AND cu.user_id = %s
             """,
             (company_id, employee_id),
         )
@@ -4150,12 +4120,20 @@ def _execute_create_order_for_employee(args):
         cur.close()
         return json.dumps({"error": "Medarbejderen blev ikke fundet i din virksomhed.", "rejected_user_id": employee_id})
 
+    try:
+        from enrollment_service import quote_course
+        quote=quote_course(product_handle,company_id,session_id=args.get('session_id'),variant_date=args.get('variant_date') or '',variant_location=args.get('variant_location') or '')
+        price=quote['price'];product_title=quote['product_title']
+    except ValueError as exc:
+        cur.close();return json.dumps({'error':str(exc)})
+
     emp_name = emp.get("full_name") or emp.get("email") or str(employee_id)
 
     if not bool(args.get('confirm')):
         cur.close()
         return json.dumps(needs_confirmation_payload(
             action="create_order_for_employee",
+            confirmation_args={"expected_price":quote["price"],"session_id":quote["session_id"]},
             summary_da=(
                 f"Bekræft at du vil bestille '{product_title}' til {emp_name} for {price:.0f} kr. "
                 f"Beløbet trækkes fra virksomhedens budget. Send confirm=true for at bestille."
@@ -4166,7 +4144,7 @@ def _execute_create_order_for_employee(args):
     cur.close()
 
     try:
-        from order_service import create_order
+        from enrollment_service import create_order
         result = create_order(
             ctx,
             product_handle=product_handle,
@@ -4176,7 +4154,7 @@ def _execute_create_order_for_employee(args):
             variant_location=(args.get('variant_location') or '').strip(),
             user_email=emp.get("email") or "",
             user_name=emp_name,
-            extra={"on_behalf_of": employee_id, "created_by_hr": getattr(ctx, 'user_id', None)},
+            extra={"assign_to": {**emp,"name":emp_name}, "session_id":quote["session_id"], "expected_price":args.get("expected_price"), "created_by_hr": getattr(ctx, 'user_id', None)},
         )
     except Exception as exc:
         print(f"[HR_TOOLS][create_order_for_employee] create failed: {exc}")

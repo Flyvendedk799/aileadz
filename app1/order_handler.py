@@ -135,7 +135,8 @@ class OrderHandler:
         failed. On success the in-memory order is synced to the persisted values.
         """
         try:
-            from order_service import create_order as _svc_create_order, OrderContext
+            from order_service import OrderContext
+            from enrollment_service import create_order as _svc_create_order
         except Exception as imp_err:
             logger.error(f"order_service import failed: {imp_err}")
             return {'success': False, 'error': 'service_unavailable',
@@ -158,12 +159,15 @@ class OrderHandler:
                     **_attribution(),
                     'department': session.get('company_department', ''),
                     'group_order_id': order.get('group_order_id'),
+                    'session_id': order['variant'].get('session_id'),
+                    'expected_price': order['variant'].get('expected_price'),
                     'notes': (order.get('variant') or {}).get('notes') or order.get('notes_text'),
                 },
             )
             if result.get('success'):
                 order['order_id'] = result.get('order_id', order['order_id'])
                 order['status'] = result.get('status', order['status'])
+                order['product']['price'] = result.get('price', order['product']['price'])
                 order['status_label'] = result.get('status_label')
                 order['next_step'] = result.get('next_step')
                 order['order_url'] = result.get('order_url')
@@ -255,7 +259,7 @@ class OrderHandler:
             if ok:
                 for order in session.get('orders', []):
                     if order.get('order_id') == order_id:
-                        order['status'] = target
+                        order['status'] = res.get('status') or target
                 session.modified = True
             return ok
         except Exception as e:

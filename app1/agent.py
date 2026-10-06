@@ -1754,7 +1754,7 @@ def _load_company_context(company_id, logged_in_user):
 
         if co_show_int and co_mode != 'external_only':
             cur.execute(
-                "SELECT title, category, description, format, duration_hours, difficulty_level "
+                "SELECT id, title, category, description, format, duration_hours, difficulty_level "
                 "FROM company_courses WHERE company_id = %s AND is_active = 1 LIMIT 30",
                 (company_id,)
             )
@@ -1762,7 +1762,7 @@ def _load_company_context(company_id, logged_in_user):
             if internal_courses:
                 course_list = []
                 for ic in internal_courses:
-                    parts = [ic['title']]
+                    parts = [ic['title'], '(handle: internal:%s)' % ic['id'], '(se /interne-kurser/%s)' % ic['id']]
                     if ic['category']:
                         parts.append(f"({ic['category']})")
                     if ic['format']:
@@ -3108,7 +3108,7 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                         try:
                             from app1 import confirm_store as _cs
                             _token = _cs.store_pending(
-                                sid, "employee", _confirm_tool, tool_result.arguments or {}
+                                sid, "employee", _confirm_tool, __import__("tool_confirm").confirmed_arguments(_confirm_tool,tool_result.arguments,tool_result_dict)
                             )
                             _confirm_payload = {
                                 "type": "confirm_card",

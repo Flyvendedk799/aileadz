@@ -172,7 +172,7 @@
           {% for p in products[:100] %}
           <tr>
             <td>{% if p.handle %}<a href="{{ url_for('catalog.product_detail', handle=p.handle) }}" target="_blank" rel="noopener" title="Se kursussiden som kunderne ser den">{{ p.title }}</a>{% else %}{{ p.title }}{% endif %}</td>
-            <td>{{ p.product_type or '—' }}</td>
+            <td>{{ p.product_type or '—' }}{% if p.handle %}<br><a href="{{ url_for('vendor.vendor_course_edit',handle=p.handle) }}">Ret hold og priser</a>{% endif %}</td>
             <td>{{ p.price_label or '—' }}</td>
             <td>
               {% if p.review_count %}

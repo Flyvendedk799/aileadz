@@ -1,0 +1,85 @@
+{% extends "fm_base.html" %}
+{% block title %}{{ company.company_name }} · Kundeforløb{% endblock %}
+{% block topbar_title %}Kundeopfølgning{% endblock %}
+{% block content %}
+    <div class="fm-wrap">
+        <a href="{{ url_for('customer_success.accounts') }}">Alle kundeforløb</a>
+        <h1>{{ company.company_name }}</h1>
+        <a class="btn btn-ghost"
+           href="{{ url_for('companies.admin_company_detail',company_id=company.id) }}">Redigér pladser og abonnement</a>
+        <p>{{ readiness.complete }}/{{ readiness.total }} dokumenterede milepæle · {{ readiness.stalled }} bestillinger afventer svar i over to dage · {{ readiness.delivery_issues }} mailproblemer</p>
+        <form method="post" class="fm-card" style="padding:22px">
+            <div class="fm-grid"
+                 style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
+                {% for key,label in [('account_owner','Kundeansvarlig'),('account_email','Kontaktmail'),('offer_name','Aftalens navn')] %}
+                    <label class="fm-field">
+                        <span>{{ label }}</span>
+                        <input class="fm-input"
+                               name="{{ key }}"
+                               value="{{ account.get(key,'') or '' }}"
+                               maxlength="255"
+                               {% if key=='account_email' %}type="email"{% endif %}>
+                    </label>
+                {% endfor %}
+                {% for key,label in [('pilot_end','Pilot slutter'),('renewal_date','Fornyelsesdato'),('next_review','Næste statusmøde')] %}
+                    <label class="fm-field">
+                        <span>{{ label }}</span>
+                        <input class="fm-input"
+                               type="date"
+                               name="{{ key }}"
+                               value="{{ account.get(key,'') or '' }}">
+                    </label>
+                {% endfor %}
+            </div>
+            <label class="fm-field">
+                <span>Fase</span>
+                <select class="fm-select" name="stage">
+                    {% for key,label in [('onboarding','Opsætning'),('pilot','Pilot'),('active','Aktiv kunde'),('renewal','Fornyelse'),('paused','På pause')] %}
+                        <option value="{{ key }}" {% if account.stage==key %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            {% for key,label in [('included_services','Aftalt indhold og AI-forbrug (synligt for kunden)'),('success_criteria','Målbare succeskriterier (synligt for kunden)'),('notes','Interne noter og næste handling')] %}
+                <label class="fm-field">
+                    <span>{{ label }}</span>
+                    <textarea class="fm-input"
+                              name="{{ key }}"
+                              maxlength="4000">{{ account.get(key,'') or '' }}</textarea>
+                </label>
+            {% endfor %}
+            <button class="btn btn-primary">Gem kundeforløb</button>
+        </form>
+        <h2>Faktiske milepæle</h2>
+        {% for c in readiness.checks %}
+            <p>{{ '✓' if c.done else '○' }} {{ c.label }}: {{ c.detail }}</p>
+        {% endfor %}
+        <h2>Henvendelser</h2>
+        {% for r in requests %}
+            <article class="fm-card" style="padding:20px;margin-bottom:12px">
+                <p>{{ r.kind }}{% if r.quantity %} · {{ r.quantity }}{% endif %} · {{ r.created_at }}</p>
+                <p>{{ r.note }}</p>
+                <form method="post">
+                    <input type="hidden" name="action" value="resolve">
+                    <input type="hidden" name="request_id" value="{{ r.id }}">
+                    <label class="fm-field">
+                        <span>Status</span>
+                        <select class="fm-select" name="status">
+                            {% for key,label in [('open','Åben'),('in_progress','Under behandling'),('resolved','Besvaret')] %}
+                                <option value="{{ key }}" {% if r.status==key %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="fm-field">
+                        <span>Svar til kunden</span>
+                        <textarea class="fm-input"
+                                  name="resolution"
+                                  maxlength="4000">{{ r.resolution or '' }}</textarea>
+                    </label>
+                    <button class="btn btn-primary">Gem svar</button>
+                </form>
+            </article>
+        {% else %}
+            <p>Ingen henvendelser endnu.</p>
+        {% endfor %}
+    </div>
+{% endblock %}

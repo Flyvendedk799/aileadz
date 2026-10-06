@@ -310,6 +310,18 @@ def create_app():
     app.register_blueprint(multitenant_reports_bp, url_prefix='/multitenant-reports')
     app.register_blueprint(futurematch_bp)
 
+    try:
+        from learning_routes import learning_bp
+        app.register_blueprint(learning_bp)
+        from fulfillment_routes import fulfillment_bp
+        app.register_blueprint(fulfillment_bp)
+        from delivery_routes import mail_bp
+        app.register_blueprint(mail_bp)
+        from customer_routes import customer_bp
+        app.register_blueprint(customer_bp)
+    except Exception as exc:
+        app.logger.warning('Learning workflows unavailable: %s', exc)
+
     from bulk_invite import bulk_invite_bp
     app.register_blueprint(bulk_invite_bp)
 

@@ -46,14 +46,19 @@ def edit_product(handle):
             catalog.reset_product_edits(handle)
             flash("Ændringerne er fjernet. Kurset viser nu kildedata.", "success")
         else:
-            catalog.update_product(handle, {
-                "title": request.form.get("title", ""), "summary": request.form.get("summary", ""),
-                "vendor": request.form.get("vendor", ""), "tags": request.form.get("tags", ""),
-                "image_url": request.form.get("image_url", ""),
-            }, actor=session.get("user", ""))
+            try:
+                fields={"title":request.form.get('title',''),"summary":request.form.get('summary',''),
+                        "vendor":request.form.get('vendor',''),"tags":request.form.get('tags',''),"image_url":request.form.get('image_url','')}
+                if request.form.get('sessions_editor'):
+                    fields.update(catalog.session_fields_from_form(request.form))
+                    if not request.form.get('revision'):raise ValueError('Genindlæs siden før du gemmer hold.')
+                catalog.update_product(handle,fields,actor=session.get('user',''),expected_revision=request.form.get('revision'))
+            except (ValueError,TimeoutError) as exc:
+                flash(str(exc) if isinstance(exc,ValueError) else 'Kataloget er optaget. Prøv igen om lidt.','warning')
+                return render_template('fm/admin_catalog_product_edit.html',product=product,**catalog.session_editor_context(product,request.form)),400
             flash("Kurset er opdateret.", "success")
         return redirect(url_for("catalog_admin.edit_product", handle=handle))
-    return render_template("fm/admin_catalog_product_edit.html", product=product)
+    return render_template("fm/admin_catalog_product_edit.html", product=product, **catalog.session_editor_context(product))
 
 
 @catalog_admin_bp.route("/products/<handle>/status", methods=["POST"])

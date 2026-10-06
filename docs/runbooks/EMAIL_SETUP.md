@@ -48,9 +48,12 @@ Redeploy / restart both services after changing the variables.
 2. Use "Send test-mail" on that page (`POST /admin/system-health/test-email`,
    `email_service.send_test_email`). It reports the SMTP error text on failure and logs
    `test` rows in `email_log`.
-3. Trigger a real mail (place a test order, or add a test employee) and confirm the
-   `email_log` row is `sent`. `error` means wrong host/credentials/TLS mode; fix and retry.
-4. Before setup you should see `skipped_no_backend` rows: that confirms the gate works.
+3. Place a test order, run the worker and inspect `/hr/leveringer`. The queue must
+   move to `sent`; verify actual receipt separately. Failed/uncertain deliveries
+   have explicit recovery actions (see [LAUNCH_WORKFLOWS.md](LAUNCH_WORKFLOWS.md)).
+4. Before SMTP setup, queued business messages remain pending and later failed
+   after bounded attempts. Existing direct-send helpers, such as welcome/reset
+   mail, still log `skipped_no_backend`; check that path separately.
 
 ## Done criteria
 

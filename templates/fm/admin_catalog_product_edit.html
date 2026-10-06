@@ -16,6 +16,7 @@
         <label style="display:grid;gap:4px;font-size:13px">Kort beskrivelse<textarea class="fm-input" name="summary" rows="4">{{ product.summary }}</textarea></label>
         <label style="display:grid;gap:4px;font-size:13px">Emner (kommasepareret)<input class="fm-input" name="tags" value="{{ product.tags|join(', ') }}"></label>
         <label style="display:grid;gap:4px;font-size:13px">Billede-URL<input class="fm-input" name="image_url" value="{{ product.image_url or '' }}"></label>
+        {% include "fm/_session_editor.html" %}
         <div class="fm-flex fm-gap8" style="flex-wrap:wrap">
           <button class="btn btn-primary btn-sm" type="submit"><i class="fa-solid fa-floppy-disk"></i> Gem</button>
           {% if product.edited %}<button class="btn btn-ghost btn-sm" name="reset" value="1" type="submit"><i class="fa-solid fa-rotate-left"></i> Fjern mine ændringer</button>{% endif %}

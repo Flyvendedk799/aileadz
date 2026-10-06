@@ -51,6 +51,8 @@ stamps the outcome and returns `{'ran', 'skipped', 'errors', 'results'}`. It nev
 
 | job | interval | what it does |
 |---|---|---|
+| `mail_delivery` | 60 s | durable order/report/customer mail with bounded retries and explicit ambiguous-outcome recovery. |
+| `launch_followup` | 24 h | stalled booking/change requests and approaching account review, pilot or renewal dates. |
 | `outbox_drain` | 120 s | `event_bus.drain_outbox()`: deliver pending integration events (webhooks). |
 | `ops_alerts` | 15 min | `observability.check_ops_alerts`: alert platform admins on failing e-mails / webhooks. |
 | `daily_company_insights` | 24 h | per active company: `insights_engine.generate_company_insights`. |

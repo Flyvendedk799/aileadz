@@ -561,6 +561,15 @@ def request_product(handle):
         variant_index = 0
     variants = product.get("variants") or []
     variant = variants[variant_index] if 0 <= variant_index < len(variants) else {}
+    selected_session = request.form.get('session_id')
+    if selected_session:
+        variant = next((v for v in variants if v.get('session_id') == selected_session), None)
+        if variant is None:
+            flash('Holdet er ændret. Vælg dato og sted igen.', 'warning')
+            return redirect(url_for('catalog.product_detail', handle=handle))
+    elif variants and not (0 <= variant_index < len(variants)):
+        flash('Vælg et gyldigt hold.', 'warning')
+        return redirect(url_for('catalog.product_detail', handle=handle))
     # The UI disables sold-out dates; re-check server side (never trust the post).
     if variant.get("seats") is not None and int(variant.get("seats")) <= 0:
         flash("Det valgte hold er udsolgt. Vælg en anden dato.", "warning")
@@ -587,6 +596,8 @@ def request_product(handle):
         "date": variant.get("date", ""),
         "location": variant.get("location") or variant.get("city") or "",
         "notes": notes,
+        "session_id": selected_session,
+        "expected_price": request.form.get("expected_price") or None,
     }
     user_info = {"name": name, "email": email, "phone": phone}
 

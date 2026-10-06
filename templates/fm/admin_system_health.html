@@ -6,6 +6,7 @@
 {% block topbar_sub %}Sundhedstilstand for valgfrie undersystemer, leveringskø for events og et øjebliksbillede af platformen.{% endblock %}
 
 {% block content %}
+<div class="fm-wrap"><a class="btn btn-ghost" href="{{ url_for('mail_delivery.deliveries') }}">Mailstatus og genafsendelse</a></div>
 <div class="fm-wrap">
 
   {# --- Normalise inputs defensively (tool outputs may be empty / hold 'error') --- #}

@@ -608,7 +608,11 @@ def admin_catalog_import_preview(job_id):
 @admin_dashboard_bp.route('/catalog/import/<job_id>/confirm', methods=['POST'])
 @require_role('admin')
 def admin_catalog_import_confirm(job_id):
-    draft = catalog.confirm_import_draft(job_id)
+    try:
+        draft = catalog.confirm_import_draft(job_id)
+    except (ValueError,TimeoutError) as exc:
+        flash(str(exc) if isinstance(exc,ValueError) else 'Kataloget er optaget. Prøv igen om lidt.','warning')
+        return redirect(url_for('admin_dashboard.admin_catalog_import_preview',job_id=job_id))
     if not draft:
         flash("Importkladde ikke fundet.", "warning")
     else:

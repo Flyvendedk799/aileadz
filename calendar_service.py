@@ -17,6 +17,7 @@ Public API:
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+import re
 
 __all__ = ["build_ics", "build_ics_feed", "parse_danish_date"]
 
@@ -71,6 +72,9 @@ def parse_danish_date(s):
             except (ValueError, TypeError):
                 pass
 
+        # In a same-month range the second day is not a two-digit year.
+        # Preserve the first day and the explicit month/year for expiry checks.
+        raw = re.sub(r"^(\d{1,2})\.?\s*[-–]\s*\d{1,2}\.?\s+(?=[A-Za-zæøåÆØÅ])", r"\1 ", raw)
         # Tokenise prose / numeric Danish forms.
         cleaned = (
             raw.lower()

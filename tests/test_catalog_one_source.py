@@ -212,11 +212,11 @@ class VariantPricingTests(unittest.TestCase):
         self.assertEqual(tools._pick_variant(product, "", ""), (None, True))
         self.assertEqual(tools._pick_variant(product, "c", "")[1], True)    # asked for a session that does not exist
 
-    def test_same_price_everywhere_needs_no_question(self):
+    def test_equal_prices_still_require_the_actual_date_and_venue(self):
         from app1 import tools
         product = self._product([{"date": "a", "price": 3.0}, {"date": "b", "price": 3.0}])
         v, amb = tools._pick_variant(product, "", "")
-        self.assertEqual((v["price"], amb), (3.0, False))
+        self.assertEqual((v, amb), (None, True))
 
 
 class VendorProfileTests(unittest.TestCase):

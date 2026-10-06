@@ -1,0 +1,66 @@
+{% extends "fm_base.html" %}
+{% block title %}Jeres kundeforløb{% endblock %}
+{% block topbar_title %}Jeres aftale og kontakt{% endblock %}
+{% block content %}
+    <div class="fm-wrap">
+        <h1>{{ company.company_name }}</h1>
+        <a class="btn btn-ghost"
+           href="{{ url_for('customer_success.readiness') }}">Se opsætning og pilotfremskridt</a>
+        <section class="fm-card" style="padding:22px;margin:16px 0">
+            <h2>{{ account.offer_name or 'Jeres aftale' }}</h2>
+            <p>{{ account.included_services or 'Aftal omfang og indhold med jeres kundeansvarlige.' }}</p>
+            <p>{{ company.max_employees or '—' }} pladser · {{ company.subscription_plan }}</p>
+            <p>
+                Kundeansvarlig: {{ account.account_owner or 'Futurematch-teamet' }} · <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>
+            </p>
+            {% if account.pilot_end %}
+                <p>Pilot slutter: {{ account.pilot_end }}</p>
+            {% endif %}
+            {% if account.renewal_date %}
+                <p>Fornyelse: {{ account.renewal_date }}</p>
+            {% endif %}
+            {% if account.next_review %}
+                <p>Næste statusmøde: {{ account.next_review }}</p>
+            {% endif %}
+            <h3>Sådan vurderer vi pilotens resultat</h3>
+            <p>{{ account.success_criteria or 'Aftal konkrete succeskriterier før pilotstart.' }}</p>
+        </section>
+        <form method="post" class="fm-card" style="padding:22px">
+            <h2>Send en henvendelse</h2>
+            <label class="fm-field">
+                <span>Hvad har I brug for?</span>
+                <select class="fm-select" name="kind">
+                    <option value="support">Hjælp eller opfølgning</option>
+                    <option value="seats">Flere pladser</option>
+                    <option value="credits">AI-kreditter</option>
+                    <option value="renewal">Fornyelse eller ændret aftale</option>
+                </select>
+            </label>
+            <label class="fm-field">
+                <span>Ønsket antal (valgfrit)</span>
+                <input class="fm-input" type="number" name="quantity" min="1" max="1000000">
+            </label>
+            <label class="fm-field">
+                <span>Besked</span>
+                <textarea class="fm-input" name="note" required maxlength="4000">
+</textarea>
+            </label>
+            <p>Dette er en forespørgsel. Ingen betaling eller abonnementsændring sker automatisk.</p>
+            <button class="btn btn-primary">Send til jeres kundeansvarlige</button>
+        </form>
+        <h2>Tidligere henvendelser</h2>
+        {% for r in requests %}
+            <article class="fm-card" style="padding:18px;margin-bottom:12px">
+                <p>{{ {'open':'Modtaget','in_progress':'Under behandling','resolved':'Besvaret'}.get(r.status,r.status) }} · {{ r.created_at }}</p>
+                <p>{{ r.note }}</p>
+                {% if r.resolution %}
+                    <p>
+                        <strong>Svar:</strong> {{ r.resolution }}
+                    </p>
+                {% endif %}
+            </article>
+        {% else %}
+            <p>Ingen henvendelser endnu.</p>
+        {% endfor %}
+    </div>
+{% endblock %}

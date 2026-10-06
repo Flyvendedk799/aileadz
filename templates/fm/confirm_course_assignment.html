@@ -1,0 +1,35 @@
+{% extends "fm_base.html" %}
+{% block title %}Bekræft kursustildeling{% endblock %}
+{% block topbar_title %}Gennemse bestillingen{% endblock %}
+{% block content %}
+    <div class="fm-wrap">
+        <article class="fm-card" style="padding:24px;max-width:760px">
+            <h1>{{ quote.product_title }}</h1>
+            <p>{{ quote.variant_date or 'Dato aftales med HR eller udbyderen' }} · {{ quote.variant_location or 'Sted aftales' }}</p>
+            <p>
+                {{ quote.price }} kr. pr. deltager · {{ people|length }} deltagere · <strong>{{ (quote.price * (people|length))|round(2) }} kr. i alt</strong>
+            </p>
+            {% if quote.agreement_reference %}
+                <p>Aftale: {{ quote.agreement_reference }}</p>
+            {% endif %}
+            <ul>
+                {% for person in people %}
+                    <li>{{ person.name }}</li>
+                {% endfor %}
+            </ul>
+            <p>Hver bestilling følger virksomhedens godkendelses- og budgetregler. Pladserne er først booket, når udbyderen eller HR har bekræftet dem.</p>
+            <form method="post">
+                <input type="hidden" name="handle" value="{{ quote.product_handle }}">
+                <input type="hidden" name="confirm" value="yes">
+                <input type="hidden" name="session_id" value="{{ quote.session_id or '' }}">
+                <input type="hidden" name="expected_price" value="{{ quote.price }}">
+                {% for person in people %}
+                    <input type="hidden" name="employee_ids" value="{{ person.user_id }}">
+                {% endfor %}
+                <button class="btn btn-primary">Bekræft og opret bestillinger</button>
+                <a class="btn btn-ghost"
+                   href="{{ url_for('course_assign.assign_course',course=quote.product_handle) }}">Ret deltagere eller hold</a>
+            </form>
+        </article>
+    </div>
+{% endblock %}

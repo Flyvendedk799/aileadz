@@ -23,6 +23,7 @@ and 301-redirects `www.<host>` to `<host>` (`CANONICAL_WWW_REDIRECT=0` disables)
 |---|---|
 | [SECRET_ROTATION.md](SECRET_ROTATION.md) | Rotate `SECRET_KEY`, DB password, API keys, Fernet keys. |
 | [GIT_HISTORY_PURGE.md](GIT_HISTORY_PURGE.md) | Scrub old leaked secrets from git history. Not done yet. **Owner go-ahead required**; rewrites history. |
+| [LAUNCH_WORKFLOWS.md](LAUNCH_WORKFLOWS.md) | deploy and verify assignments, bookings, delivery recovery and customer handover |
 | [JOB_RUNNER.md](JOB_RUNNER.md) | The worker service, the job registry, `SCHEDULER_OPPORTUNISTIC`. |
 | [EMAIL_SETUP.md](EMAIL_SETUP.md) | Configure SMTP so branded order/welcome/reset mails actually send. |
 | [CATALOG_REBUILD.md](CATALOG_REBUILD.md) | Catalog source, search index and embeddings; the offline `app1/build_index.py`. |

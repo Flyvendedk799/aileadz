@@ -10,7 +10,6 @@ approved at once and charged to each person's department budget), all sharing on
 from __future__ import annotations
 
 import logging
-import uuid
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
 
@@ -37,12 +36,12 @@ def assign_course():
     if not _allowed():
         flash("Kun HR kan tildele kurser til hold.", "warning")
         return redirect(url_for("futurematch.employee_home"))
-    import catalog_service as catalog
+    import enrollment_service as catalog
     company_id = session["company_id"]
 
     if request.method == "POST":
         handle = request.form.get("handle", "")
-        product = catalog.get_product(handle)
+        product = catalog.get_course(handle, company_id)
         if not product:
             flash("Kurset blev ikke fundet i kataloget.", "danger")
             return redirect(url_for("hr_dashboard.dashboard"))
@@ -61,43 +60,38 @@ def assign_course():
             vi = -1
         variants = product.get("variants") or []
         variant = variants[vi] if 0 <= vi < len(variants) else (variants[0] if len(variants) == 1 else {})
-        price = variant.get("price") if variant.get("price") is not None else (product.get("price_min") or 0)
 
-        from order_service import OrderContext, create_order
+        from order_service import OrderContext
+        from enrollment_service import session_key
+        from learning_path_service import assign_course_to_people
         cur = _cur()
         try:
-            cur.execute(
-                "SELECT cu.user_id AS user_id, COALESCE(u.username, cu.username) AS username, cu.full_name AS full_name, "
-                "COALESCE(cu.email, u.email) AS email, cu.department AS department FROM company_users cu "
-                "LEFT JOIN users u ON u.id = cu.user_id WHERE cu.company_id = %s AND cu.status = 'active' "
-                "AND cu.user_id IN (" + ",".join(["%s"] * len(ids)) + ")", tuple([company_id] + ids))
-            people = list(cur.fetchall() or [])
+            selected_session = request.form.get('session_id') or (session_key(variant) if variant else None)
+            if request.form.get('confirm') != 'yes':
+                placeholders = ','.join(['%s']*len(ids))
+                cur.execute('SELECT cu.user_id,COALESCE(cu.full_name,u.username) AS name FROM company_users cu JOIN users u ON u.id=cu.user_id WHERE cu.company_id=%s AND cu.status=%s AND cu.user_id IN ('+placeholders+')',tuple([company_id,'active']+ids))
+                people = list(cur.fetchall() or [])
+                if not people:
+                    flash('Vælg aktive medarbejdere i virksomheden.','warning')
+                    return redirect(url_for('course_assign.assign_course',course=handle))
+                try:
+                    quote = catalog.quote_course(handle,company_id,session_id=selected_session,participants=len(people))
+                except ValueError as exc:
+                    flash(str(exc),'warning')
+                    return redirect(url_for('course_assign.assign_course',course=handle))
+                return render_template('fm/confirm_course_assignment.html',quote=quote,people=people)
+            result = assign_course_to_people(cur, OrderContext.from_session(source='hr_assign_course'), company_id,
+                                             handle, ids, session_id=selected_session, expected_price=request.form.get('expected_price'))
+            current_app.mysql.connection.commit()
         finally:
             cur.close()
-        actor = OrderContext.from_session(source="hr_assign_course")
-        group_id = uuid.uuid4().hex
-        created = failed = 0
-        for p in people:
-            ctx = OrderContext(company_id=company_id, user_id=p["user_id"], username=p["username"],
-                               company_role=actor.company_role or "hr_manager",
-                               department=p.get("department") or "", source="hr_assign_course",
-                               is_platform_admin=actor.is_platform_admin, actor_label=actor.username)
-            res = create_order(
-                ctx, product_handle=handle, product_title=product["title"], price=price,
-                variant_date=variant.get("date", ""), variant_location=variant.get("location", ""),
-                user_email=p.get("email") or "", user_name=p.get("full_name") or p["username"],
-                extra={"group_order_id": group_id, "department": p.get("department") or "",
-                       "notes": f"Tildelt af {actor.username} (HR)"})
-            if res.get("success"):
-                created += 1
-            else:
-                failed += 1
+        created, failed = result['orders'], result['order_failures']
         flash(f"{created} ordre(r) oprettet til '{product['title']}'."
-              + (f" {failed} kunne ikke oprettes." if failed else ""), "success" if created else "danger")
+              + (f" {failed} kunne ikke oprettes. " + (result.get("message") or "") if failed else ""), "success" if created else "danger")
         return redirect(url_for("hr_dashboard.pending_approvals"))
 
     handle = request.args.get("course", "")
-    product = catalog.get_product(handle) if handle else None
+    product = catalog.get_course(handle, company_id) if handle else None
     pre = set()
     for v in (request.args.get("users") or "").split(","):
         if v.strip().isdigit():

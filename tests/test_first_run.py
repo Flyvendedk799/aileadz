@@ -129,8 +129,8 @@ class HrOnboardingTests(unittest.TestCase):
         import jinja2, os as _os
         env = jinja2.Environment(loader=jinja2.FileSystemLoader(_os.path.join(_os.path.dirname(__file__), "..", "templates")))
         src = env.loader.get_source(env, "fm/hr.html")[0]
-        self.assertIn("Kom godt i gang", src)
-        self.assertIn("not onboarding_dismissed", src)
+        self.assertIn("Åbn jeres opstartsforløb", src)
+        self.assertIn("customer_success.readiness", src)
 
 
 if __name__ == "__main__":

@@ -138,6 +138,10 @@ class SendDeadlineRemindersTests(unittest.TestCase):
 
 
 class CreateOrderForEmployeeTests(unittest.TestCase):
+    def setUp(self):
+        patcher=mock.patch('enrollment_service.quote_course',return_value={'product_handle':'h','product_title':'Lederkursus','price':8000,'session_id':None,'variant_date':'','variant_location':''})
+        patcher.start();self.addCleanup(patcher.stop)
+
     EMP = {"user_id": 11, "full_name": "Eva", "email": "eva@x.dk"}
 
     def test_cross_tenant_employee_rejected(self):

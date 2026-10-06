@@ -151,7 +151,7 @@ class TeamOrderFlowTests(Base):
             out = json.loads(tools._execute_create_order(
                 {"product_handle": "prince2", "participants": ["Bo Jensen"], "confirm": True}, "hr"))
         self.assertEqual(out["created"], 1)
-        self.assertEqual(self.db.one("SELECT status FROM course_orders")["status"], "pending_approval")
+        self.assertEqual(self.db.one("SELECT status FROM course_orders")["status"], "approved")   # assigned by HR
 
     def test_hr_bulk_assign_hands_the_request_to_hr_with_a_prefilled_link(self):
         self.policy(tp.HR_BULK)

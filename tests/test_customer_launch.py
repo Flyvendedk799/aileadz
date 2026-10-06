@@ -182,4 +182,4 @@ class CustomerLaunchTests(unittest.TestCase):
             )
         self.assertTrue(result["success"], result)
         row = self.db.one("SELECT * FROM course_orders")
-        self.assertEqual((row["user_id"], row["status"]), (1, "pending_approval"))
+        self.assertEqual((row["user_id"], row["status"]), (1, "approved"))   # assigned by HR = approved

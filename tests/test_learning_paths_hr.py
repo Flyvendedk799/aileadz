@@ -66,13 +66,14 @@ class PathTests(unittest.TestCase):
     def test_cannot_edit_another_companys_path(self):
         self.assertFalse(lps.save_steps(self.cur, 7, 2, [{"title": "x"}])["success"])
 
-    def test_assigning_a_path_orders_its_paid_steps_through_approval_and_budget(self):
+    def test_assigning_a_path_orders_its_paid_steps_approved_and_charges_the_budget(self):
         lps.save_steps(self.cur, 7, 1, [{"course_handle": "prince2"}, {"title": "Guidance"}])
         out = lps.assign_path(self.cur, self.hr, 7, 1, [1, 2, 9], due_date="2026-12-01", sender_id=3)
         self.assertEqual((out["assigned"], out["orders"], out["skipped"]), (2, 2, 1))      # user 9 is another company
         orders = self.db.query("SELECT user_id, status, request_notes FROM course_orders ORDER BY user_id")
-        self.assertEqual([o["status"] for o in orders], ["pending_approval", "pending_approval"])
-        self.assertIn("Tildelt af HR", orders[0]["request_notes"])
+        self.assertEqual([o["status"] for o in orders], ["approved", "approved"])       # assigned by HR = approved
+        self.assertIn("Tildelt af", orders[0]["request_notes"])
+        self.assertEqual(self.db.one("SELECT COUNT(*) AS c FROM order_approvals WHERE status='pending'")["c"], 0)
         self.assertEqual(self.db.one("SELECT completion_deadline FROM course_orders WHERE user_id=1")["completion_deadline"].strftime("%Y-%m-%d"), "2026-12-01")
         note = self.db.one("SELECT action_url FROM notifications WHERE user_id='ada' AND kind='assignment'")
         self.assertTrue(note["action_url"].startswith("/min-laering/forloeb/"))

@@ -105,7 +105,9 @@
         </div>
 
         <div class="tl-meta">
-          {% if it.created_at %}
+          {% if it.assigned_by %}
+          <span><i class="fa-solid fa-user-tie"></i> Tildelt af {{ it.assigned_by }}{% if it.assigned_approved %} · godkendt{% endif %}</span>
+          {% elif it.created_at %}
           <span><i class="fa-solid fa-calendar-plus"></i> Bestilt {{ it.created_at.strftime('%d.%m.%Y') }}</span>
           {% endif %}
           {% if it.deadline %}

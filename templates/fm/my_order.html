@@ -46,6 +46,7 @@
             {% endif %}
           </div>
           <p class="mo-hint">{{ status_hint }}</p>
+          {% if assignment %}<p class="mo-hint" style="margin-top:4px"><i class="fa-solid fa-user-tie"></i> Tildelt af {{ assignment.assigned_by }}{% if assignment.approved %} · godkendt{% endif %}</p>{% endif %}
           {% if completion_reported %}
           <div class="mo-pending" role="status" style="margin-top:12px;padding:10px 12px;border:1px solid var(--fm-line);border-radius:10px;background:var(--fm-surface);font-size:13.5px">
             <span class="fm-badge teal"><i class="fa-solid fa-hourglass-half"></i> Deltagelse indsendt – afventer bekræftelse</span>

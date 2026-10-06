@@ -3,7 +3,7 @@
 Orders the course a compliance requirement names for every employee it applies to
 who has neither completed nor already requested it. Orders are created through
 ``order_service.create_order`` with ``assign_to`` so they follow the ONE lifecycle
-(pending_approval, budget checks, notifications) and are marked "Tildelt af HR".
+(pre-approved when a manager assigns, budget checks, notifications) and are marked "Tildelt af ...".
 """
 
 from __future__ import annotations
@@ -91,7 +91,7 @@ def assign_required_course(cur, ctx, company_id, requirement_id, *, create=None)
             skipped += 1
         else:
             failed += 1
-    msg = "%d bestillinger oprettet til godkendelse" % created
+    msg = "%d bestillinger oprettet og godkendt" % created
     if skipped:
         msg += ", %d havde allerede kurset" % skipped
     if failed:

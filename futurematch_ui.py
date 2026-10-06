@@ -671,6 +671,7 @@ for _legacy, _canon in _lc.LEGACY_ALIASES.items():
 
 # Coarse state buckets used by the timeline UI for grouping/colouring.
 _ORDER_STATE = dict(_lc.LEARNER_BUCKETS)
+_ASSIGNMENT_APPROVAL_NOTE = _lc.ASSIGNMENT_APPROVAL_NOTE
 for _legacy, _canon in _lc.LEGACY_ALIASES.items():
     _ORDER_STATE[_legacy] = _lc.LEARNER_BUCKETS[_canon]
 
@@ -715,9 +716,14 @@ def timeline():
                 SELECT co.order_id, co.product_title, co.price, co.status,
                        co.created_at, co.completion_deadline, co.completion_date,
                        co.completion_status, co.variant_date, co.variant_location,
-                       oa.status AS approval_status, oa.decided_at AS approval_decided_at
+                       co.request_notes,
+                       oa.status AS approval_status, oa.decided_at AS approval_decided_at,
+                       oa.notes AS approval_notes,
+                       COALESCE(NULLIF(TRIM(acu.full_name), ''), au.username) AS approver_name
                 FROM course_orders co
                 LEFT JOIN order_approvals oa ON oa.order_id = co.order_id
+                LEFT JOIN users au ON au.id = oa.approver_user_id
+                LEFT JOIN company_users acu ON acu.user_id = oa.approver_user_id AND acu.company_id = co.company_id
                 WHERE (co.username = %s OR (co.user_id IS NOT NULL AND co.user_id = %s))
                 ORDER BY co.created_at DESC
                 """,
@@ -766,6 +772,11 @@ def timeline():
                         _lc.approval_label(r.get('approval_status')) or None
                     ) if raw_status == _lc.PENDING_APPROVAL else None,
                     'change_pending': r.get('order_id') in pending_changes,
+                    # "Tildelt af {navn} · godkendt": assigned by HR/a manager (approved at assignment).
+                    'assigned_by': (r.get('approver_name') if r.get('approval_notes') == _ASSIGNMENT_APPROVAL_NOTE
+                                    else ((r.get('request_notes') or '')[len('Tildelt af '):].strip()
+                                          if (r.get('request_notes') or '').startswith('Tildelt af ') else None)),
+                    'assigned_approved': r.get('approval_notes') == _ASSIGNMENT_APPROVAL_NOTE,
                     'deadline': deadline,
                     'completion_date': completion_date,
                     'overdue': overdue,

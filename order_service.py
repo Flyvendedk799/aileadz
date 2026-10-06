@@ -230,6 +230,26 @@ def _notify_company_admins_safe(cur, company_id, title, message, is_urgent=0,
         logger.debug("order_service: company notification skipped: %s", e)
 
 
+def _notify_assignee_safe(cur, ctx, actor_ctx, order_id, product_title, assigner_name, *, approved):
+    """The one in-app card the learner gets for an assigned course. Never raises."""
+    try:
+        from notification_service import notify_user
+        notify_user(
+            cur, user_id=ctx.user_id, username=ctx.username, company_id=ctx.company_id,
+            kind="assignment", sender_user_id=actor_ctx.user_id,
+            title=("Du er tildelt %s" % product_title)[:255],
+            message=("%s har tildelt dig kurset. Det er godkendt, og HR eller udbyderen bekræfter din plads."
+                     % (assigner_name or "HR")) if approved else
+                    ("%s har tildelt dig kurset. Bestillingen afventer godkendelse, fordi afdelingens budget ikke rækker."
+                     % (assigner_name or "HR")),
+            action_url=order_url(order_id, absolute=False),
+            dedupe_key="assigned:%s" % order_id, dedupe_hours=None,
+        )
+    except Exception as e:  # pragma: no cover - defensive
+        propagate_transaction_abort(e)
+        logger.debug("order_service: assignee notification skipped: %s", e)
+
+
 # ---------------------------------------------------------------------------
 # Roles considered "manager-level" — these can view/manage company orders and
 # do NOT need approval for their own orders. Everyone else (employee / unknown)
@@ -601,6 +621,9 @@ def _ownership_ok(ctx, order_row):
 # ---------------------------------------------------------------------------
 ORDER_DETAIL_URL = "/min-ordre/%s"
 
+# ``order_approvals.notes`` of an order a manager assigned (approved at assignment).
+ASSIGNMENT_APPROVAL_NOTE = lc.ASSIGNMENT_APPROVAL_NOTE
+
 
 def order_url(order_id, absolute=True):
     path = ORDER_DETAIL_URL % order_id
@@ -732,12 +755,21 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
     price_f = _to_float(price)
     order_id = str(uuid.uuid4())
 
-    # HR assigns a course to an employee (compliance, learning paths): the order
-    # is placed as that employee and follows the normal approval + budget rules,
-    # with a visible "Tildelt af HR" note (N-4.3/N-4.4).
+    # HR or a manager assigns a course to an employee (compliance, learning paths,
+    # team orders): the order is placed as that employee. Assigned by a signed-in
+    # manager = approved at once (nobody approves their own assignment); the budget
+    # is still charged and the assigner is recorded as the approver. The budget
+    # overspend rule below can still route an assignment to approval. API keys and
+    # system jobs carry no user id, so they never pre-approve.
     assign = extra.get("assign_to")
+    pre_approved_by = None
+    assigner_ctx = None
     if assign:
+        assigner_ctx = acting_ctx
         assigner = ctx.actor_label or ctx.username or "HR"
+        if (acting_ctx.actor_kind == "user" and acting_ctx.is_manager and acting_ctx.user_id
+                and acting_ctx.company_id):
+            pre_approved_by = acting_ctx.user_id
         ctx = OrderContext(company_id=ctx.company_id, user_id=assign.get("user_id"),
                            username=assign.get("username"), company_role="employee",
                            department=assign.get("department"), source=ctx.source,
@@ -745,7 +777,6 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
         user_email = user_email or assign.get("email") or ""
         user_name = user_name or assign.get("name") or assign.get("username") or ""
         extra = dict(extra)
-        extra.setdefault("notes", "Tildelt af HR (%s)" % assigner)
 
     conn = _get_connection()
     if conn is None:
@@ -758,6 +789,14 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
     cur = None
     try:
         cur = _dict_cursor(conn)
+
+        assigner_name = None
+        if assigner_ctx is not None:
+            from person_names import display_name
+            assigner_name = display_name(cur, assigner_ctx.company_id, user_id=assigner_ctx.user_id,
+                                         username=assigner_ctx.username,
+                                         default=assigner_ctx.actor_label or "HR")
+            extra.setdefault("notes", "Tildelt af %s" % assigner_name)
 
         assignment_step = extra.get('assignment_step_id')
         if assignment_step:
@@ -807,6 +846,9 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
         # Employees (or unknown role) with a company need approval; managers/
         # admins and non-company (anonymous) orders do not.
         needs_approval = bool(ctx.company_id) and ctx.is_employee
+        pre_approved = bool(pre_approved_by) and needs_approval
+        if pre_approved:
+            needs_approval = False
 
         dept = ctx.department or extra.get("department") or ""
 
@@ -818,7 +860,7 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
         # overspend safety rule below can still RE-force approval even when a
         # policy auto-approved — safety first, it only ever tightens.
         auto_approved_by_policy = False
-        if ctx.company_id and price_f > 0:
+        if ctx.company_id and price_f > 0 and not pre_approved:
             policy = _resolve_approval_policy(cur, ctx.company_id, dept)
             if policy:
                 require_over = policy.get("require_approval_over")
@@ -859,6 +901,7 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
                     # layer granted above (safety first).
                     needs_approval = True
                     auto_approved_by_policy = False
+                    pre_approved = False
                     budget_warning = (
                         f"Bestillingen på {price_f:.0f} kr. overskrider afdelingens "
                         f"resterende budget på {remaining:.0f} kr. "
@@ -914,6 +957,16 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
             ),
         )
 
+        if pre_approved:
+            # Assigned by a manager = approved at assignment. Record who approved so the
+            # order page can say so; no pending approval row is ever created.
+            cur.execute("UPDATE course_orders SET approved_by = %s WHERE order_id = %s", (pre_approved_by, order_id))
+            cur.execute(
+                "INSERT INTO order_approvals (order_id, company_id, requester_user_id, approver_user_id, "
+                "status, notes, decided_at) VALUES (%s, %s, %s, %s, 'approved', %s, NOW())",
+                (order_id, ctx.company_id, ctx.user_id, pre_approved_by, ASSIGNMENT_APPROVAL_NOTE),
+            )
+
         if extra.get("quote"):
             import json
             quote = extra["quote"]
@@ -955,7 +1008,10 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
         # --- 6. history + audit -------------------------------------------
         _new_row = {"order_id": order_id, "company_id": ctx.company_id}
         _record_history(cur, _new_row, kind="status", from_value=None, to_value=initial_status,
-                        ctx=acting_ctx, note="Auto-godkendt via politik" if auto_approved_by_policy else None)
+                        ctx=acting_ctx,
+                        note=("Tildelt af %s · godkendt ved tildeling" % assigner_name if pre_approved
+                              else "Tildelt af %s" % assigner_name if assigner_name
+                              else "Auto-godkendt via politik" if auto_approved_by_policy else None))
         _audit_desc = f"{product_title} ({ctx.source})"
         if auto_approved_by_policy:
             _audit_desc += " [auto-godkendt via politik]"
@@ -980,6 +1036,12 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
                 action_url="/hr/approvals",
                 dedupe_key="approval-needed:%s" % order_id,
             )
+
+        # The assigned learner hears about it once, in the app ("Du er tildelt ..."). Path
+        # steps are announced by the path's own notification instead.
+        if assigner_ctx is not None and not assignment_step and ctx.user_id:
+            _notify_assignee_safe(cur, ctx, acting_ctx, order_id, product_title, assigner_name,
+                                  approved=not needs_approval)
 
         if user_email:
             # ONE confirmation email (order_handler no longer sends its own).
@@ -1053,6 +1115,7 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
             "auto_approved": auto_approved_by_policy,
             "budget_warning": budget_warning,
             "budget_charged": bool(budget_charged),
+            "pre_approved": bool(pre_approved),
             "price": price_f,
             "vendor_id": vendor_id,
             "next_step": _next_step_message(initial_status, needs_approval),
@@ -1124,6 +1187,45 @@ def get_order(ctx, order_id):
                 cur.close()
         except Exception:
             pass
+
+
+def assignment_info(order_row):
+    """Who assigned this order, or None when the learner ordered it themselves.
+
+    ``{"assigned_by": name, "approved": bool}``: ``approved`` is true when a manager
+    approved it by assigning it ("Godkendt ved tildeling"); an assignment that the budget
+    rule sent to approval is still an assignment but not approved yet. Never raises."""
+    if not order_row:
+        return None
+    note = (order_row.get("request_notes") or "").strip()
+    conn = _get_connection()
+    if conn is None:
+        return None
+    cur = None
+    try:
+        cur = _dict_cursor(conn)
+        cur.execute(
+            "SELECT approver_user_id FROM order_approvals WHERE order_id = %s AND company_id = %s "
+            "AND status = 'approved' AND notes = %s ORDER BY id DESC LIMIT 1",
+            (order_row.get("order_id"), order_row.get("company_id"), ASSIGNMENT_APPROVAL_NOTE),
+        )
+        approval = cur.fetchone()
+        if approval and approval.get("approver_user_id"):
+            from person_names import display_name
+            return {"assigned_by": display_name(cur, order_row.get("company_id"),
+                                                user_id=approval["approver_user_id"], default="HR"),
+                    "approved": True}
+        if note.startswith("Tildelt af "):
+            return {"assigned_by": note[len("Tildelt af "):].strip() or "HR", "approved": False}
+    except Exception as e:
+        logger.debug("order_service.assignment_info failed: %s", e)
+    finally:
+        try:
+            if cur is not None:
+                cur.close()
+        except Exception:
+            pass
+    return None
 
 
 def get_history(ctx, order_id):

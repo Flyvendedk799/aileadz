@@ -903,6 +903,7 @@ def create_hr_dashboard_blueprint():
             _bill = _lc.normalize_billing(order.get('billing_status'))
             return render_template('fm/order_details.html',
                                    order=order,
+                                   assignment=order_service.assignment_info(order),
                                    booking=_booking,
                                    company=company,
                                    history=history,
@@ -3704,9 +3705,9 @@ def create_hr_dashboard_blueprint():
 
             current_app.mysql.connection.commit()
             cur.close()
-            msg = f"{assigned} medarbejder(e) tildelt læringsforløbet."
+            msg = f"{assigned} medarbejder(e) tildelt."
             if res['orders']:
-                msg += f" {res['orders']} kursusbestillinger er sendt til godkendelse."
+                msg += f" {res['orders']} kurser er bestilt og godkendt."
             if res['order_failures']:
                 msg += f" {res['order_failures']} bestillinger kunne ikke oprettes."
             flash(msg, "success")

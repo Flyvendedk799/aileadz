@@ -87,6 +87,7 @@ def register_learner_order_routes(bp):
         return render_template(
             "fm/my_order.html", fulfillment=fulfillment, sections=sections,
             order=row,
+            assignment=order_service.assignment_info(row),
             status=status,
             status_label=lc.status_label(status),
             status_hint=lc.STATUS_HINTS[status],

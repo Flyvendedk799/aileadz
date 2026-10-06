@@ -3,8 +3,8 @@
 The chat hands a team request to HR as a notification linking here with the
 course and participants pre-filled. HR confirms and the page creates one order per
 person through ``order_service.create_order`` (HR is a manager, so the orders are
-approved at once and charged to each person's department budget), all sharing one
-``group_order_id``.
+approved at once and charged to each person's department budget, which can still
+route an over-budget order to approval), all sharing one ``group_order_id``.
 """
 
 from __future__ import annotations
@@ -86,9 +86,19 @@ def assign_course():
         finally:
             cur.close()
         created, failed = result['orders'], result['order_failures']
-        flash(f"{created} ordre(r) oprettet til '{product['title']}'."
-              + (f" {failed} kunne ikke oprettes. " + (result.get("message") or "") if failed else ""), "success" if created else "danger")
-        return redirect(url_for("hr_dashboard.pending_approvals"))
+        if created:
+            flash((f"{created} bestilling oprettet og godkendt til '{product['title']}'." if created == 1
+                   else f"{created} bestillinger oprettet og godkendt til '{product['title']}'.")
+                  + (f" {failed} kunne ikke oprettes. " + (result.get("message") or "") if failed else ""), "success")
+        else:
+            flash("Ingen bestillinger blev oprettet. " + (result.get("message") or ""), "danger")
+            return redirect(url_for("course_assign.assign_course", course=handle))
+        # Assigned orders are approved at assignment, so there is nothing to approve: show the
+        # order itself (one person) or the team's progress (several), never /hr/approvals.
+        order_ids = [r.get("order_id") for r in result.get("results") or [] if r.get("order_id")]
+        if len(order_ids) == 1:
+            return redirect(url_for("hr_dashboard.company_order_details", order_id=order_ids[0]))
+        return redirect(url_for("hr_dashboard.employee_progress"))
 
     handle = request.args.get("course", "")
     product = catalog.get_course(handle, company_id) if handle else None

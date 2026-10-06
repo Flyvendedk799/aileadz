@@ -51,7 +51,8 @@
       {% if order.completion_deadline %}<div class="kv"><span class="k">Frist</span><span class="v">{{ order.completion_deadline.strftime('%d.%m.%Y') }}</span></div>{% endif %}
       {% if order.completion_date %}<div class="kv"><span class="k">Gennemført</span><span class="v">{{ order.completion_date.strftime('%d.%m.%Y') }}</span></div>{% endif %}
       {% if order.cancel_reason %}<div class="kv"><span class="k">Begrundelse</span><span class="v">{{ order.cancel_reason }}</span></div>{% endif %}
-      {% if order.request_notes %}<div class="kv"><span class="k">Note fra medarbejderen</span><span class="v">{{ order.request_notes }}</span></div>{% endif %}
+      {% if assignment %}<div class="kv"><span class="k">Tildelt af</span><span class="v">{{ assignment.assigned_by }}{% if assignment.approved %} · <strong>Godkendt ved tildeling</strong>{% endif %}</span></div>{% endif %}
+      {% if order.request_notes and not assignment %}<div class="kv"><span class="k">Note fra medarbejderen</span><span class="v">{{ order.request_notes }}</span></div>{% endif %}
     </div></div></div>
 
     {% if sections %}{% for name in sections.visible %}{% if name != 'changes_list' or not sections.pending_change %}{% include "fm/order_sections/_" ~ name ~ ".html" %}{% endif %}{% endfor %}{% endif %}

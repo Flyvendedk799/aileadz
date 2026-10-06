@@ -54,6 +54,9 @@ STATUS_LABELS = {
     CANCELLED: "Annulleret",
 }
 
+# ``order_approvals.notes`` on an order a manager approved by assigning it to the learner.
+ASSIGNMENT_APPROVAL_NOTE = "Godkendt ved tildeling"
+
 # Short labels for dense HR tables / dropdowns.
 STATUS_LABELS_SHORT = {
     PENDING_APPROVAL: "Afventer godkendelse",

@@ -105,7 +105,8 @@ CREATE TABLE user_completed_courses (id INTEGER PRIMARY KEY AUTOINCREMENT, usern
 CREATE TABLE employee_learning_progress (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
   company_id INTEGER, learning_path_id INTEGER, course_handle TEXT, content_type TEXT, content_id INTEGER,
   content_name TEXT, status TEXT DEFAULT 'not_started', progress_percentage REAL DEFAULT 0,
-  started_at TEXT, completed_at TEXT, due_date TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+  started_at TEXT, completed_at TEXT, due_date TEXT, ordering_mode TEXT DEFAULT 'all_at_once',
+  assigned_by_user_id INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE employee_skills_matrix (id INTEGER PRIMARY KEY AUTOINCREMENT, employee_id INTEGER,
   company_id INTEGER, skill_name TEXT, current_level INTEGER, target_level INTEGER,
   UNIQUE(employee_id, company_id, skill_name));

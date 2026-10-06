@@ -1,9 +1,13 @@
 """HR learning paths that create real work (N-4.4).
 
 * A path has ordered steps. A *catalog* step names a course (``course_handle``);
-  assigning the path to an employee creates a normal ``pending_approval`` order for
-  that course through ``order_service.create_order`` (so budget and approval rules
-  apply - before, paths bypassed both). *Info* steps are plain guidance.
+  assigning the path to an employee orders that course through
+  ``order_service.create_order`` as an assigned course (approved when a manager assigns,
+  the budget still charged and checked). *Info* steps are plain guidance.
+* ``ordering_mode`` (frozen per assignment): ``all_at_once`` orders every course at
+  assignment; ``sequential`` orders the first and ``refresh_assignment`` orders each next
+  course when the steps before it are completed or skipped. A failed step waits for HR
+  (``hr_retry_step`` / ``hr_skip_step``).
 * The employee sees the assignment on ``/min-laering`` ("Tildelt af HR", due date).
 * Every save of the steps writes a snapshot to ``learning_path_versions`` and
   bumps ``learning_paths.version``; nothing is overwritten silently.
@@ -178,13 +182,14 @@ def validate_steps(company_id, steps):
     return clean, errors
 
 
-def save_steps(cur, company_id, path_id, steps, *, actor_user_id=None, note=None):
+def save_steps(cur, company_id, path_id, steps, *, actor_user_id=None, note=None, ordering_mode=None):
     """Replace a path's steps and record the PREVIOUS state as a version.
 
     ``steps`` = [{"course_handle"?, "title"?, "step_type"?}]. A catalog step whose handle is
     missing or unknown is rejected, naming the row: ``{success: False, message, errors}`` with
     ``errors`` = {row index: message} for EVERY bad row, so the editor can show them all and
-    keep what was entered. Returns {success, version, steps} otherwise."""
+    keep what was entered. ``ordering_mode`` (``all_at_once`` / ``sequential``) is saved with the steps; running
+    assignments keep the mode they were assigned with. Returns {success, version, steps} otherwise."""
     cur.execute("SELECT id, version FROM learning_paths WHERE id = %s AND company_id = %s FOR UPDATE", (path_id, company_id))
     path = cur.fetchone()
     if not path:
@@ -209,19 +214,124 @@ def save_steps(cur, company_id, path_id, steps, *, actor_user_id=None, note=None
             (path_id, company_id, s["position"], s["step_type"], s["course_handle"], s["title"]),
         )
     cur.execute("UPDATE learning_paths SET version = %s WHERE id = %s AND company_id = %s", (version + 1, path_id, company_id))
+    if ordering_mode is not None:
+        cur.execute("UPDATE learning_paths SET ordering_mode = %s WHERE id = %s AND company_id = %s",
+                    (normalize_mode(ordering_mode), path_id, company_id))
     return {"success": True, "version": version + 1, "steps": len(clean)}
+
+
+ORDERING_MODES = ("all_at_once", "sequential")
+DEFAULT_ORDERING_MODE = "all_at_once"
+_DONE_STATES = ("completed", "skipped")
+
+
+def normalize_mode(value):
+    return value if value in ORDERING_MODES else DEFAULT_ORDERING_MODE
+
+
+def _load_employee(cur, company_id, user_id, *, lock=False):
+    """The active employee row ``create_order`` expects as ``assign_to`` (None when not a member)."""
+    cur.execute(
+        "SELECT cu.user_id, u.username, COALESCE(cu.full_name,u.username) AS name, COALESCE(cu.email,u.email) AS email, "
+        "cu.department FROM company_users cu JOIN users u ON u.id = cu.user_id "
+        "WHERE cu.company_id = %s AND cu.user_id = %s AND cu.status = 'active'" + (" FOR UPDATE" if lock else ""),
+        (company_id, user_id),
+    )
+    return cur.fetchone()
+
+
+def _assigner_ctx(cur, company_id, user_id):
+    """The OrderContext of the person who assigned a path, so later steps are ordered as that
+    assignment (pre-approved when they are still a manager). Unknown assigner = system actor."""
+    import order_service
+
+    if user_id:
+        cur.execute(
+            "SELECT u.username, cu.role, cu.department FROM company_users cu JOIN users u ON u.id = cu.user_id "
+            "WHERE cu.company_id = %s AND cu.user_id = %s AND cu.status = 'active'",
+            (company_id, user_id),
+        )
+        row = cur.fetchone()
+        if row:
+            return order_service.OrderContext(company_id=company_id, user_id=user_id, username=row["username"],
+                                              company_role=row["role"], department=row["department"], source="learning_path")
+    return order_service.OrderContext.system(company_id, source="learning_path", label="Læringsforløb")
+
+
+def _order_extra(progress, step, emp, path_id):
+    return {
+        "assign_to": emp,
+        "assignment_step_id": step["id"],
+        "completion_deadline": progress.get("due_date"),
+        "recommended_by_tool": "path:%s" % path_id,
+    }
+
+
+def _notify_step_problem(cur, company_id, progress, emp, step, message):
+    """A path step could not be ordered: HR hears about it and the learner can choose a session."""
+    try:
+        from notification_service import notify_roles, notify_user, HR_ROLES
+
+        title = step.get("title") or "kursus"
+        notify_roles(
+            cur, company_id, HR_ROLES,
+            title="Kursus i forløb kunne ikke bestilles",
+            message="‘%s’ til %s kunne ikke bestilles: %s" % (title, emp.get("name") or emp.get("username"), message),
+            kind="assignment", is_urgent=True, action_url="/hr/learning-paths",
+            dedupe_key="path-step-failed:%s" % step["id"], dedupe_hours=None,
+        )
+        notify_user(
+            cur, user_id=emp["user_id"], username=emp.get("username"), company_id=company_id,
+            title="Vælg hold til ‘%s’" % title, kind="assignment",
+            message="Næste kursus i dit forløb kunne ikke bestilles automatisk. %s" % message,
+            action_url="/min-laering/forloeb/%s" % progress["id"],
+            dedupe_key="path-step-failed-learner:%s" % step["id"], dedupe_hours=None,
+        )
+    except Exception as e:
+        from transaction_errors import propagate_transaction_abort
+
+        propagate_transaction_abort(e)
+        logger.debug("learning_path_service: step problem notification skipped: %s", e)
+
+
+def _order_frozen_step(cur, company_id, progress, step, emp, ctx, *, path_id, in_transaction, create=None):
+    """Order one frozen path step as an assigned course; failures stay on the step (``last_error``)."""
+    import enrollment_service
+    import order_service
+
+    extra = _order_extra(progress, step, emp, path_id)
+    kwargs = {}
+    events = []
+    if in_transaction:
+        extra["savepoint"] = True
+        kwargs["deferred_events"] = events
+    result = (create or enrollment_service.create_order)(
+        ctx, product_handle=step["course_handle"], product_title=step.get("title") or "", price=0, extra=extra, **kwargs
+    )
+    if result.get("success"):
+        for event in events:
+            order_service._emit_event_safe(*event)
+    else:
+        message = result.get("message") or "Bestillingen kunne ikke oprettes."
+        cur.execute("UPDATE learning_assignment_steps SET status = 'failed', last_error = %s WHERE id = %s", (message, step["id"]))
+        step["status"] = "failed"
+    return result
 
 
 def assign_path(cur, ctx, company_id, path_id, user_ids, *, due_date=None, sender_id=None, create=None, expected_version=None):
     """Enrol employees in a path and order its paid steps for each of them.
 
+    The path's ``ordering_mode`` is frozen on every assignment: ``all_at_once`` orders every
+    catalogue step now; ``sequential`` orders only the first one and ``refresh_assignment`` orders
+    each next course when the steps before it are done. Orders are assigned by the person who
+    assigns (pre-approved when they are a manager; the budget is charged per ordered step).
+
     Returns {assigned, skipped, orders, order_failures, path_name}. Employees must
     belong to the company; already enrolled ones are skipped. ``create`` is injectable."""
     import order_service
-    import enrollment_service
 
     conn = order_service._get_connection()
-    cur.execute("SELECT id, path_name, version FROM learning_paths WHERE id = %s AND company_id = %s FOR UPDATE", (path_id, company_id))
+    cur.execute("SELECT * FROM learning_paths WHERE id = %s AND company_id = %s FOR UPDATE", (path_id, company_id))
     path = cur.fetchone()
     if not path:
         return {
@@ -234,17 +344,16 @@ def assign_path(cur, ctx, company_id, path_id, user_ids, *, due_date=None, sende
         }
     if expected_version is not None and int(expected_version) != int(path.get("version") or 1):
         return {"assigned": 0, "orders": 0, "order_failures": 1, "message": "Forløbet er ændret. Gennemse trinene og bekræft igen."}
+    mode = normalize_mode(path.get("ordering_mode"))
+    assigned_by = sender_id or getattr(ctx, "user_id", None)
     steps = get_steps(cur, company_id, path_id)
-    out = {"assigned": 0, "skipped": 0, "orders": 0, "order_failures": 0, "path_name": path["path_name"], "results": []}
+    out = {"assigned": 0, "skipped": 0, "orders": 0, "order_failures": 0, "path_name": path["path_name"],
+           "ordering_mode": mode, "results": []}
     if not steps:
         out["message"] = "Tilføj trin til forløbet før tildeling."
         return out
     for uid in dict.fromkeys(user_ids):
-        cur.execute(
-            "SELECT cu.user_id, u.username, COALESCE(cu.full_name,u.username) AS name, COALESCE(cu.email,u.email) AS email, cu.department FROM company_users cu JOIN users u ON u.id = cu.user_id WHERE cu.company_id = %s AND cu.user_id = %s AND cu.status = 'active' FOR UPDATE",
-            (company_id, uid),
-        )
-        emp = cur.fetchone()
+        emp = _load_employee(cur, company_id, uid, lock=True)
         if not emp:
             out["skipped"] += 1
             continue
@@ -256,10 +365,13 @@ def assign_path(cur, ctx, company_id, path_id, user_ids, *, due_date=None, sende
             out["skipped"] += 1
             continue
         cur.execute(
-            "INSERT INTO employee_learning_progress (user_id,company_id,learning_path_id,content_type,content_name,status,progress_percentage,due_date,started_at) VALUES (%s,%s,%s,'learning_path',%s,'not_started',0,%s,CURRENT_TIMESTAMP)",
-            (uid, company_id, path_id, path["path_name"], due_date),
+            "INSERT INTO employee_learning_progress (user_id,company_id,learning_path_id,content_type,content_name,status,"
+            "progress_percentage,due_date,started_at,ordering_mode,assigned_by_user_id) "
+            "VALUES (%s,%s,%s,'learning_path',%s,'not_started',0,%s,CURRENT_TIMESTAMP,%s,%s)",
+            (uid, company_id, path_id, path["path_name"], due_date, mode, assigned_by),
         )
         progress_id = cur.lastrowid
+        progress = {"id": progress_id, "due_date": due_date, "ordering_mode": mode}
         step_ids = []
         for step in steps:
             cur.execute(
@@ -279,29 +391,15 @@ def assign_path(cur, ctx, company_id, path_id, user_ids, *, due_date=None, sende
         # Persist a recoverable frozen assignment before individual orders commit.
         conn.commit()
         out["assigned"] += 1
-        for step_id, step in step_ids:
-            if not step.get("course_handle"):
-                continue
-            result = (create or enrollment_service.create_order)(
-                ctx,
-                product_handle=step["course_handle"],
-                product_title=step.get("title") or "",
-                price=0,
-                extra={
-                    "assign_to": emp,
-                    "assignment_step_id": step_id,
-                    "completion_deadline": due_date,
-                    "recommended_by_tool": "path:%s" % path_id,
-                },
-            )
+        catalog_steps = [(step_id, step) for step_id, step in step_ids if step.get("course_handle")]
+        for step_id, step in (catalog_steps[:1] if mode == "sequential" else catalog_steps):
+            frozen = dict(step, id=step_id)
+            result = _order_frozen_step(cur, company_id, progress, frozen, emp, ctx, path_id=path_id,
+                                        in_transaction=False, create=create)
             if result.get("success"):
                 out["orders"] += not result.get("duplicate")
             else:
                 out["order_failures"] += 1
-                cur.execute(
-                    "UPDATE learning_assignment_steps SET status = 'failed', last_error = %s WHERE id = %s",
-                    (result.get("message") or "Bestillingen kunne ikke oprettes.", step_id),
-                )
             out["results"].append({"user_id": uid, "step_id": step_id, **result})
         from notification_service import insert_company_notification
 
@@ -311,7 +409,10 @@ def assign_path(cur, ctx, company_id, path_id, user_ids, *, due_date=None, sende
             recipient_user_id=uid,
             sender_user_id=sender_id,
             title="Nyt læringsforløb tildelt",
-            message="Du er blevet tildelt ‘%s’. Åbn forløbet og vælg eventuelle manglende hold." % path["path_name"],
+            message="Du er blevet tildelt ‘%s’. %s" % (
+                path["path_name"],
+                "Kurserne bestilles ét ad gangen; det næste bestilles, når du har gennemført det forrige."
+                if mode == "sequential" else "Åbn forløbet og vælg eventuelle manglende hold."),
             action_url="/min-laering/forloeb/%s" % progress_id,
             kind="assignment",
             dedupe_key=None,
@@ -363,26 +464,110 @@ def assignment_detail(cur, company_id, user_id, progress_id):
     return assignment
 
 
+def _step_state(cur, company_id, step):
+    """The truth about one frozen step: guidance and skipped steps keep their own state, an ordered
+    step follows its order (completed / failed when cancelled or rejected / ordered)."""
+    if step.get("status") == "skipped":
+        return "skipped"          # HR skipped it, whatever its old order says
+    if step.get("order_id"):
+        cur.execute("SELECT status FROM course_orders WHERE order_id = %s AND company_id = %s", (step["order_id"], company_id))
+        order = cur.fetchone()
+        return (
+            "completed"
+            if order and order["status"] == "completed"
+            else ("failed" if not order or order["status"] in ("cancelled", "rejected") else "ordered")
+        )
+    return step["status"]
+
+
+def _progress_row(cur, progress_id, company_id):
+    try:
+        cur.execute(
+            "SELECT id, user_id, learning_path_id, due_date, ordering_mode, assigned_by_user_id FROM employee_learning_progress "
+            "WHERE id = %s AND company_id = %s",
+            (progress_id, company_id),
+        )
+        return cur.fetchone()
+    except Exception as e:
+        from transaction_errors import propagate_transaction_abort
+
+        propagate_transaction_abort(e)
+        logger.debug("learning_path_service: progress row without ordering columns: %s", e)
+        return None
+
+
+def _advance_sequential(cur, company_id, progress, steps):
+    """Order the next course of a sequential assignment when everything before it is done.
+
+    ``steps`` = [(step row, state)] by position. The first course is ordered at assignment, so a
+    guidance step before it never blocks; after that every step before the next course must be
+    completed or skipped. A step that failed (order cancelled/rejected or could not be created)
+    stops the chain until HR retries or skips it. Runs inside the caller's transaction."""
+    first_course_seen = False
+    for index, (step, state) in enumerate(steps):
+        if not step.get("course_handle"):
+            continue
+        if step.get("order_id") or state in _DONE_STATES:
+            if state in _DONE_STATES:
+                first_course_seen = True
+                continue
+            return False                      # ordered and still running, or failed: wait
+        if state == "failed":
+            return False                      # could not be ordered: HR must act
+        if first_course_seen and not all(st in _DONE_STATES for _, st in steps[:index]):
+            return False
+        emp = _load_employee(cur, company_id, progress["user_id"])
+        if not emp:
+            return False
+        ctx = _assigner_ctx(cur, company_id, progress.get("assigned_by_user_id"))
+        full = dict(step)
+        result = _order_frozen_step(cur, company_id, progress, full, emp, ctx, path_id=progress.get("learning_path_id"),
+                                    in_transaction=True)
+        if result.get("success"):
+            try:
+                from notification_service import notify_user
+
+                notify_user(cur, user_id=emp["user_id"], username=emp.get("username"), company_id=company_id,
+                            title="Næste kursus i dit forløb er bestilt: %s" % full["title"], kind="assignment",
+                            message="Du har gennemført det forrige trin. Kurset er godkendt, og HR eller udbyderen bekræfter din plads.",
+                            action_url="/min-laering/forloeb/%s" % progress["id"],
+                            dedupe_key="path-step-ordered:%s" % step["id"], dedupe_hours=None)
+            except Exception as e:
+                from transaction_errors import propagate_transaction_abort
+
+                propagate_transaction_abort(e)
+        else:
+            _notify_step_problem(cur, company_id, progress, emp, full, result.get("message") or "Bestillingen kunne ikke oprettes.")
+        return True
+    return False
+
+
 def refresh_assignment(cur, progress_id, company_id):
-    """Roll up frozen steps. An acknowledged guidance step counts; a failed order does not."""
+    """Roll up frozen steps. An acknowledged guidance step counts; a failed order does not.
+
+    In a ``sequential`` assignment this is also where the next course is ordered: when the
+    steps before it are completed or skipped, it is created through the same path as the
+    assignment (pre-approved as the original assigner) inside the caller's transaction."""
     cur.execute(
-        "SELECT id, status, order_id FROM learning_assignment_steps WHERE progress_id = %s AND company_id = %s", (progress_id, company_id)
+        "SELECT id, status, order_id, step_type, course_handle, title, position FROM learning_assignment_steps WHERE progress_id = %s AND company_id = %s ORDER BY position",
+        (progress_id, company_id),
     )
     steps = list(cur.fetchall() or [])
-    done = 0
+    states = []
     for step in steps:
+        state = _step_state(cur, company_id, step)
         if step.get("order_id"):
-            cur.execute("SELECT status FROM course_orders WHERE order_id = %s AND company_id = %s", (step["order_id"], company_id))
-            order = cur.fetchone()
-            state = (
-                "completed"
-                if order and order["status"] == "completed"
-                else ("failed" if not order or order["status"] in ("cancelled", "rejected") else "ordered")
-            )
             cur.execute("UPDATE learning_assignment_steps SET status = %s WHERE id = %s", (state, step["id"]))
-        else:
-            state = step["status"]
-        done += state in ("completed", "skipped")
+        states.append((step, state))
+    progress = _progress_row(cur, progress_id, company_id)
+    if progress and normalize_mode(progress.get("ordering_mode")) == "sequential":
+        if _advance_sequential(cur, company_id, progress, states):
+            cur.execute(
+                "SELECT id, status, order_id, step_type, course_handle, title, position FROM learning_assignment_steps WHERE progress_id = %s AND company_id = %s ORDER BY position",
+                (progress_id, company_id),
+            )
+            states = [(s, _step_state(cur, company_id, s)) for s in list(cur.fetchall() or [])]
+    done = sum(state in _DONE_STATES for _, state in states)
     percent = (100 if done == len(steps) else min(99, round(done * 100 / len(steps)))) if steps else 0
     state = "completed" if steps and done == len(steps) else ("in_progress" if done else "not_started")
     cur.execute(
@@ -418,7 +603,12 @@ def acknowledge_step(cur, company_id, user_id, step_id, *, skipped=False, note="
 
 
 def order_assignment_step(ctx, step_id, *, session_id=None):
-    """Retry a failed step or choose its session without duplicating another enrolment."""
+    """The learner chooses the session of a step that could not be ordered, or re-requests it.
+
+    A step that was never ordered (typically a course with several sessions) is ordered as the
+    assignment it is: pre-approved as the person who assigned the path, only the session is the
+    learner's choice. A step whose earlier order was cancelled or rejected goes through approval
+    again. In a sequential path a course that is not due yet is ordered automatically later."""
     import order_service
     import enrollment_service
 
@@ -432,11 +622,22 @@ def order_assignment_step(ctx, step_id, *, session_id=None):
         step = cur.fetchone()
         if not step or not step.get("course_handle"):
             return {"success": False, "message": "Trinnet blev ikke fundet."}
+        progress = _progress_row(cur, step["progress_id"], ctx.company_id) or {}
+        if (normalize_mode(progress.get("ordering_mode")) == "sequential" and not step.get("order_id")
+                and step.get("status") != "failed"):
+            return {"success": False, "message": "Dette kursus bestilles automatisk, når de forrige trin er gennemført."}
+        extra = {"assignment_step_id": step_id, "session_id": session_id}
+        acting = ctx
+        if not step.get("order_id") and progress.get("assigned_by_user_id"):
+            emp = _load_employee(cur, ctx.company_id, ctx.user_id)
+            if emp:
+                acting = _assigner_ctx(cur, ctx.company_id, progress["assigned_by_user_id"])
+                extra.update(_order_extra(progress, step, emp, progress.get("learning_path_id")), session_id=session_id)
         result = enrollment_service.create_order(
-            ctx,
+            acting,
             product_handle=step["course_handle"],
             user_email=step.get("email") or "",
-            extra={"assignment_step_id": step_id, "session_id": session_id},
+            extra=extra,
         )
         if not result.get("success"):
             cur.execute(
@@ -444,6 +645,69 @@ def order_assignment_step(ctx, step_id, *, session_id=None):
             )
             conn.commit()
         return result
+    finally:
+        cur.close()
+
+
+def hr_retry_step(ctx, step_id, *, session_id=None):
+    """HR orders a failed step again (a cancelled or rejected order, or one that could not be
+    created). Assigned by HR, so it is approved; the budget rule still applies."""
+    import order_service
+    import enrollment_service
+
+    conn = order_service._get_connection()
+    cur = order_service._dict_cursor(conn)
+    try:
+        cur.execute("SELECT * FROM learning_assignment_steps WHERE id = %s AND company_id = %s", (step_id, ctx.company_id))
+        step = cur.fetchone()
+        if not step or not step.get("course_handle"):
+            return {"success": False, "message": "Trinnet blev ikke fundet."}
+        if step.get("status") != "failed":
+            return {"success": False, "message": "Kun trin, der er mislykkedes, kan bestilles igen."}
+        progress = _progress_row(cur, step["progress_id"], ctx.company_id) or {}
+        emp = _load_employee(cur, ctx.company_id, step["user_id"])
+        if not emp:
+            return {"success": False, "message": "Medarbejderen er ikke længere aktiv i virksomheden."}
+        extra = _order_extra(progress, step, emp, progress.get("learning_path_id"))
+        extra["session_id"] = session_id
+        result = enrollment_service.create_order(ctx, product_handle=step["course_handle"], product_title=step.get("title") or "",
+                                                 price=0, extra=extra)
+        if result.get("success"):
+            cur.execute("UPDATE learning_assignment_steps SET last_error = NULL WHERE id = %s", (step_id,))
+            refresh_assignment(cur, step["progress_id"], ctx.company_id)
+        else:
+            cur.execute("UPDATE learning_assignment_steps SET last_error = %s WHERE id = %s AND order_id IS NULL",
+                        (result.get("message"), step_id))
+        conn.commit()
+        return result
+    finally:
+        cur.close()
+
+
+def hr_skip_step(ctx, step_id, note=""):
+    """HR skips a failed step so the path can move on (in a sequential path the next course is ordered)."""
+    import order_service
+
+    conn = order_service._get_connection()
+    cur = order_service._dict_cursor(conn)
+    try:
+        cur.execute("SELECT * FROM learning_assignment_steps WHERE id = %s AND company_id = %s FOR UPDATE", (step_id, ctx.company_id))
+        step = cur.fetchone()
+        if not step:
+            return {"success": False, "message": "Trinnet blev ikke fundet."}
+        if step.get("status") != "failed":
+            return {"success": False, "message": "Kun trin, der er mislykkedes, kan springes over."}
+        text = ("Sprunget over af HR. %s" % note).strip()[:1000]
+        cur.execute(
+            "UPDATE learning_assignment_steps SET status = 'skipped', last_error = %s, completed_at = CURRENT_TIMESTAMP WHERE id = %s",
+            (text, step_id),
+        )
+        result = refresh_assignment(cur, step["progress_id"], ctx.company_id)
+        conn.commit()
+        return {"success": True, "message": "Trinnet er sprunget over.", **result}
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         cur.close()
 

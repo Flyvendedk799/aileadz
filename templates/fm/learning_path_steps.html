@@ -4,6 +4,7 @@
 {% set path = path|default({'id': 0, 'path_name': 'Eksempelforløb', 'version': 1}) %}
 {% set rows = rows|default([]) %}{% set errors = errors|default({}) %}
 {% set note = note|default('') %}{% set text_fallback = text_fallback|default('') %}
+{% set ordering_mode = ordering_mode|default('all_at_once') %}
 {% block page_id %}hr{% endblock %}
 {% block title %}Trin · {{ path.path_name }}{% endblock %}
 {% block topbar_title %}Trin i forløbet{% endblock %}
@@ -98,6 +99,17 @@
     </div>
 
     <div class="fm-card" style="padding:20px;margin-bottom:16px">
+      <fieldset style="border:0;margin:0 0 16px;padding:0">
+        <legend style="font-weight:650;font-size:14px;margin-bottom:8px">Sådan bestilles kurserne</legend>
+        <label style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">
+          <input type="radio" name="ordering_mode" value="all_at_once" {{ 'checked' if ordering_mode != 'sequential' }}>
+          <span><strong>Bestil alle kurser ved tildeling</strong><br><span class="muted" style="font-size:12.5px">Alle kurser i forløbet bestilles og trækkes på budgettet med det samme.</span></span>
+        </label>
+        <label style="display:flex;gap:10px;align-items:flex-start">
+          <input type="radio" name="ordering_mode" value="sequential" {{ 'checked' if ordering_mode == 'sequential' }}>
+          <span><strong>Bestil ét kursus ad gangen</strong><br><span class="muted" style="font-size:12.5px">Næste bestilles, når det forrige er gennemført. Budgettet trækkes kun for de kurser, der er bestilt. Igangværende tildelinger beholder den måde, de blev tildelt på.</span></span>
+        </label>
+      </fieldset>
       <label class="fm-field"><span>Note til versionen (valgfri)</span>
         <input class="fm-input" name="note" value="{{ note }}" maxlength="255" placeholder="Fx: Byttede Excel ud med Power BI">
       </label>

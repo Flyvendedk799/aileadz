@@ -772,6 +772,15 @@ def _next_step_message(status, needs_approval):
             "booket. Fakturering sker uden for appen.")
 
 
+def _undo_create(conn, cur, use_savepoint):
+    """Undo a failed create_order: only its own writes when it runs inside the caller's
+    transaction (savepoint), else the whole transaction."""
+    if use_savepoint and cur is not None:
+        cur.execute("ROLLBACK TO SAVEPOINT order_service_create")
+    else:
+        conn.rollback()
+
+
 def create_order(ctx, **kwargs):
     """Retry only a fully rolled-back standalone transaction, never half a batch.
 
@@ -849,8 +858,13 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
         }
 
     cur = None
+    # ``extra["savepoint"]``: the caller already has a transaction open (a path step ordered while an
+    # order is being completed). A failure here must undo only this order, never the caller's work.
+    use_savepoint = bool(extra.get("savepoint"))
     try:
         cur = _dict_cursor(conn)
+        if use_savepoint:
+            cur.execute("SAVEPOINT order_service_create")
 
         assigner_name = None
         if assigner_ctx is not None:
@@ -865,13 +879,13 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
             cur.execute("SELECT * FROM learning_assignment_steps WHERE id = %s AND company_id = %s AND user_id = %s FOR UPDATE", (assignment_step, ctx.company_id, ctx.user_id))
             step = cur.fetchone()
             if not step or step.get('course_handle') != product_handle:
-                conn.rollback()
+                _undo_create(conn, cur, use_savepoint)
                 return {'success': False, 'error': 'assignment_not_found', 'message': 'Tildelingen blev ikke fundet.'}
             if step.get('order_id'):
                 cur.execute("SELECT status FROM course_orders WHERE order_id = %s AND company_id = %s", (step['order_id'],ctx.company_id))
                 existing = cur.fetchone()
                 if existing and existing['status'] not in ('cancelled','rejected'):
-                    conn.rollback()
+                    _undo_create(conn, cur, use_savepoint)
                     return {'success': True, 'duplicate': True, 'order_id': step['order_id'], 'status': existing['status'], 'order_url': order_url(step['order_id'])}
 
         # Serialize duplicate detection for the same participant, including two
@@ -1188,7 +1202,7 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
     except Exception as e:
         logger.error("order_service.create_order failed: %s", e)
         try:
-            conn.rollback()
+            _undo_create(conn, cur, use_savepoint)
         except Exception:
             pass
         return {

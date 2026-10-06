@@ -476,6 +476,8 @@ def enterprise_table_ddls():
                     last_accessed DATETIME,
                     last_accessed_at DATETIME,
                     due_date DATE,
+                    ordering_mode VARCHAR(20) NOT NULL DEFAULT 'all_at_once',
+                    assigned_by_user_id INT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     INDEX idx_user_company (user_id, company_id),
                     INDEX idx_company (company_id)
@@ -490,6 +492,7 @@ def enterprise_table_ddls():
                     difficulty_level VARCHAR(50),
                     is_active TINYINT DEFAULT 1,
                     version INT NOT NULL DEFAULT 1,
+                    ordering_mode VARCHAR(20) NOT NULL DEFAULT 'all_at_once',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     INDEX idx_company (company_id)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",

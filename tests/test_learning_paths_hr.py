@@ -28,7 +28,8 @@ class PathTests(unittest.TestCase):
         d = self.db
         d.raw.executescript("""
           CREATE TABLE learning_paths (id INTEGER PRIMARY KEY AUTOINCREMENT, company_id INTEGER, path_name TEXT, path_category TEXT,
-            difficulty_level TEXT, is_active INTEGER DEFAULT 1, version INTEGER NOT NULL DEFAULT 1);
+            difficulty_level TEXT, is_active INTEGER DEFAULT 1, version INTEGER NOT NULL DEFAULT 1,
+            ordering_mode TEXT NOT NULL DEFAULT 'all_at_once');
           CREATE TABLE learning_path_steps (id INTEGER PRIMARY KEY AUTOINCREMENT, path_id INTEGER, company_id INTEGER, position INTEGER,
             step_type TEXT, course_handle TEXT, title TEXT);
           CREATE TABLE learning_path_versions (id INTEGER PRIMARY KEY AUTOINCREMENT, path_id INTEGER, company_id INTEGER, version INTEGER,

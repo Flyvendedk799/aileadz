@@ -168,3 +168,32 @@ class GalleryTests(EditorBase):
         resp = admin.get("/ui/learning_path_steps")
         self.assertEqual(resp.status_code, 200)
         self.assertIn("Eksempelforløb", resp.get_data(as_text=True))
+
+
+class OrderingModeEditorTests(EditorBase):
+    def test_the_editor_saves_and_shows_the_ordering_mode(self):
+        page = self.hr.get("/hr/learning-paths/1/trin").get_data(as_text=True)
+        self.assertIn("Bestil alle kurser ved tildeling", page)
+        self.assertIn("Bestil ét kursus ad gangen", page)
+        self.hr.post("/hr/learning-paths/1/trin", data={
+            "step_type[]": ["catalog"], "course_handle[]": ["prince2"], "title[]": [""], "ordering_mode": "sequential"})
+        self.assertEqual(self.db.one("SELECT ordering_mode FROM learning_paths WHERE id = 1")["ordering_mode"], "sequential")
+        again = self.hr.get("/hr/learning-paths/1/trin").get_data(as_text=True)
+        self.assertRegex(again, r'value="sequential"\s+checked')
+
+    def test_an_error_keeps_the_chosen_mode_on_screen(self):
+        html = self.hr.post("/hr/learning-paths/1/trin", data={
+            "step_type[]": ["catalog"], "course_handle[]": ["findes-ikke"], "title[]": [""], "ordering_mode": "sequential"}).get_data(as_text=True)
+        self.assertRegex(html, r'value="sequential"\s+checked')
+
+    def test_failed_steps_show_on_the_path_page_with_retry_and_skip(self):
+        self.db.execute("INSERT INTO employee_learning_progress (id,user_id,company_id,learning_path_id,content_type,status) "
+                        "VALUES (11,3,7,1,'learning_path','in_progress')")
+        self.db.execute("INSERT INTO company_users (company_id,user_id,username,role,status) VALUES (7,4,'x','employee','active')")
+        self.db.execute("INSERT INTO learning_assignment_steps (progress_id,company_id,user_id,position,step_type,course_handle,title,status,last_error) "
+                        "VALUES (11,7,3,1,'catalog','prince2','PRINCE2','failed','Holdet er ændret')")
+        html = self.hr.get("/hr/learning-paths").get_data(as_text=True)
+        self.assertIn("Mislykkedes", html)
+        self.assertIn("Holdet er ændret", html)
+        self.assertIn("/hr/learning-paths/steps/1/retry", html)
+        self.assertIn("/hr/learning-paths/steps/1/skip", html)

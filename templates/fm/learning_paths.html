@@ -56,8 +56,8 @@
 
       {% set psteps = (path_steps or {}).get(path.id, []) %}
       <details style="font-size:13px">
-        <summary style="cursor:pointer;font-weight:600">Kursustrin ({{ psteps|length }}) · version {{ path.version or 1 }}</summary>
-        {% if psteps %}<ol style="margin:8px 0 8px 18px;padding:0">{% for s in psteps %}<li>{{ s.title }}{% if s.step_type == 'catalog' %} <span class="fm-badge teal">bestilles ved tildeling</span>{% endif %}</li>{% endfor %}</ol>
+        <summary style="cursor:pointer;font-weight:600">Kursustrin ({{ psteps|length }}) · version {{ path.version or 1 }}{% if path.ordering_mode == 'sequential' %} · ét kursus ad gangen{% endif %}</summary>
+        {% if psteps %}<ol style="margin:8px 0 8px 18px;padding:0">{% for s in psteps %}<li>{{ s.title }}{% if s.step_type == 'catalog' %} <span class="fm-badge teal">{{ 'bestilles, når forrige er gennemført' if path.ordering_mode == 'sequential' else 'bestilles ved tildeling' }}</span>{% endif %}</li>{% endfor %}</ol>
         {% else %}<p class="muted" style="margin:8px 0">Ingen trin endnu. Vælg kurser fra kataloget, så tildelingen også bestiller kurserne.</p>{% endif %}
         {% if can_manage %}
         <a class="btn btn-ghost btn-sm" href="{{ url_for('hr_dashboard.learning_path_steps', path_id=path.id) }}" style="margin-top:6px"><i class="fa-solid fa-pen"></i> Redigér trin</a>
@@ -83,6 +83,18 @@
               {% else %}<span style="font-size:11px;color:var(--fm-ink-3)">—</span>{% endif %}
             </td>
           </tr>
+          {% for fs in (failed_steps or {}).get(e.id, []) %}
+          <tr><td colspan="5" style="background:var(--fm-clay-tint, rgba(200,80,60,.07))">
+            <div class="fm-flex fm-ac fm-gap8" style="flex-wrap:wrap">
+              <span class="fm-badge red dot">Mislykkedes</span>
+              <span style="font-size:12.5px"><strong>{{ fs.title }}</strong>{% if fs.last_error %} · {{ fs.last_error }}{% endif %}</span>
+              {% if can_create %}
+              <form method="post" action="{{ url_for('hr_dashboard.retry_learning_path_step', step_id=fs.id) }}" style="margin:0 0 0 auto"><button class="btn btn-soft btn-sm" type="submit">Bestil igen</button></form>
+              <form method="post" action="{{ url_for('hr_dashboard.skip_learning_path_step', step_id=fs.id) }}" style="margin:0"><button class="btn btn-ghost btn-sm" type="submit">Spring over</button></form>
+              {% endif %}
+            </div>
+          </td></tr>
+          {% endfor %}
           {% endfor %}
         </tbody></table>
       </div>

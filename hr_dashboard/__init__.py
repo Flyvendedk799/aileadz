@@ -3631,9 +3631,24 @@ def create_hr_dashboard_blueprint():
 
             import learning_path_service
             path_steps = {p['id']: learning_path_service.get_steps(cur, company_id, p['id']) for p in paths}
+
+            # Steps that could not be ordered or whose order was cancelled/rejected: HR retries or skips them.
+            failed_steps = defaultdict(list)
+            try:
+                cur.execute("""
+                    SELECT s.id, s.progress_id, s.title, s.last_error, s.order_id
+                    FROM learning_assignment_steps s
+                    WHERE s.company_id = %s AND s.status = 'failed'
+                    ORDER BY s.progress_id, s.position
+                """, (company_id,))
+                for s in cur.fetchall() or []:
+                    failed_steps[s['progress_id']].append(s)
+            except Exception as step_err:
+                current_app.logger.warning(f"Failed path steps lookup: {step_err}")
             cur.close()
             return render_template('fm/learning_paths.html',
                                    path_steps=path_steps,
+                                   failed_steps=failed_steps,
                                    paths=paths,
                                    employees=employees,
                                    departments=departments,
@@ -3784,7 +3799,8 @@ def create_hr_dashboard_blueprint():
             if not path:
                 flash("Læringsforløbet blev ikke fundet.", "warning")
                 return redirect(url_for('hr_dashboard.learning_paths'))
-            ctx = {'path': path, 'note': '', 'text_fallback': '', 'errors': {}, 'active_hr_page': 'learning_paths'}
+            ctx = {'path': path, 'note': '', 'text_fallback': '', 'errors': {}, 'active_hr_page': 'learning_paths',
+                   'ordering_mode': learning_path_service.normalize_mode(path.get('ordering_mode'))}
             if request.method == 'POST':
                 if 'step_type[]' in request.form:
                     posted = learning_path_service.steps_from_form(request.form.getlist)
@@ -3792,9 +3808,10 @@ def create_hr_dashboard_blueprint():
                     ctx['text_fallback'] = request.form.get('steps') or ''
                     posted = learning_path_service.steps_from_text(ctx['text_fallback'])
                 ctx['note'] = (request.form.get('note') or '').strip()
+                ctx['ordering_mode'] = learning_path_service.normalize_mode(request.form.get('ordering_mode') or ctx['ordering_mode'])
                 res = learning_path_service.save_steps(cur, company_id, path_id, posted,
                                                        actor_user_id=session.get('user_id'),
-                                                       note=ctx['note'] or None)
+                                                       note=ctx['note'] or None, ordering_mode=ctx['ordering_mode'])
                 if res.get('success'):
                     conn.commit()
                     flash(f"Trin gemt (version {res['version']}).", "success")
@@ -3809,6 +3826,37 @@ def create_hr_dashboard_blueprint():
             return render_template('fm/learning_path_steps.html', **ctx)
         finally:
             cur.close()
+
+    @hr_dashboard_bp.route('/learning-paths/steps/<int:step_id>/retry', methods=['POST'])
+    def retry_learning_path_step(step_id):
+        """HR orders a failed path step again (a cancelled/rejected order, or one that could not be created)."""
+        if 'company_id' not in session:
+            return jsonify({'error': 'Ikke logget ind'}), 401
+        if not can('company.workspace'):
+            flash("Du har ikke rettigheder til at bestille kurser i forløb.", "danger")
+            return redirect(url_for('hr_dashboard.learning_paths'))
+        import learning_path_service
+        import order_service
+        ctx = order_service.OrderContext.from_session(source='hr')
+        result = learning_path_service.hr_retry_step(ctx, step_id, session_id=request.form.get('session_id') or None)
+        flash(result.get('message') or ("Kurset er bestilt og godkendt." if result.get('success') else "Kurset kunne ikke bestilles."),
+              "success" if result.get('success') else "warning")
+        return redirect(url_for('hr_dashboard.learning_paths'))
+
+    @hr_dashboard_bp.route('/learning-paths/steps/<int:step_id>/skip', methods=['POST'])
+    def skip_learning_path_step(step_id):
+        """HR skips a failed path step so the path (and the next course of a sequential path) can move on."""
+        if 'company_id' not in session:
+            return jsonify({'error': 'Ikke logget ind'}), 401
+        if not can('company.workspace'):
+            flash("Du har ikke rettigheder til at springe trin over.", "danger")
+            return redirect(url_for('hr_dashboard.learning_paths'))
+        import learning_path_service
+        import order_service
+        ctx = order_service.OrderContext.from_session(source='hr')
+        result = learning_path_service.hr_skip_step(ctx, step_id, note=(request.form.get('note') or '').strip())
+        flash(result.get('message') or "Trinnet kunne ikke springes over.", "success" if result.get('success') else "warning")
+        return redirect(url_for('hr_dashboard.learning_paths'))
 
     @hr_dashboard_bp.route('/learning-paths/<int:path_id>/toggle', methods=['POST'])
     def toggle_learning_path(path_id):

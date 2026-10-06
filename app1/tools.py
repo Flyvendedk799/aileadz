@@ -593,6 +593,107 @@ def _annotate_match_reasons(compact_results, query="", profile_boost=None):
     return compact_results
 
 
+def _annotate_session_facts(compact_results, products, *, location="", exact_city=False):
+    """Attach honest session facts onto each compact search row.
+
+    Maps compact rows to products (handle, then title), calls
+    ``course_fact_bundle``, and attaches matching_sessions /
+    availability_sessions / has_exact_city_match plus a nearby note when
+    appropriate. Mirrors ``catalog_get_product``'s availability_sessions shape
+    (date / city / availability). Never invents stock, VAT, or cities; preserves
+    unknown vs sold_out. Missing products are left unchanged (safe no-op).
+    """
+    from app1.course_facts import course_fact_bundle
+
+    product_list = [p for p in (products or []) if isinstance(p, dict)]
+    by_handle = {}
+    by_title = {}
+    for product in product_list:
+        handle = (product.get("handle") or "").strip()
+        if handle and handle not in by_handle:
+            by_handle[handle] = product
+        title_key = (product.get("title") or "").strip().lower()
+        if title_key and title_key not in by_title:
+            by_title[title_key] = product
+
+    loc = (location or "").strip()
+    exact = bool(exact_city)
+    annotated = []
+    for row in compact_results or []:
+        if not isinstance(row, dict):
+            annotated.append(row)
+            continue
+
+        product = None
+        handle = (row.get("handle") or "").strip()
+        if handle:
+            product = by_handle.get(handle)
+        if product is None:
+            title_key = (row.get("title") or "").strip().lower()
+            if title_key:
+                product = by_title.get(title_key)
+        if product is None:
+            annotated.append(row)
+            continue
+
+        try:
+            bundle = course_fact_bundle(
+                product, location_filter=loc, exact_city=exact,
+            )
+        except Exception:
+            annotated.append(row)
+            continue
+
+        matching = list(bundle.get("matching_sessions") or [])
+        sessions = list(bundle.get("sessions") or [])
+        nearby = list(bundle.get("nearby_sessions") or [])
+        # Prefer matching sessions when a location filter is active so prose
+        # cannot mix an Aarhus date into a København claim (L04).
+        availability_source = matching if loc else sessions
+        if not availability_source:
+            availability_source = sessions
+
+        def _session_row(session):
+            return {
+                "date": session.get("date"),
+                "city": session.get("city"),
+                "availability": session.get("availability"),
+            }
+
+        row["matching_sessions"] = [_session_row(s) for s in matching[:6]]
+        row["availability_sessions"] = [_session_row(s) for s in availability_source[:6]]
+        if bundle.get("has_exact_city_match") is not None:
+            row["has_exact_city_match"] = bool(bundle["has_exact_city_match"])
+
+        if loc and exact and not matching:
+            other_cities = sorted({
+                (s.get("city") or "").strip()
+                for s in sessions
+                if (s.get("city") or "").strip()
+            })
+            if other_cities:
+                row["nearby_note"] = (
+                    f"Ingen hold i {loc}; kurset har sessioner i "
+                    + ", ".join(other_cities[:4])
+                )
+            else:
+                row["nearby_note"] = f"Ingen hold i {loc} ifølge kataloget."
+        elif loc and not matching and nearby:
+            nearby_cities = sorted({
+                (s.get("city") or "").strip()
+                for s in nearby
+                if (s.get("city") or "").strip()
+            })
+            if nearby_cities:
+                row["nearby_note"] = (
+                    f"Ingen præcis match i {loc}; nærmeste sessioner: "
+                    + ", ".join(nearby_cities[:4])
+                )
+
+        annotated.append(row)
+    return annotated
+
+
 # ── Tool Definitions ──
 
 OPENAI_TOOLS = [

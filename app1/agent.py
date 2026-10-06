@@ -3044,6 +3044,14 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                             search_args=tool_result.arguments if isinstance(tool_result.arguments, dict) else None,
                             replace_active=True,
                         )
+                    elif tool_result_dict.get("status") in ("not_found", "no_results"):
+                        # L02: failed/empty search must clear the prior active set
+                        # so follow-ups cannot reuse an older course as "latest".
+                        _track_shown_products(
+                            sid, [],
+                            search_args=tool_result.arguments if isinstance(tool_result.arguments, dict) else None,
+                            replace_active=True,
+                        )
 
                 elif fn in ("get_course_details", "catalog_get_product"):
                     if tool_result_dict.get("suppress_cards") or tool_result_dict.get("status") == "not_found":

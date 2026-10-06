@@ -174,3 +174,128 @@ class SerializeCardStockTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AnnotateSessionFactsTests(unittest.TestCase):
+    """Search annotation must exist and preserve exact-city honesty (L04 crash fix)."""
+
+    def _product(self):
+        return {
+            "title": "Agil projektledelse",
+            "handle": "agil",
+            "vendor": "Test",
+            "variants": [
+                {
+                    "price": "8900",
+                    "option1": "Aarhus",
+                    "option2": "13. marts 2026",
+                    "inventory_management": "shopify",
+                    "inventory_quantity": 4,
+                },
+                {
+                    "price": "8900",
+                    "option1": "København",
+                    "option2": "20. april 2026",
+                    "inventory_management": "shopify",
+                    "inventory_quantity": 4,
+                },
+                {
+                    "price": "8900",
+                    "option1": "Aarhus",
+                    "option2": "1. maj 2026",
+                    "inventory_management": None,
+                    "inventory_quantity": 0,
+                },
+            ],
+        }
+
+    def test_annotate_session_facts_is_defined_and_callable(self):
+        from app1 import tools as T
+        self.assertTrue(callable(getattr(T, "_annotate_session_facts", None)))
+
+    def test_exact_city_matching_sessions_stay_correct(self):
+        from app1 import tools as T
+        product = self._product()
+        compact = [{"title": product["title"], "handle": product["handle"], "vendor": "Test"}]
+        out = T._annotate_session_facts(
+            compact, [product], location="København", exact_city=True,
+        )
+        self.assertEqual(len(out), 1)
+        row = out[0]
+        self.assertTrue(row.get("has_exact_city_match"))
+        cities = {s["city"] for s in row["matching_sessions"]}
+        self.assertEqual(cities, {"København"})
+        dates = {s["date"] for s in row["matching_sessions"]}
+        self.assertIn("20. april 2026", dates)
+        self.assertNotIn("13. marts 2026", dates)
+        # availability_sessions mirrors get_product shape and stays city-honest
+        for s in row["availability_sessions"]:
+            self.assertIn("date", s)
+            self.assertIn("city", s)
+            self.assertIn("availability", s)
+            self.assertEqual(s["city"], "København")
+
+    def test_missing_product_is_noop(self):
+        from app1 import tools as T
+        compact = [{"title": "Ghost", "handle": "ghost"}]
+        out = T._annotate_session_facts(compact, [], location="København", exact_city=True)
+        self.assertEqual(out[0], {"title": "Ghost", "handle": "ghost"})
+        self.assertNotIn("matching_sessions", out[0])
+
+    def test_unknown_vs_sold_out_preserved(self):
+        from app1 import tools as T
+        product = self._product()
+        compact = [{"title": product["title"], "handle": product["handle"]}]
+        out = T._annotate_session_facts(
+            compact, [product], location="Aarhus", exact_city=True,
+        )
+        statuses = {
+            (s.get("date"), (s.get("availability") or {}).get("status"))
+            for s in out[0]["matching_sessions"]
+        }
+        self.assertIn(("13. marts 2026", "known"), statuses)
+        self.assertIn(("1. maj 2026", "unknown"), statuses)
+        self.assertNotIn("sold_out", {st for _, st in statuses})
+
+    def test_title_fallback_mapping(self):
+        from app1 import tools as T
+        product = self._product()
+        # Compact row without handle still maps by title
+        compact = [{"title": product["title"]}]
+        out = T._annotate_session_facts(
+            compact, [product], location="København", exact_city=True,
+        )
+        self.assertTrue(out[0].get("has_exact_city_match"))
+        self.assertEqual({s["city"] for s in out[0]["matching_sessions"]}, {"København"})
+
+    def test_exact_city_miss_sets_nearby_note(self):
+        from app1 import tools as T
+        product = {
+            "title": "X", "handle": "x", "vendor": "V",
+            "variants": [
+                {"price": "1", "option1": "Aarhus", "option2": "1. maj",
+                 "inventory_management": "shopify", "inventory_quantity": 2},
+            ],
+        }
+        compact = [{"title": "X", "handle": "x"}]
+        out = T._annotate_session_facts(
+            compact, [product], location="København", exact_city=True,
+        )
+        self.assertFalse(out[0].get("has_exact_city_match"))
+        self.assertEqual(out[0]["matching_sessions"], [])
+        self.assertIn("Ingen hold i København", out[0].get("nearby_note", ""))
+
+
+class ActiveResultSetNoResultsClearTests(unittest.TestCase):
+    def test_empty_replace_clears_prior_handles(self):
+        """Failed search must not leave the prior active set as 'latest' (L02)."""
+        from app1 import result_set as rs
+        state = {}
+        rs.replace_active_result_set(state, [
+            {"handle": "old-physical", "title": "Old", "vendor": "V", "price": "1"},
+        ])
+        self.assertEqual(rs.get_active_result_set(state)["handles"], ["old-physical"])
+        rs.replace_active_result_set(state, [])
+        cleared = rs.get_active_result_set(state)
+        self.assertEqual(cleared["handles"], [])
+        self.assertEqual(cleared["products"], [])

@@ -1,49 +1,107 @@
 {% extends "fm_base.html" %}
-{% block title %}{{ assignment.content_name }}{% endblock %}
+{% block title %}{{ assignment.content_name or 'Mit læringsforløb' }}{% endblock %}
 {% block topbar_title %}Mit læringsforløb{% endblock %}
+{% block extra_head %}
+<style>
+  .lpa { max-width: 760px; }
+  .lpa-head { padding: 18px; margin-bottom: 14px; }
+  .lpa-head h1 { margin: 6px 0 8px; font-size: 22px; line-height: 1.25; }
+  .lpa-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13.5px; color: var(--fm-ink-2); }
+  .lpa-prog { margin-top: 14px; }
+  .lpa-note { margin-top: 12px; padding: 10px 12px; border: 1px solid var(--fm-line); border-radius: 10px; background: var(--fm-surface); font-size: 13.5px; }
+  .lpa-step { padding: 16px 18px; margin-bottom: 12px; display: grid; gap: 10px; }
+  .lpa-top { display: flex; gap: 12px; align-items: flex-start; }
+  .lpa-num { flex: 0 0 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--fm-primary-tint); color: var(--fm-primary); font-weight: 700; font-size: 13px; }
+  .lpa-title { font-weight: 650; font-size: 15.5px; line-height: 1.3; }
+  .lpa-sub { font-size: 12.5px; color: var(--fm-ink-3); margin-top: 2px; }
+  .lpa-facts { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 13px; color: var(--fm-ink-2); }
+  .lpa-actions { display: grid; gap: 8px; }
+  .lpa-actions .btn { width: 100%; justify-content: center; }
+  .lpa-alert { color: var(--fm-danger); font-size: 13.5px; }
+  @media (min-width: 640px) { .lpa-actions { display: flex; flex-wrap: wrap; } .lpa-actions .btn { width: auto; } }
+</style>
+{% endblock %}
 {% block content %}
-    <div class="fm-wrap">
-        <a href="{{ url_for('futurematch.employee_home') }}">Tilbage til min læring</a>
-        <h1>{{ assignment.content_name }}</h1>
-        <p>{{ assignment.progress_percentage|int }}% gennemført{% if assignment.due_date %} · Frist: {{ assignment.due_date }}{% endif %}
-        </p>
-        {% for step in assignment.steps %}
-            <section class="fm-card" style="padding:20px;margin-bottom:12px">
-                <h2>{{ step.position }}. {{ step.title }}</h2>
-                <p>Version {{ step.path_version }} · {{ {'completed':'Gennemført','skipped':'Sprunget over','ordered':'Bestilt','failed':'Kræver opfølgning','not_started':'Ikke startet'}.get(step.status,step.status) }}</p>
-                {% if step.last_error %}
-                    <p role="alert">{{ step.last_error }}</p>
-                {% endif %}
-                {% if step.order_id %}
-                    <a class="btn btn-ghost"
-                       href="{{ url_for('futurematch.my_order',order_id=step.order_id) }}">Se bestilling og status</a>
-                {% endif %}
-                {% if step.status not in ("completed","skipped") %}
-                    <form method="post"
-                          action="{{ url_for('learning.act_on_step',progress_id=assignment.id,step_id=step.id) }}">
-                        {% if step.step_type == "info" %}
-                            <input type="hidden" name="action" value="acknowledge">
-                            <button class="btn btn-primary">Markér vejledningstrinnet som gennemført</button>
-                        {% elif not step.order_id or step.order_status in ("cancelled","rejected") %}
-                            {% if step.variants %}
-                                <label class="fm-field">
-                                    <span>Vælg hold</span>
-                                    <select class="fm-select" name="session_id" required>
-                                        <option value="">Vælg dato og sted</option>
-                                        {% for v in step.variants %}
-                                            <option value="{{ v.session_id }}"
-                                                    {% if v.seats is not none and v.seats <= 0 %}disabled{% endif %}>{{ v.date or 'Dato efter aftale' }} · {{ v.location or 'Sted efter aftale' }} · {{ v.price_label }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </label>
-                            {% endif %}
-                            <button class="btn btn-primary">Anmod om plads</button>
-                        {% endif %}
-                    </form>
-                {% endif %}
-            </section>
-        {% else %}
-            <p>Dette ældre forløb har endnu ingen gemte trin. Bed HR om at migrere tildelingen.</p>
-        {% endfor %}
+{% set pct = (assignment.progress_percentage or 0)|float|round(0)|int %}
+<div class="fm-wrap lpa">
+  <a href="{{ url_for('futurematch.employee_home') }}" class="muted" style="font-size:13px"><i class="fa-solid fa-arrow-left"></i> Tilbage til min læring</a>
+
+  <section class="fm-card lpa-head">
+    <span class="fm-eyebrow"><i class="fa-solid fa-route"></i> Læringsforløb</span>
+    <h1>{{ assignment.content_name }}</h1>
+    <div class="lpa-meta">
+      {% if assignment.assigned_by %}<span><i class="fa-solid fa-user-tie"></i> Tildelt af {{ assignment.assigned_by }}</span>{% endif %}
+      {% if assignment.due_date %}<span><i class="fa-regular fa-calendar"></i> Frist {{ assignment.due_date|dkdate(style='long') }}</span>{% endif %}
+      <span>{{ assignment.steps|length }} trin</span>
     </div>
+    <div class="lpa-prog">
+      <div class="fm-flex fm-spread" style="font-size:13px;margin-bottom:4px"><span>Fremdrift</span><strong class="mono">{{ pct }}%</strong></div>
+      <div class="fm-prog" role="progressbar" aria-valuenow="{{ pct }}" aria-valuemin="0" aria-valuemax="100" aria-label="Fremdrift i forløbet"><span style="width:{{ pct }}%;background:var(--fm-success)"></span></div>
+    </div>
+    {% if assignment.sequential %}
+    <div class="lpa-note"><i class="fa-solid fa-list-ol"></i> Kurserne bestilles ét ad gangen.{% if assignment.next_note %} {{ assignment.next_note }}{% endif %}</div>
+    {% endif %}
+  </section>
+
+  {% for step in assignment.steps %}
+  <section class="fm-card lpa-step" id="trin-{{ step.position }}">
+    <div class="lpa-top">
+      <span class="lpa-num">{{ step.position }}</span>
+      <div style="min-width:0">
+        <div class="lpa-title">{{ step.display_title }}</div>
+        {% if step.label %}<div class="lpa-sub">{{ step.label }}</div>{% endif %}
+        {% if not step.is_course %}<div class="lpa-sub">Vejledning</div>{% endif %}
+      </div>
+    </div>
+    <div class="lpa-facts">
+      <span class="fm-badge {{ step.status_tone }} dot">{{ step.status_text }}</span>
+      {% if step.session_text %}<span><i class="fa-regular fa-calendar"></i> {{ step.session_text }}</span>{% endif %}
+      {% if step.order_location %}<span><i class="fa-solid fa-location-dot"></i> {{ step.order_location }}</span>{% endif %}
+    </div>
+    {% if step.last_error and step.status not in ('completed', 'skipped') %}<p class="lpa-alert" role="alert">{{ step.last_error }}</p>{% endif %}
+    {% if step.auto_ordered_later %}
+    <p class="muted" style="margin:0;font-size:13.5px">Bestilles automatisk, når de forrige trin er gennemført.</p>
+    {% endif %}
+
+    <div class="lpa-actions">
+      {% if step.order_id %}
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('futurematch.my_order', order_id=step.order_id) }}">Se bestilling og status</a>
+      {% endif %}
+      {% if step.status not in ("completed", "skipped") %}
+        {% if step.step_type == "info" %}
+        <form method="post" action="{{ url_for('learning.act_on_step', progress_id=assignment.id, step_id=step.id) }}" style="display:contents">
+          <input type="hidden" name="action" value="acknowledge">
+          <button class="btn btn-primary btn-sm">Markér som gennemført</button>
+        </form>
+        <details>
+          <summary class="btn btn-ghost btn-sm" style="cursor:pointer">Spring over</summary>
+          <form method="post" action="{{ url_for('learning.act_on_step', progress_id=assignment.id, step_id=step.id) }}" style="margin-top:8px;display:grid;gap:8px">
+            <input type="hidden" name="action" value="skip">
+            <label class="fm-field"><span>Hvorfor springer du over?</span><input class="fm-input" name="note" required maxlength="500"></label>
+            <button class="btn btn-ghost btn-sm">Spring trinnet over</button>
+          </form>
+        </details>
+        {% elif not step.auto_ordered_later and (not step.order_id or step.order_status in ("cancelled", "rejected")) %}
+        <form method="post" action="{{ url_for('learning.act_on_step', progress_id=assignment.id, step_id=step.id) }}" style="display:grid;gap:8px;width:100%">
+          {% if step.variants %}
+          <label class="fm-field">
+            <span>Vælg hold</span>
+            <select class="fm-select" name="session_id" required>
+              <option value="">Vælg dato og sted</option>
+              {% for v in step.variants %}
+              <option value="{{ v.session_id }}" {% if v.seats is not none and v.seats <= 0 %}disabled{% endif %}>{{ v.date or 'Dato efter aftale' }} · {{ v.location or 'Sted efter aftale' }} · {{ v.price_label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          {% endif %}
+          <button class="btn btn-primary btn-sm">Anmod om plads</button>
+        </form>
+        {% endif %}
+      {% endif %}
+    </div>
+  </section>
+  {% else %}
+  <p>Dette ældre forløb har endnu ingen gemte trin. Bed HR om at migrere tildelingen.</p>
+  {% endfor %}
+</div>
 {% endblock %}

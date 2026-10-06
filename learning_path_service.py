@@ -599,7 +599,11 @@ def assignment_detail(cur, company_id, user_id, progress_id):
     if not assignment:
         return None
     cur.execute(
-        "SELECT s.*, o.status AS order_status FROM learning_assignment_steps s LEFT JOIN course_orders o ON o.order_id = s.order_id AND o.company_id = s.company_id WHERE s.progress_id = %s AND s.company_id = %s AND s.user_id = %s ORDER BY s.position",
+        "SELECT s.*, o.status AS order_status, o.variant_date AS order_variant_date, o.variant_location AS order_location, "
+        "o.price AS order_price, d.booking_json AS order_booking_json FROM learning_assignment_steps s "
+        "LEFT JOIN course_orders o ON o.order_id = s.order_id AND o.company_id = s.company_id "
+        "LEFT JOIN course_order_details d ON d.order_id = s.order_id "
+        "WHERE s.progress_id = %s AND s.company_id = %s AND s.user_id = %s ORDER BY s.position",
         (progress_id, company_id, user_id),
     )
     assignment["steps"] = list(cur.fetchall() or [])

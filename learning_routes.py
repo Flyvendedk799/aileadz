@@ -16,6 +16,70 @@ def cursor():
     return current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
 
+def _present_assignment(cur, ctx, item):
+    """What the learner reads: real course titles, each order's true status, session dates, who
+    assigned the path and, for a sequential path, when the next course will be ordered. Internal
+    details (path version, raw step status) stay out of it."""
+    import order_lifecycle as lc
+    import order_timing
+    from person_names import display_name
+
+    done = ("completed", "skipped")
+    sequential = paths.normalize_mode(item.get("ordering_mode")) == "sequential"
+    steps = item["steps"]
+    for step in steps:
+        product = enrollment.get_course(step["course_handle"], ctx.company_id) if step.get("course_handle") else None
+        step["variants"] = (product or {}).get("variants") or []
+        for variant in step["variants"]:
+            variant["session_id"] = enrollment.session_key(variant)
+        label = (step.get("title") or "").strip()
+        real = ((product or {}).get("title") or "").strip()
+        step["display_title"] = real or label or "Trin"
+        step["label"] = label if real and label and label != real else ""
+        step["is_course"] = bool(step.get("course_handle"))
+        step["status_text"], step["status_tone"] = _step_status(step, lc, sequential, done)
+        step["session_text"] = ""
+        if step.get("order_id") and step.get("order_status"):
+            step["session_text"] = order_timing.course_label(
+                {"variant_date": step.get("order_variant_date"), "booking_json": step.get("order_booking_json")}, with_time=False)
+        # A sequential course that is not due yet is ordered automatically: no button to press.
+        step["auto_ordered_later"] = bool(sequential and step["is_course"] and not step.get("order_id")
+                                          and step.get("status") == "not_started")
+    item["assigned_by"] = (display_name(cur, ctx.company_id, user_id=item["assigned_by_user_id"])
+                           if item.get("assigned_by_user_id") else "")
+    item["sequential"] = sequential
+    item["next_note"] = ""
+    if sequential:
+        waiting = next((s for s in steps if s["auto_ordered_later"]), None)
+        if waiting:
+            blockers = [s for s in steps[:steps.index(waiting)] if s.get("status") not in done]
+            if not blockers:
+                item["next_note"] = "Næste kursus, ‘%s’, bestilles automatisk." % waiting["display_title"]
+            else:
+                item["next_note"] = "Næste kursus, ‘%s’, bestilles, når du har gennemført %s." % (
+                    waiting["display_title"],
+                    "‘%s’" % blockers[0]["display_title"] if len(blockers) == 1 else "de forrige trin")
+    return item
+
+
+def _step_status(step, lc, sequential, done):
+    """(text, tone): the order's own status label for a course, never a generic "Bestilt"."""
+    status = step.get("status")
+    if status == "completed":
+        return "Gennemført", "green"
+    if status == "skipped":
+        return "Sprunget over", ""
+    if step.get("order_id") and step.get("order_status"):
+        text = lc.status_label(step["order_status"], short=True)
+        return text, {"completed": "green", "booked": "teal", "approved": "teal", "pending_approval": "amber"}.get(
+            lc.normalize_status(step["order_status"]), "red")
+    if status == "failed":
+        return "Kræver opfølgning", "red"
+    if step.get("course_handle"):
+        return ("Bestilles senere", "") if sequential else ("Ikke bestilt endnu", "amber")
+    return "Ikke startet", ""
+
+
 @learning_bp.route("/min-laering/forloeb/<int:progress_id>")
 @login_required
 def assignment(progress_id):
@@ -25,12 +89,7 @@ def assignment(progress_id):
         item = paths.assignment_detail(cur, ctx.company_id, ctx.user_id, progress_id)
         if not item:
             abort(404)
-        for step in item["steps"]:
-            product = enrollment.get_course(step["course_handle"], ctx.company_id) if step.get("course_handle") else None
-            step["variants"] = (product or {}).get("variants") or []
-            for variant in step["variants"]:
-                variant["session_id"] = enrollment.session_key(variant)
-        return render_template("fm/learning_assignment.html", assignment=item)
+        return render_template("fm/learning_assignment.html", assignment=_present_assignment(cur, ctx, item))
     finally:
         cur.close()
 
@@ -44,8 +103,10 @@ def act_on_step(progress_id, step_id):
         item = paths.assignment_detail(cur, ctx.company_id, ctx.user_id, progress_id)
         if not item or step_id not in [s["id"] for s in item["steps"]]:
             abort(404)
-        if request.form.get("action") == "acknowledge":
-            result = paths.acknowledge_step(cur, ctx.company_id, ctx.user_id, step_id)
+        action = request.form.get("action")
+        if action in ("acknowledge", "skip"):
+            result = paths.acknowledge_step(cur, ctx.company_id, ctx.user_id, step_id, skipped=(action == "skip"),
+                                            note=(request.form.get("note") or "").strip())
             current_app.mysql.connection.commit()
         else:
             result = paths.order_assignment_step(ctx, step_id, session_id=request.form.get("session_id"))

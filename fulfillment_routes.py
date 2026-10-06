@@ -4,6 +4,7 @@ import json
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from auth_decorators import login_required
 import order_service as orders
+import order_timing
 import order_fulfillment as service
 
 fulfillment_bp = Blueprint("fulfillment", __name__)
@@ -99,6 +100,8 @@ def workflow(ctx, order_id, *, vendor=False):
             people=people,
             variants=variants,
             may_review=may_review,
+            held_message=order_timing.not_yet_held_message(row, fulfillment.get("booking_json"))
+            if row.get("status") == orders.lc.BOOKED else None,
             post_url=target,
             vendor_mode=vendor,
         )

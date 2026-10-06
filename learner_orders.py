@@ -49,8 +49,11 @@ def _can_cancel(status):
     return lc.normalize_status(status) in lc.OPEN_STATUSES
 
 
-def _can_complete(status):
-    return lc.normalize_status(status) == lc.BOOKED
+def _can_complete(status, row=None, booking=None):
+    """Attendance can be reported on a booked order once the course has taken place."""
+    if lc.normalize_status(status) != lc.BOOKED:
+        return False
+    return order_timing.not_yet_held_message(row or {}, booking) is None
 
 
 def register_learner_order_routes(bp):
@@ -92,6 +95,9 @@ def register_learner_order_routes(bp):
         finally:
             detail_cur.close()
         pending_change = next((c for c in changes if (c.get("status") or "") == "pending"), None)
+        booking = fulfillment.get("booking_json") or {}
+        reported = fulfillment.get("completion_state") == "reported"
+        held_message = order_timing.not_yet_held_message(row, booking) if status == lc.BOOKED else None
         return render_template(
             "fm/my_order.html", fulfillment=fulfillment, changes=changes,
             order=row,
@@ -103,7 +109,9 @@ def register_learner_order_routes(bp):
             vendor_name=vendor_name,
             can_cancel=_can_cancel(status) and not pending_change,
             pending_change=pending_change,
-            can_complete=_can_complete(status),
+            can_complete=_can_complete(status, row, booking) and not reported,
+            completion_reported=reported and status == lc.BOOKED,
+            held_message=held_message,
             has_date=bool(row.get("variant_date")),
             moment=moment,
             just_completed=request.args.get("completed") == "1" and status == lc.COMPLETED,
@@ -133,7 +141,14 @@ def register_learner_order_routes(bp):
         if not session.get("user"):
             return jsonify({"success": False, "message": "Log ind først."}), 401
         from order_fulfillment import report_completion
-        res = report_completion(_ctx(), order_id, note=request.form.get('evidence_note',''), evidence_url=request.form.get('evidence_url',''))
+        note = (request.form.get('evidence_note') or (request.get_json(silent=True) or {}).get('evidence_note') or '').strip()
+        if not note:
+            msg = "Skriv kort, hvad du har gennemført, så HR kan bekræfte deltagelsen."
+            if _wants_json():
+                return jsonify({"success": False, "error": "note_required", "message": msg}), 400
+            flash(msg, "danger")
+            return redirect(url_for("futurematch.my_order", order_id=order_id))
+        res = report_completion(_ctx(), order_id, note=note, evidence_url=request.form.get('evidence_url',''))
         if _wants_json():
             code = 200 if res.get("success") else (404 if res.get("error") == "not_found" else 400)
             return jsonify(res), code

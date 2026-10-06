@@ -30,7 +30,7 @@ import datetime as _dt
 import re
 from zoneinfo import ZoneInfo
 
-__all__ = ["booking_start_text", "course_start", "course_end", "has_taken_place", "course_label", "session_label", "format_date", "now"]
+__all__ = ["not_yet_held_message", "reporting_opens_on", "booking_start_text", "course_start", "course_end", "has_taken_place", "course_label", "session_label", "format_date", "now"]
 
 TZ = ZoneInfo("Europe/Copenhagen")
 
@@ -152,6 +152,33 @@ def has_taken_place(row, booking=None, now=None):
     elif now.tzinfo is None:
         now = now.replace(tzinfo=TZ)
     return now > end
+
+
+def reporting_opens_on(row, booking=None):
+    """First day attendance can be reported/verified, or ``None`` without a date.
+
+    The day after a course that ends on a bare date; the end day itself when the
+    booked end has a clock time (it can be confirmed once that time has passed)."""
+    start = course_start(row, booking)
+    if start is None:
+        return None
+    end = course_end(row, booking)
+    if end is None or end < start:
+        end = _end_of_day(start.date())
+    if end == _end_of_day(end.date()):
+        return end.date() + _dt.timedelta(days=1)
+    return end.date()
+
+
+def not_yet_held_message(row, booking=None, now=None):
+    """``None`` once the course has taken place, else the Danish reason why
+    attendance and completion cannot be confirmed yet. One guard for every path."""
+    if has_taken_place(row, booking, now):
+        return None
+    opens = reporting_opens_on(row, booking)
+    if opens is None:
+        return "Kurset har ingen bekræftet dato endnu. Deltagelse kan først registreres, når kurset er booket med en dato og er afholdt."
+    return "Kurset er ikke afholdt endnu. Du kan registrere deltagelse fra %s." % format_date(opens, style="long")
 
 
 def format_date(value, style="long", with_time=False):

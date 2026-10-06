@@ -1,5 +1,6 @@
 """N-1: the one order lifecycle — pure rules plus service flows on an in-memory DB."""
 
+import datetime
 import os
 import unittest
 from unittest import mock
@@ -10,6 +11,7 @@ from flask import Flask  # noqa: E402
 
 import order_lifecycle as lc  # noqa: E402
 import order_service as svc  # noqa: E402
+import order_timing  # noqa: E402
 from tests.sqlite_mysql import SqliteMysql  # noqa: E402
 
 
@@ -96,6 +98,10 @@ class OrderFlowBase(unittest.TestCase):
             mock.patch.object(svc, "_send_approval_needed_emails_safe"),
             mock.patch.object(svc, "_send_budget_overrun_emails_safe"),
             mock.patch.object(svc, "_manager_recipient_emails", return_value=["hr@firma.dk"]),
+            # Completion needs the course to have taken place: these flows use 2026
+            # session dates, so the shared clock sits after them. The guard tests
+            # (tests/test_completion_guard.py) move it themselves.
+            mock.patch.object(order_timing, "now", lambda: datetime.datetime(2027, 1, 1, tzinfo=order_timing.TZ)),
         ]
         for p in patches:
             p.start()

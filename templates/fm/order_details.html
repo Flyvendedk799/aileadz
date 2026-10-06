@@ -134,6 +134,9 @@
       <button class="btn btn-primary btn-sm" style="width:100%;margin-bottom:8px" data-status="booked"><i class="fa-solid fa-calendar-check"></i> Marker som booket</button>
       <p class="muted" style="font-size:12px;margin:-2px 0 8px">Brug denne, hvis udbyderen ikke selv bekræfter i portalen. Handlingen logges.</p>
       {% endif %}
+      {% if held_message %}
+      <p class="muted" data-held-hint style="font-size:12.5px;margin:0 0 8px">{{ held_message }}</p>
+      {% endif %}
       {% if 'completed' in next_statuses %}
       <button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:8px" data-status="completed"><i class="fa-solid fa-circle-check"></i> Marker som gennemført</button>
       {% endif %}

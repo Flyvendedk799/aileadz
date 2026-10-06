@@ -46,6 +46,14 @@
             {% endif %}
           </div>
           <p class="mo-hint">{{ status_hint }}</p>
+          {% if completion_reported %}
+          <div class="mo-pending" role="status" style="margin-top:12px;padding:10px 12px;border:1px solid var(--fm-line);border-radius:10px;background:var(--fm-surface);font-size:13.5px">
+            <span class="fm-badge teal"><i class="fa-solid fa-hourglass-half"></i> Deltagelse indsendt – afventer bekræftelse</span>
+            <div style="margin-top:6px;color:var(--fm-ink-2)">HR eller udbyderen bekræfter, at du har deltaget. Du behøver ikke gøre mere.</div>
+          </div>
+          {% elif held_message %}
+          <p class="mo-hint" data-held-hint>{{ held_message }}</p>
+          {% endif %}
           {% if pending_change %}
           <div class="mo-pending" role="status" style="margin-top:12px;padding:10px 12px;border:1px solid var(--fm-line);border-radius:10px;background:var(--fm-surface);font-size:13.5px">
             <span class="fm-badge amber"><i class="fa-solid fa-hourglass-half"></i> Ændring afventer svar</span>
@@ -71,7 +79,11 @@
             {{ addtocal(url_for('futurematch.my_order_ics', order_id=order.order_id)) }}
             {% endif %}
             {% if can_complete %}
-            <form method="post" action="{{ url_for('futurematch.my_order_complete', order_id=order.order_id) }}">
+            <form method="post" action="{{ url_for('futurematch.my_order_complete', order_id=order.order_id) }}" style="flex-basis:100%">
+              <label class="fm-field"><span>Hvad gennemførte du?</span>
+                <textarea class="fm-input" name="evidence_note" maxlength="4000" required></textarea></label>
+              <label class="fm-field"><span>Link til kursusbevis (valgfrit)</span>
+                <input class="fm-input" type="url" name="evidence_url"></label>
               <button class="btn btn-primary btn-sm" type="submit"><i class="fa-solid fa-circle-check"></i> Indsend deltagelse til bekræftelse</button>
             </form>
             {% endif %}

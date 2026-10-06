@@ -390,6 +390,11 @@ def report_completion(ctx, order_id, *, note="", evidence_url=""):
             return {"success": True, "unchanged": True, "status": lc.COMPLETED, "message": "Gennemførelsen er allerede bekræftet."}
         if row["status"] != lc.BOOKED:
             return _error("Kurset skal være booket, før du kan registrere deltagelse.")
+        from order_timing import not_yet_held_message
+
+        held_error = not_yet_held_message(row, details(cur, order_id).get("booking_json"))
+        if held_error:
+            return _error(held_error, "not_yet_held")
         if evidence_url and urlparse(evidence_url).scheme not in ("https", "http"):
             return _error("Dokumentationslinket skal starte med https:// eller http://.")
         _save_details(cur, row)

@@ -76,6 +76,7 @@
             {% if o.variant_location %}<i class="fa-solid fa-location-dot"></i> {{ o.variant_location }}{% endif %}
             · ordre {{ o.order_id[:8] }}
           </div>
+          {% if o.held_message %}<div class="m" data-held-hint>{{ o.held_message }}</div>{% endif %}
           {% if o.request_notes %}<div class="m"><strong>Note fra deltageren:</strong> {{ o.request_notes }}</div>{% endif %}
           {% if o.cancel_reason %}<div class="m"><strong>Begrundelse:</strong> {{ o.cancel_reason }}</div>{% endif %}
         </div>
@@ -83,7 +84,7 @@
           {% if o.can_book %}
           <a class="btn primary" href="{{ url_for('vendor.vendor_booking',order_id=o.order_id) }}">Bekræft plads og oplysninger</a>
           {% endif %}
-          {% if o.state == 'booked' or o.can_complete and o.state != 'approved' %}
+          {% if o.can_complete %}
           <form method="POST" action="{{ url_for('vendor.vendor_order_complete', order_id=o.order_id) }}">
             <input type="hidden" name="tab" value="{{ tab }}">
             <button class="btn" type="submit"><i class="fa-solid fa-user-check"></i> Markér som deltaget</button>

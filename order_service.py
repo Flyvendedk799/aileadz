@@ -1660,6 +1660,15 @@ def complete_order(ctx, order_id, *, note=None):
             conn.rollback()
             return {"success": False, "error": code, "message": msg, "status": old}
 
+        # Decision: a course is "completed" only after it has taken place, whoever
+        # confirms it (HR, vendor, admin, the AI tool). No override.
+        from order_fulfillment import details as _booking_details
+        from order_timing import not_yet_held_message
+        held_error = not_yet_held_message(row, _booking_details(cur, order_id).get("booking_json"))
+        if held_error:
+            conn.rollback()
+            return {"success": False, "error": "not_yet_held", "message": held_error, "status": old}
+
         info = _apply_transition(cur, ctx, row, lc.COMPLETED, actors, note=note)
         from order_fulfillment import _save_details, capture_baseline
         _save_details(cur,row)

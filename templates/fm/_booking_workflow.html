@@ -169,7 +169,10 @@
     {% if fulfillment.evidence_url %}
         <a href="{{ fulfillment.evidence_url }}" target="_blank" rel="noopener">Åbn dokumentation</a>
     {% endif %}
-    {% if order.status == "booked" and "owner" in actors %}
+    {% if order.status == "booked" and held_message %}
+        <p class="muted" data-held-hint>{{ held_message }}</p>
+    {% endif %}
+    {% if order.status == "booked" and "owner" in actors and not held_message and fulfillment.completion_state != "reported" %}
         <form method="post" action="{{ post_url }}">
             <input type="hidden" name="action" value="report">
             <label class="fm-field">
@@ -184,7 +187,7 @@
             <button class="btn btn-primary">Indsend deltagelse til bekræftelse</button>
         </form>
     {% endif %}
-    {% if order.status == "booked" and ("manager" in actors or "admin" in actors or "vendor" in actors) %}
+    {% if order.status == "booked" and not held_message and ("manager" in actors or "admin" in actors or "vendor" in actors) %}
         <form method="post" action="{{ post_url }}">
             <input type="hidden" name="action" value="verify">
             <label class="fm-field">

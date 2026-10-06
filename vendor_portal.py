@@ -24,6 +24,7 @@ import json
 import logging
 import time
 
+import order_timing
 from flask import (
     Blueprint,
     Response,
@@ -817,8 +818,9 @@ def _vendor_orders(vendor_id, tab):
     cur.execute(
         "SELECT co.order_id, co.product_title, co.product_handle, co.variant_date, co.variant_location, "
         "co.status, co.user_name, co.user_email, co.user_phone, co.request_notes, co.cancel_reason, "
-        "co.created_at, c.company_name "
+        "co.created_at, c.company_name, d.booking_json "
         "FROM course_orders co LEFT JOIN companies c ON c.id = co.company_id "
+        "LEFT JOIN course_order_details d ON d.order_id = co.order_id "
         "WHERE " + where + " ORDER BY co.created_at DESC LIMIT 200",
         (vendor_id,),
     )
@@ -852,7 +854,9 @@ def vendor_orders():
         o["tone"] = lc.STATUS_TONES[st]
         o["can_book"] = st == lc.APPROVED
         o["can_decline"] = st in (lc.APPROVED, lc.BOOKED)
-        o["can_complete"] = st == lc.BOOKED
+        # Attendance is only confirmed once the course has taken place.
+        o["can_complete"] = st == lc.BOOKED and order_timing.not_yet_held_message(o) is None
+        o["held_message"] = order_timing.not_yet_held_message(o) if st == lc.BOOKED else None
     return render_template(
         "fm/vendor_orders.html", vendor_name=session.get("vendor_name") or "", orders=orders, tab=tab,
         tabs=_ORDER_TABS, load_error=load_error,

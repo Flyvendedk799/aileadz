@@ -1,5 +1,6 @@
 """N-1.2 / N-1.3 / N-1.4 on the web layer: learner order detail, actions, permissions."""
 
+import datetime
 import os
 import unittest
 from unittest import mock
@@ -9,6 +10,7 @@ os.environ.setdefault("AI_WARMUP_ON_IMPORT", "0")
 os.environ.setdefault("SCHEDULER_OPPORTUNISTIC", "0")
 
 import order_service as svc  # noqa: E402
+import order_timing  # noqa: E402
 import run  # noqa: E402
 from tests.sqlite_mysql import SqliteMysql  # noqa: E402
 from tests.sqlite_platform import PlatformDB  # noqa: E402
@@ -32,6 +34,8 @@ class Base(unittest.TestCase):
             mock.patch.object(svc, "_send_email_safe"),
             mock.patch.object(svc, "_vendor_id_for_handle", return_value=None),
             mock.patch.object(svc, "_notify_vendor_safe"),
+            # ord-1 is a November 2026 course: attendance can only be reported after it.
+            mock.patch.object(order_timing, "now", lambda: datetime.datetime(2026, 11, 4, tzinfo=order_timing.TZ)),
         ):
             p.start()
             self.addCleanup(p.stop)
@@ -190,6 +194,27 @@ class ActionTests(Base):
             result = resolve_change(svc.OrderContext(company_id=7,user_id=3,username='hr',company_role='hr_manager'),'ord-1',change['id'],True,note='Udbyderen har accepteret afbestillingen')
             self.assertTrue(result['success'])
         self.assertEqual(self.db.one("SELECT spent FROM department_budgets")["spent"], 0)
+
+    def test_attendance_form_opens_after_the_course_and_shows_waiting_state_after_reporting(self):
+        c = self.client_as("ada", 1)
+        self.db.execute("UPDATE course_orders SET variant_date='12. november 2026' WHERE order_id='ord-1'")
+        with mock.patch.object(order_timing, "now", lambda: datetime.datetime(2026, 10, 6, tzinfo=order_timing.TZ)):
+            html = c.get("/min-ordre/ord-1").get_data(as_text=True)
+            self.assertIn("Du kan registrere deltagelse fra 13. november 2026", html)
+            self.assertNotIn("Indsend deltagelse til bekræftelse", html)
+            resp = c.post("/min-ordre/ord-1/gennemfoert", data={"evidence_note": "Jeg deltog"}, follow_redirects=True)
+            self.assertIn("Kurset er ikke afholdt endnu", resp.get_data(as_text=True))
+        with mock.patch.object(order_timing, "now", lambda: datetime.datetime(2026, 11, 13, 8, tzinfo=order_timing.TZ)):
+            html = c.get("/min-ordre/ord-1").get_data(as_text=True)
+            self.assertIn("Indsend deltagelse til bekræftelse", html)
+            self.assertIn('name="evidence_note"', html)
+            empty = c.post("/min-ordre/ord-1/gennemfoert", data={}, follow_redirects=True)
+            self.assertIn("Skriv kort, hvad du har gennemført", empty.get_data(as_text=True))
+            done = c.post("/min-ordre/ord-1/gennemfoert", data={"evidence_note": "Jeg deltog"}, follow_redirects=True)
+            html = done.get_data(as_text=True)
+            self.assertIn("Deltagelse indsendt – afventer bekræftelse", html)
+            self.assertNotIn("Indsend deltagelse til bekræftelse", html)
+            self.assertIn("Booket", html)
 
     def test_cancel_request_on_a_booked_order_flashes_info_and_shows_the_banner(self):
         c = self.client_as("ada", 1)

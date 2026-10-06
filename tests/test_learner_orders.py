@@ -158,6 +158,17 @@ class ActionTests(Base):
         self.assertIn("fm-flash-success", resp.get_data(as_text=True))
         self.assertEqual(self.db.one("SELECT status FROM course_orders")["status"], "cancelled")
 
+    def test_history_shows_change_requests_with_who_accepted(self):
+        self.db.execute("INSERT INTO order_status_history (order_id, company_id, kind, from_value, to_value, actor_kind, actor_label, note) "
+                        "VALUES ('ord-1', 7, 'change', 'reschedule', 'requested', 'user', 'ada', 'Passer bedre')")
+        self.db.execute("INSERT INTO order_status_history (order_id, company_id, kind, from_value, to_value, actor_kind, actor_label, note) "
+                        "VALUES ('ord-1', 7, 'change', 'reschedule', 'accepted', 'vendor', 'Udbyder', 'Ny dato: 12. november 2026. OK')")
+        html = self.client_as("ada", 1).get("/min-ordre/ord-1").get_data(as_text=True)
+        self.assertIn("Ombooking anmodet", html)
+        self.assertIn("Ombooking accepteret", html)
+        self.assertIn("af udbyderen", html)
+        self.assertIn("Ny dato: 12. november 2026", html)
+
     def test_colleague_cannot_cancel(self):
         resp = self.client_as("bo", 2).post("/min-ordre/ord-1/annuller", headers={"Accept": "application/json"})
         self.assertEqual(resp.status_code, 404)

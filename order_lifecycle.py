@@ -108,6 +108,40 @@ def approval_label(status) -> str:
     return APPROVAL_STATUS_LABELS.get(str(status or "").strip().lower(), "")
 
 
+# Supplier/customer change requests (``course_order_changes``) and how the order
+# history reads them: "Ombooking accepteret".
+CHANGE_KIND_LABELS = {
+    "cancel": "Afbestilling",
+    "reschedule": "Ombooking",
+    "substitute": "Deltagerskift",
+}
+CHANGE_OUTCOME_LABELS = {
+    "requested": "anmodet",
+    "accepted": "accepteret",
+    "rejected": "afvist",
+}
+CHANGE_STATUS_LABELS = {  # course_order_changes.status
+    "pending": "Afventer svar",
+    "accepted": "Accepteret",
+    "rejected": "Afvist",
+}
+
+
+def change_kind_label(kind) -> str:
+    return CHANGE_KIND_LABELS.get(str(kind or "").strip().lower(), str(kind or ""))
+
+
+def change_status_label(status) -> str:
+    return CHANGE_STATUS_LABELS.get(str(status or "").strip().lower(), str(status or ""))
+
+
+def change_label(kind, outcome) -> str:
+    """History line for a change request: ``change_label('reschedule', 'accepted')``
+    -> "Ombooking accepteret"."""
+    outcome_text = CHANGE_OUTCOME_LABELS.get(str(outcome or "").strip().lower(), str(outcome or ""))
+    return ("%s %s" % (change_kind_label(kind), outcome_text)).strip()
+
+
 # ── transitions ─────────────────────────────────────────────────────────────
 TRANSITIONS = {
     PENDING_APPROVAL: frozenset({APPROVED, REJECTED, CANCELLED}),
@@ -238,4 +272,7 @@ def register_jinja(app) -> None:
         order_billing_label=billing_label,
         order_billing_tone=billing_tone,
         order_status_choices=status_choices,
+        change_label=change_label,
+        change_kind_label=change_kind_label,
+        change_status_label=change_status_label,
     )

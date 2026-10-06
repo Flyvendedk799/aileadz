@@ -61,6 +61,7 @@
           <span class="mono" style="min-width:118px;font-size:11.5px;color:var(--fm-ink-3)">{{ h.created_at.strftime('%d.%m.%Y %H:%M') if h.created_at else '' }}</span>
           <span>
             {% if h.kind == 'billing' %}<span class="fm-badge">Fakturering</span> {{ billing_labels.get(h.to_value, h.to_value) }}
+            {% elif h.kind == 'change' %}<strong>{{ change_label(h.from_value, h.to_value) }}</strong>
             {% else %}<strong>{{ status_labels.get(h.to_value, h.to_value) }}</strong>{% endif %}
             <span class="muted"> · {{ h.actor_label or h.actor_kind }}</span>
             {% if h.note %}<div class="muted" style="font-size:12.5px">{{ h.note }}</div>{% endif %}

@@ -30,7 +30,7 @@ import datetime as _dt
 import re
 from zoneinfo import ZoneInfo
 
-__all__ = ["course_start", "course_end", "has_taken_place", "course_label", "format_date", "now"]
+__all__ = ["course_start", "course_end", "has_taken_place", "course_label", "session_label", "format_date", "now"]
 
 TZ = ZoneInfo("Europe/Copenhagen")
 
@@ -169,6 +169,22 @@ def format_date(value, style="long", with_time=False):
     if with_time and has_time and (parsed.hour or parsed.minute):
         text += " kl. %02d.%02d" % (parsed.hour, parsed.minute)
     return text
+
+
+def session_label(ordered_label, start_at):
+    """Human ``variant_date`` for an order whose booked start is ``start_at``.
+
+    The ordered session label stays when it names the booked day; otherwise the
+    booked day is written as a long Danish date. Never an ISO timestamp. When
+    ``start_at`` is unreadable the ordered label is kept.
+    """
+    booked, _ = _parse(start_at)
+    if booked is None:
+        return ordered_label
+    ordered, _ = _parse(ordered_label)
+    if ordered is not None and ordered.date() == booked.date():
+        return ordered_label
+    return format_date(booked, style="long")
 
 
 def course_label(row, booking=None, with_time=True, style="long"):

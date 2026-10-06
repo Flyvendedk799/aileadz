@@ -24,4 +24,7 @@ def add_app_globals(env):
     env.globals.setdefault("order_billing_label", order_lifecycle.billing_label)
     env.globals.setdefault("order_billing_tone", order_lifecycle.billing_tone)
     env.globals.setdefault("order_status_choices", order_lifecycle.status_choices)
+    env.globals.setdefault("change_label", order_lifecycle.change_label)
+    env.globals.setdefault("change_kind_label", order_lifecycle.change_kind_label)
+    env.globals.setdefault("change_status_label", order_lifecycle.change_status_label)
     return env

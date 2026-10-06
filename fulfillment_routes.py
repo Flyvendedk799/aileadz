@@ -36,6 +36,9 @@ def workflow(ctx, order_id, *, vendor=False):
                 request.form.get("decision") == "accept",
                 note=request.form.get("note", ""),
                 fee=request.form.get("fee") or 0,
+                new_reference=request.form.get("new_reference", ""),
+                new_start_at=request.form.get("new_start_at", ""),
+                new_instructions=request.form.get("new_instructions", ""),
             )
         elif action == "verify" and {"manager", "admin", "vendor"} & actors:
             result = orders.complete_order(ctx, order_id, note=request.form.get("note"))

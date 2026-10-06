@@ -1128,7 +1128,8 @@ def get_order(ctx, order_id):
 
 def get_history(ctx, order_id):
     """Status + billing history for an order the ctx may see ([] otherwise).
-    Billing rows are only returned to managers/admins, never to the learner."""
+    Billing rows are only returned to managers/admins, never to the learner;
+    status and change-request rows (``kind='change'``) are visible to everyone."""
     row = get_order(ctx, order_id)
     if not row:
         return []
@@ -1155,7 +1156,7 @@ def get_history(ctx, order_id):
         except Exception:
             pass
     if not ({"manager", "admin"} & actors):
-        rows = [r for r in rows if (r.get("kind") or "status") == "status"]
+        rows = [r for r in rows if (r.get("kind") or "status") in ("status", "change")]
     return rows
 
 

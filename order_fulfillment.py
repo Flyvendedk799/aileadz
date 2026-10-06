@@ -200,6 +200,7 @@ def request_change(ctx, order_id, kind, payload=None):
                 dedupe_hours=None,
             )
         change_notice(cur, row, change_id, "requested", "Et ændringsønske afventer svar. Den oprindelige booking gælder indtil accept.")
+        orders._record_history(cur, row, kind="change", from_value=kind, to_value="requested", ctx=ctx, note=payload["note"])
         conn.commit()
         return {
             "success": True,
@@ -224,7 +225,33 @@ def request_change(ctx, order_id, kind, payload=None):
         cur.close()
 
 
-def resolve_change(ctx, order_id, change_id, accept, *, note="", fee=0):
+def _rescheduled_booking(row, current, existing, *, new_reference="", new_start_at="", new_instructions=""):
+    """Booking after an accepted reschedule: the existing booking with only the new
+    session overlaid (date, place). Reference, instructions, join link and
+    cancellation terms survive; the vendor or HR may update reference, start
+    time and instructions explicitly. The old end time belonged to the old date."""
+    from calendar_service import parse_danish_date
+
+    existing = dict(existing or {})
+    start = str(new_start_at or "").strip()
+    if not start:
+        day = parse_danish_date(current.get("variant_date"))
+        start = day.isoformat() if day else ""
+    supplied = {
+        **existing,
+        "start_at": start,
+        "end_at": "",
+        "location": current.get("variant_location") or existing.get("location") or "",
+        "reference": str(new_reference or "").strip() or existing.get("reference") or "",
+        "instructions": str(new_instructions or "").strip() or existing.get("instructions") or "",
+    }
+    return booking_values({**row, **current}, supplied)
+
+
+def resolve_change(ctx, order_id, change_id, accept, *, note="", fee=0, new_reference="", new_start_at="", new_instructions=""):
+    """Accept or reject a pending change. ``note`` is the decision (stored only in
+    ``course_order_changes.decision_note``); the optional ``new_*`` fields update
+    the booking on an accepted reschedule."""
     from enrollment_service import money
 
     conn = orders._get_connection()
@@ -252,6 +279,7 @@ def resolve_change(ctx, order_id, change_id, accept, *, note="", fee=0):
             return _error("Notér leverandørens bekræftelse eller aftalen med deltageren.")
         payload = json.loads(change["payload_json"])
         info = None
+        history_note = note
         if accept and change["kind"] == "cancel":
             retained = money(fee)
             if retained > money(row["price"]):
@@ -274,8 +302,18 @@ def resolve_change(ctx, order_id, change_id, accept, *, note="", fee=0):
             if money(current["price"]) != money(quote["price"]):
                 return _error("Prisen er ændret. Afvis ønsket, og indhent en ny bekræftelse.")
             orders._replace_order_terms(cur, ctx, row, current)
-            values = booking_values({**row, **current}, {"reference": note})
+            values = _rescheduled_booking(
+                row, current, details(cur, order_id).get("booking_json"),
+                new_reference=new_reference, new_start_at=new_start_at, new_instructions=new_instructions,
+            )
             _save_details(cur, row, values)
+            from order_timing import session_label
+
+            label = session_label(current["variant_date"], values["start_at"])
+            if label != row.get("variant_date"):
+                cur.execute("UPDATE course_orders SET variant_date=%s WHERE order_id=%s", (label, order_id))
+                row["variant_date"] = label
+            history_note = "Ny dato: %s. %s" % (label, note)
         elif accept and change["kind"] == "substitute":
             orders._replace_order_participant(cur, ctx, row, payload["participant"])
         cur.execute(
@@ -283,7 +321,7 @@ def resolve_change(ctx, order_id, change_id, accept, *, note="", fee=0):
             ("accepted" if accept else "rejected", note[:4000], ctx.actor_label or ctx.username, change_id),
         )
         orders._record_history(
-            cur, row, kind="change", from_value=change["kind"], to_value="accepted" if accept else "rejected", ctx=ctx, note=note
+            cur, row, kind="change", from_value=change["kind"], to_value="accepted" if accept else "rejected", ctx=ctx, note=history_note
         )
         change_notice(
             cur,

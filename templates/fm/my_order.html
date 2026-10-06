@@ -132,9 +132,11 @@
           <li>
             <span class="when">{{ h.created_at.strftime('%d.%m.%Y') if h.created_at else '' }}</span>
             <span>
-              <strong>{{ status_labels.get(h.to_value, h.to_value) }}</strong>
+              {% if h.kind == 'change' %}<strong>{{ change_label(h.from_value, h.to_value) }}</strong>
+              {% else %}<strong>{{ status_labels.get(h.to_value, h.to_value) }}</strong>{% endif %}
               {% if h.actor_kind == 'vendor' %}<span class="muted"> · af udbyderen</span>
-              {% elif h.actor_kind in ['manager','admin'] %}<span class="muted"> · af HR</span>{% endif %}
+              {% elif h.actor_kind in ['manager','admin'] %}<span class="muted"> · af HR</span>
+              {% elif h.kind == 'change' and h.actor_kind == 'user' %}<span class="muted"> · af dig</span>{% endif %}
               {% if h.note %}<div class="muted" style="font-size:12.5px">{{ h.note }}</div>{% endif %}
             </span>
           </li>

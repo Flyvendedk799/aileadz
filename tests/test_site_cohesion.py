@@ -52,6 +52,9 @@ ROUTE_CAPABILITY = {
     "hr_dashboard.departments": "company.workspace",
     "hr_dashboard.pending_approvals": "company.approvals",
     "hr_dashboard.approval_policies": "company.policies",
+    "course_assign.assign_course": "company.employees",
+    "mail_delivery.deliveries": "company.employees",
+    "customer_success.readiness": "company.employees",
     "hr_dashboard.department_budgets": "company.workspace",
     "hr_dashboard.billing_overview": "company.billing",
     "hr_dashboard.learning_analytics": "company.analytics",
@@ -118,6 +121,8 @@ class NavResolvesTests(unittest.TestCase):
             self.assertIn(tab, fm.HR_TAB_SECTION, tab)
         for section in set(fm.HR_TAB_SECTION.values()):
             self.assertIn(f"_nav == 'hr.{section}'", base, section)
+        self.assertEqual(set(fm.HR_TAB_SECTION), set(fm.HR_TAB_GROUP))
+        self.assertEqual(set(fm.HR_SECTION_CAPABILITY), set(fm.HR_TAB_SECTION.values()))
         for tab in set(fm.ADMIN_TAB_BY_ENDPOINT.values()):
             self.assertIn(f"_ap == '{tab}'", admin_src, tab)
             self.assertIn(f"_nav == 'admin.{tab}'", base, tab)
@@ -145,17 +150,50 @@ class NavResolvesTests(unittest.TestCase):
                 continue
             self.assertEqual(label, tabs.get(endpoint), key)
 
-    def test_sidebar_hr_labels_match_their_subnav_tab(self):
+    def test_sidebar_hr_labels_match_their_group_or_tab(self):
+        """The sidebar has one entry per HR group (same label and icon as the group chip)
+        plus the two pages that own an entry ("Kom i gang", "Mail og leveringer"), which
+        match their sub-nav tab."""
         base, hr_src = _src("fm_base.html"), _src("fm/_hr_subnav.html")
         block = base[base.index('fm-nav-label">Virksomhed'):base.index('fm-nav-label">Konto')]
-        side = {ep: (ic, lb) for ep, ic, lb in re.findall(
-            r"url_for\('([^']+)'\) }}\"><i class=\"(fa-solid [^\"]+)\"></i><span>([^<]+)</span>", block)}
-        self.assertGreaterEqual(len(side), 9)
+        side = {sec: (ep, ic, lb) for sec, ep, ic, lb in re.findall(
+            r"_nav == 'hr\.(\w+)' }}\" href=\"\{\{ url_for\('([^']+)'\) }}\"><i class=\"(fa-solid [^\"]+)\"></i><span>([^<]+)</span>",
+            block)}
+        for group in fm.HR_GROUPS:
+            ep, icon, label = side[group["id"]]
+            self.assertEqual((icon, label), ("fa-solid " + group["icon"], group["label"]), group["id"])
+            self.assertIn(ep, [t[1] for t in group["targets"]], group["id"])
         tabs = {ep: (ic, lb) for ep, ic, lb in re.findall(
             r"url_for\('([^']+)'\) }}\"><i class=\"(fa-solid [^\"]+)\"></i> ([^<]+)</a>", hr_src)}
-        for ep, (icon, label) in side.items():
-            if ep in tabs:   # HR-assistent and Virksomhedsindstillinger live outside the sub-nav
-                self.assertEqual((icon, label), tabs[ep], ep)
+        for section in ("onboarding", "mail"):
+            ep, icon, label = side[section]
+            self.assertEqual((icon, label), tabs[ep], section)
+        # Every HR section that can light up has exactly one sidebar entry.
+        self.assertEqual(set(side), set(fm.HR_SECTION_CAPABILITY) | {"assistant", "settings"})
+
+    def test_every_tab_sits_in_its_groups_block_and_no_tab_was_lost(self):
+        hr_src = _src("fm/_hr_subnav.html")
+        parts = re.split(r"\{% (?:el)?if _grp == '(\w+)' %\}", hr_src)
+        blocks = dict(zip(parts[1::2], parts[2::2]))
+        self.assertEqual(set(blocks), {g["id"] for g in fm.HR_GROUPS})
+        seen = {}
+        for group, text in blocks.items():
+            for tab in re.findall(r"_hp == '(\w+)'", text):
+                seen[tab] = group
+        self.assertEqual(seen, fm.HR_TAB_GROUP)
+        # The 24 tabs that existed before the grouping, plus the three new ones.
+        self.assertEqual(len(seen), 27)
+        for tab in ("onboarding", "mail", "assign_course"):
+            self.assertIn(tab, seen)
+
+    def test_new_pages_map_to_their_own_tab_and_the_old_assign_course_mapping_is_gone(self):
+        self.assertEqual(fm.HR_TAB_BY_ENDPOINT["customer_success.readiness"], "onboarding")
+        self.assertEqual(fm.HR_TAB_BY_ENDPOINT["mail_delivery.deliveries"], "mail")
+        self.assertEqual(fm.HR_TAB_BY_ENDPOINT["course_assign.assign_course"], "assign_course")
+        self.assertEqual(fm.HR_TAB_BY_ENDPOINT["hr_dashboard.learning_path_steps"], "learning_paths")
+        self.assertEqual(fm.HR_TAB_SECTION["learning_paths"], "training")
+        self.assertEqual(fm.HR_SECTION_CAPABILITY["onboarding"], "company.employees")
+        self.assertEqual(fm.HR_SECTION_CAPABILITY["mail"], "company.employees")
 
 
 class CapabilityGatingTests(unittest.TestCase):
@@ -187,7 +225,7 @@ class CapabilityGatingTests(unittest.TestCase):
             if m and m.group(2) in fm.HR_SECTION_CAPABILITY:
                 matched += 1
                 self.assertEqual(fm.HR_SECTION_CAPABILITY[m.group(2)], m.group(1), m.group(2))
-        self.assertGreaterEqual(matched, 7)
+        self.assertEqual(matched, len(fm.HR_SECTION_CAPABILITY))
 
     def test_sidebar_never_compares_role_strings(self):
         for name in NAV_FILES:
@@ -263,15 +301,18 @@ class ActiveStateTests(unittest.TestCase):
             ("/hr/engagement", "/hr/learning-analytics", "/hr/engagement"),
             ("/hr/approvals", "/hr/approvals", "/hr/approvals"),
             ("/hr/approval-policies", "/hr/approvals", "/hr/approval-policies"),
-            ("/hr/billing", "/hr/approvals", "/hr/billing"),
+            ("/hr/billing", "/hr/budgets", "/hr/billing"),
             ("/hr/order/abc/details", "/hr/approvals", "/hr/approvals"),
+            ("/hr/budgets", "/hr/budgets", "/hr/budgets"),
+            ("/hr/skill-gaps", "/hr/training-plan", "/hr/skill-gaps"),
+            ("/hr/employee-progress", "/hr/learning-analytics", "/hr/employee-progress"),
             ("/companies/employees", "/companies/employees", "/companies/employees"),
             ("/hr/employee/5/details", "/companies/employees", "/companies/employees"),
             ("/hr/departments", "/companies/employees", "/hr/departments"),
             ("/hr/courses/add", "/hr/training-plan", "/hr/courses"),
-            ("/hr/suppliers", "/hr/procurement", "/hr/suppliers"),
-            ("/hr/compliance", "/hr/compliance", "/hr/compliance"),
-            ("/hr/reports", "/hr/reports", "/hr/reports"),
+            ("/hr/suppliers", "/hr/budgets", "/hr/suppliers"),
+            ("/hr/compliance", "/hr/training-plan", "/hr/compliance"),
+            ("/hr/reports", "/hr/learning-analytics", "/hr/reports"),
         ]
         for path, side, tab in cases:
             self._check(path, side, tab)
@@ -310,7 +351,7 @@ class ActiveStateTests(unittest.TestCase):
     def test_page_id_fallback_outside_a_known_route(self):
         # The /ui design gallery renders pages outside their route; the page id decides.
         with self.app.test_request_context("/nowhere"):
-            self.assertEqual(fm.nav_state("benchmark")["side"], "hr.analytics")
+            self.assertEqual(fm.nav_state("benchmark")["side"], "hr.insight")
             self.assertEqual(fm.nav_state("goals")["side"], "goals")
             self.assertEqual(fm.nav_state("hr", hr_tab="roi")["hr"], "roi")
 
@@ -320,12 +361,44 @@ class ActiveStateTests(unittest.TestCase):
         self._check("/hr/departments", "/hr/", "/hr/departments", role="dept_head")
 
     def test_department_head_sees_only_what_they_can_open(self):
-        html = self._render("/hr/approvals", "hr", "{% include 'fm/_hr_subnav.html' %}", role="dept_head")
-        for allowed in ("/hr/approvals", "/hr/team", "/hr/departments", "/hr/budgets", "/hr/procurement"):
+        sub = "{% include 'fm/_hr_subnav.html' %}"
+        # First row: the groups a department head can open (no "Indsigt", and
+        # "Organisation" opens Afdelinger because Medarbejdere is HR-manager only).
+        html = self._render("/hr/approvals", "hr", sub, role="dept_head")
+        for allowed in ("/hr/", "/hr/departments", "/hr/approvals", "/hr/training-plan", "/hr/budgets"):
             self.assertIn(f'href="{allowed}"', html, allowed)
-        for hidden in ("/hr/roi", "/hr/learning-analytics", "/hr/reports", "/hr/billing",
-                       "/hr/approval-policies", "/companies/employees", "/virksomhed/indstillinger/"):
+        for hidden in ("/hr/learning-analytics", "/companies/employees", "/hr/billing", "/hr/reports",
+                       "/hr/approval-policies", "/hr/kom-i-gang", "/hr/leveringer", "/hr/assign-course",
+                       "/virksomhed/indstillinger/"):
             self.assertNotIn(f'href="{hidden}"', html, hidden)
+        # Second row: the tabs of the active group only.
+        self.assertNotIn('href="/hr/team"', html)
+        self.assertIn('href="/hr/team"', self._render("/hr/", "hr", sub, role="dept_head"))
+        finance = self._render("/hr/budgets", "hr", sub, role="dept_head")
+        for allowed in ("/hr/budgets", "/hr/procurement", "/hr/suppliers"):
+            self.assertIn(f'href="{allowed}"', finance, allowed)
+        self.assertNotIn('href="/hr/billing"', finance)
+
+    def test_hr_manager_sees_the_new_pages_in_one_click(self):
+        sub = "{% include 'fm/_hr_subnav.html' %}"
+        # "Kom i gang" is in the Overblik row, "Mail og leveringer" in the Bestillinger row,
+        # and both have their own sidebar entry.
+        for path in ("/hr/roi", "/hr/budgets"):
+            html = self._render(path, "hr", "", role="hr_manager")
+            self.assertIn('href="/hr/kom-i-gang"', html, path)
+            self.assertIn('href="/hr/leveringer"', html, path)
+        self.assertIn('href="/hr/kom-i-gang"', self._render("/hr/", "hr", sub, role="hr_manager"))
+        self.assertIn('href="/hr/leveringer"', self._render("/hr/approvals", "hr", sub, role="hr_manager"))
+
+    def test_new_hr_pages_light_their_own_sidebar_entry_and_tab(self):
+        self._check("/hr/kom-i-gang", "/hr/kom-i-gang", "/hr/kom-i-gang")
+        self._check("/hr/leveringer", "/hr/leveringer", "/hr/leveringer")
+        self._check("/hr/assign-course", "/hr/approvals", "/hr/assign-course")
+        self._check("/hr/learning-paths", "/hr/training-plan", "/hr/learning-paths")
+        self._check("/hr/learning-paths/4/trin", "/hr/training-plan", "/hr/learning-paths")
+
+    def test_the_mail_page_lights_the_admin_entry_for_a_platform_admin(self):
+        self._check("/hr/leveringer", "/hr/leveringer", "/hr/leveringer", subnav="admin", role="admin")
 
 
 # Full pages intentionally reachable without a template link.

@@ -3,6 +3,7 @@
 {% block topbar_title %}Mail og leveringer{% endblock %}
 {% block content %}
     <div class="fm-wrap">
+        {% if can('company.employees') %}{% set active_hr_page = 'mail' %}{% include 'fm/_hr_subnav.html' %}{% else %}{% set active_admin_page = 'mail' %}{% include 'fm/_admin_subnav.html' %}{% endif %}
         <h1>Mail og leveringer</h1>
         <p>“Afsendt” betyder accepteret af mailserveren. Det garanterer ikke, at mailen er læst eller landet i indbakken.</p>
         {% for d in deliveries %}

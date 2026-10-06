@@ -3,6 +3,7 @@
 {% block topbar_title %}Jeres vej fra opsætning til kursusudbytte{% endblock %}
 {% block content %}
     <div class="fm-wrap">
+        {% set active_hr_page = 'onboarding' %}{% include 'fm/_hr_subnav.html' %}
         <h1>{{ company.company_name }}: {{ readiness.complete }} af {{ readiness.total }} punkter dokumenteret</h1>
         <p>De første punkter handler om opsætning. De sidste beviser, at en rigtig medarbejderrejse er gennemført. En markering kan ikke erstatte en booking eller en afsendt meddelelse.</p>
         <a class="btn btn-ghost"

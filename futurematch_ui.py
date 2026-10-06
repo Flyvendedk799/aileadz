@@ -35,6 +35,7 @@ def _fm_pages():
 HR_TAB_BY_ENDPOINT = {
     'hr_dashboard.dashboard': 'dashboard',
     'hr_dashboard.team_cockpit': 'team',
+    'customer_success.readiness': 'onboarding',
     'companies.employees': 'employees',
     'companies.add_employee': 'employees',
     'companies.edit_employee': 'employees',
@@ -45,8 +46,9 @@ HR_TAB_BY_ENDPOINT = {
     'hr_dashboard.departments': 'departments',
     'hr_dashboard.pending_approvals': 'approvals',
     'hr_dashboard.company_order_details': 'approvals',
-    'course_assign.assign_course': 'approvals',
     'hr_dashboard.approval_policies': 'approval_policies',
+    'course_assign.assign_course': 'assign_course',
+    'mail_delivery.deliveries': 'mail',
     'hr_dashboard.department_budgets': 'budgets',
     'hr_dashboard.billing_overview': 'billing',
     'hr_dashboard.learning_analytics': 'learning_analytics',
@@ -59,6 +61,8 @@ HR_TAB_BY_ENDPOINT = {
     'hr_ext.ai_quality': 'ai_quality',
     'hr_ext.training_plan': 'training_plan',
     'hr_dashboard.learning_paths': 'learning_paths',
+    'hr_dashboard.learning_path_steps': 'learning_paths',
+    'hr_dashboard.learning_path_assignment_review': 'learning_paths',
     'hr_dashboard.bulk_assign_form': 'learning_paths',
     'hr_dashboard.internal_courses': 'internal_courses',
     'hr_dashboard.add_internal_course': 'internal_courses',
@@ -71,35 +75,63 @@ HR_TAB_BY_ENDPOINT = {
     'multitenant_reports.reports': 'reports',
 }
 
-# HR sub-nav tab -> the sidebar section (``hr.<section>``) that owns it.
-HR_TAB_SECTION = {
-    'dashboard': 'dashboard',
-    'team': 'team',
-    'employees': 'employees', 'employee_progress': 'employees', 'departments': 'employees',
-    'approvals': 'approvals', 'approval_policies': 'approvals', 'budgets': 'approvals',
-    'billing': 'approvals',
-    'learning_analytics': 'analytics', 'roi': 'analytics', 'funnel': 'analytics',
-    'retention': 'analytics', 'benchmarking': 'analytics', 'skill_gaps': 'analytics',
-    'engagement': 'analytics', 'ai_quality': 'analytics',
+# HR sub-nav tab -> its group (the first row of fm/_hr_subnav.html). Six groups:
+# "Organisation" (people and departments) is a group of its own rather than part of
+# "Overblik", so the overview stays three tabs wide and a department head's one
+# organisational page (Afdelinger) does not hide behind an HR-manager-only entry.
+HR_TAB_GROUP = {
+    'dashboard': 'overview', 'team': 'overview', 'onboarding': 'overview',
+    'employees': 'organisation', 'departments': 'organisation',
+    'approvals': 'orders', 'approval_policies': 'orders', 'assign_course': 'orders', 'mail': 'orders',
     'training_plan': 'training', 'learning_paths': 'training', 'internal_courses': 'training',
-    'compliance': 'compliance',
-    'procurement': 'procurement', 'suppliers': 'procurement',
-    'reports': 'reports',
+    'compliance': 'training', 'skill_gaps': 'training',
+    'budgets': 'finance', 'billing': 'finance', 'procurement': 'finance', 'suppliers': 'finance',
+    'learning_analytics': 'insight', 'roi': 'insight', 'funnel': 'insight', 'retention': 'insight',
+    'benchmarking': 'insight', 'engagement': 'insight', 'ai_quality': 'insight',
+    'employee_progress': 'insight', 'reports': 'insight',
+}
+
+# The groups, in display order. ``targets`` is ((capability, endpoint), ...): the
+# group's chip opens the first endpoint whose capability the viewer holds and is
+# hidden when none is held. Label and icon are the sidebar entry's (fm_base.html;
+# tests/test_site_cohesion.py pins the match).
+HR_GROUPS = (
+    {'id': 'overview', 'label': 'Overblik', 'icon': 'fa-gauge',
+     'targets': (('company.workspace', 'hr_dashboard.dashboard'),)},
+    {'id': 'organisation', 'label': 'Organisation', 'icon': 'fa-sitemap',
+     'targets': (('company.employees', 'companies.employees'),
+                 ('company.workspace', 'hr_dashboard.departments'))},
+    {'id': 'orders', 'label': 'Bestillinger', 'icon': 'fa-circle-check',
+     'targets': (('company.approvals', 'hr_dashboard.pending_approvals'),
+                 ('company.employees', 'course_assign.assign_course'))},
+    {'id': 'training', 'label': 'Læring', 'icon': 'fa-list-check',
+     'targets': (('company.workspace', 'hr_ext.training_plan'),)},
+    {'id': 'finance', 'label': 'Økonomi', 'icon': 'fa-wallet',
+     'targets': (('company.workspace', 'hr_dashboard.department_budgets'),)},
+    {'id': 'insight', 'label': 'Indsigt', 'icon': 'fa-chart-line',
+     'targets': (('company.analytics', 'hr_dashboard.learning_analytics'),)},
+)
+
+# HR sub-nav tab -> the sidebar section (``hr.<section>``) that owns it: the tab's
+# group, except the two pages that have a sidebar entry of their own.
+HR_TAB_SECTION = {
+    **HR_TAB_GROUP,
+    'onboarding': 'onboarding',
+    'mail': 'mail',
 }
 
 # Capability that shows a section's sidebar entry (must match the `can(...)` around
 # that entry in fm_base.html). When the viewer lacks it, e.g. a department head on
-# "Afdelinger", the section's entry is hidden, so "Oversigt" lights up instead.
+# "Afdelinger", the section's entry is hidden, so "Overblik" lights up instead.
 HR_SECTION_CAPABILITY = {
-    'dashboard': 'company.workspace',
-    'team': 'company.team',
-    'employees': 'company.employees',
-    'approvals': 'company.approvals',
-    'analytics': 'company.analytics',
+    'overview': 'company.workspace',
+    'organisation': 'company.employees',
+    'orders': 'company.approvals',
     'training': 'company.workspace',
-    'compliance': 'company.analytics',
-    'procurement': 'company.workspace',
-    'reports': 'company.analytics',
+    'finance': 'company.workspace',
+    'insight': 'company.analytics',
+    'onboarding': 'company.employees',
+    'mail': 'company.employees',
 }
 
 # Platform-admin sub-nav tab per endpoint (keys = fm/_admin_subnav.html `_ap`
@@ -133,6 +165,7 @@ ADMIN_TAB_BY_ENDPOINT = {
     'gdpr.admin_console': 'gdpr',
     'futurematch.showcase_index': 'ui',
     'futurematch.showcase': 'ui',
+    'mail_delivery.deliveries': 'mail',
 }
 
 # Sidebar entry for everything outside the two sub-nav sections.
@@ -171,10 +204,10 @@ SIDEBAR_BY_ENDPOINT = {
 
 # Legacy ``page_id`` values -> sidebar entry (fallback when the endpoint is unknown).
 PAGE_ID_ALIASES = {
-    'hr': 'hr.dashboard', 'team': 'hr.team', 'compliance': 'hr.compliance',
-    'benchmark': 'hr.analytics', 'engagement': 'hr.analytics', 'ai_quality': 'hr.analytics',
-    'company': 'hr.analytics', 'training_plan': 'hr.training', 'assign_path': 'hr.training',
-    'procurement': 'hr.procurement', 'creports': 'hr.reports',
+    'hr': 'hr.overview', 'team': 'hr.overview', 'compliance': 'hr.training',
+    'benchmark': 'hr.insight', 'engagement': 'hr.insight', 'ai_quality': 'hr.insight',
+    'company': 'hr.insight', 'training_plan': 'hr.training', 'assign_path': 'hr.training',
+    'procurement': 'hr.finance', 'creports': 'hr.insight',
     'csettings': 'hr.settings', 'webhooks': 'hr.settings', 'sso': 'hr.settings',
     'analytics': 'usage', 'account-2fa': 'settings',
     'admin': 'admin.home', 'acompanies': 'admin.companies', 'ausers': 'admin.users',
@@ -209,19 +242,54 @@ def nav_state(page_id='', hr_tab='', admin_tab=''):
     if endpoint in SIDEBAR_BY_ENDPOINT:
         side = SIDEBAR_BY_ENDPOINT[endpoint]
     elif hr:
-        section = HR_TAB_SECTION.get(hr, 'dashboard')
+        section = HR_TAB_SECTION.get(hr, 'overview')
         try:
             import capabilities
             if not capabilities.can(HR_SECTION_CAPABILITY.get(section, 'company.workspace')):
-                section = 'dashboard'
+                section = 'overview'
         except Exception:
-            section = 'dashboard'
+            section = 'overview'
         side = 'hr.' + section
+        if admin and not session.get('company_id'):
+            # A platform admin outside any company opens a shared page (the mail
+            # console) through the admin navigation, not the company sidebar.
+            side = 'admin.' + admin
     elif admin:
         side = 'admin.' + admin
     else:
         side = PAGE_ID_ALIASES.get(page, page)
     return {'side': side, 'hr': hr, 'admin': admin}
+
+
+@futurematch_bp.app_template_global('hr_tab_group')
+def hr_tab_group(tab):
+    """The HR group (first row of the HR sub-nav) a tab belongs to, or ''."""
+    return HR_TAB_GROUP.get(tab or '', '')
+
+
+@futurematch_bp.app_template_global('hr_nav_groups')
+def hr_nav_groups():
+    """The HR groups the viewer may open: ``[{id, label, icon, url}]``.
+
+    ``url`` is the group's first destination the viewer's capabilities allow, so a
+    department head's "Organisation" opens Afdelinger and an HR manager's opens
+    Medarbejdere; a group with no allowed destination is left out.
+    """
+    try:
+        import capabilities
+    except Exception:
+        return []
+    groups = []
+    for group in HR_GROUPS:
+        for capability, endpoint in group['targets']:
+            if capabilities.can(capability):
+                try:
+                    groups.append({'id': group['id'], 'label': group['label'],
+                                   'icon': group['icon'], 'url': url_for(endpoint)})
+                except Exception:
+                    pass
+                break
+    return groups
 
 
 @futurematch_bp.route('/chat')

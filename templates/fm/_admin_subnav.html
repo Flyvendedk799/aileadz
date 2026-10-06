@@ -27,6 +27,7 @@
   <a class="pg-tab {{ 'active' if _ap == 'notifications' }}" href="{{ url_for('admin_notifications.notifications_dashboard') }}"><i class="fa-solid fa-bullhorn"></i> Send notifikationer</a>
   <a class="pg-tab {{ 'active' if _ap == 'log' }}" href="{{ url_for('admin_dashboard.admin_audit_log') }}"><i class="fa-solid fa-clock-rotate-left"></i> Aktivitetslog</a>
   <a class="pg-tab {{ 'active' if _ap == 'health' }}" href="{{ url_for('admin_dashboard.admin_system_health') }}"><i class="fa-solid fa-heart-pulse"></i> Systemstatus</a>
+  <a class="pg-tab {{ 'active' if _ap == 'mail' }}" href="{{ url_for('mail_delivery.deliveries') }}"><i class="fa-solid fa-envelope"></i> Mail og leveringer</a>
   <a class="pg-tab {{ 'active' if _ap == 'gdpr' }}" href="{{ url_for('gdpr.admin_console') }}"><i class="fa-solid fa-user-shield"></i> GDPR / datasletning</a>
   <a class="pg-tab {{ 'active' if _ap == 'ui' }}" href="{{ url_for('futurematch.showcase_index') }}"><i class="fa-solid fa-swatchbook"></i> Designgalleri</a>
 </nav>

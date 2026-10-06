@@ -105,23 +105,23 @@
          use the shared conversation panel above). #}
       {% block sidebar_extra %}{% endblock %}
 
-      {# Virksomhed: one entry per section of the HR sub-nav partial, with
-         the SAME label and icon as the section's first tab; the entry stays lit on
-         every tab of its section. Each link is gated by the capability its route's
-         guard checks (tests/test_site_cohesion.py), so nobody sees a link that
-         bounces. #}
+      {# Virksomhed: one entry per GROUP of the HR sub-nav partial (first
+         row; futurematch_ui.HR_GROUPS), with the SAME label and icon as the group chip,
+         plus "Kom i gang" and "Mail og leveringer", which have an entry of their own.
+         The entry stays lit on every tab of its group. Each link is gated by the
+         capability its route's guard checks (tests/test_site_cohesion.py), so nobody
+         sees a link that bounces. #}
       {% if session.get('company_id') and can('company.workspace') %}
       <div class="fm-nav-label">Virksomhed</div>
       <ul class="fm-nav-list">
-        <li><a class="fm-nav-link {{ 'active' if _nav == 'hr.dashboard' }}" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i><span>Oversigt</span></a></li>
-        {% if can('company.team') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'hr.team' }}" href="{{ url_for('hr_dashboard.team_cockpit') }}"><i class="fa-solid fa-users-rectangle"></i><span>Mit team</span></a></li>{% endif %}
-        {% if can('company.employees') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'hr.employees' }}" href="{{ url_for('companies.employees') }}"><i class="fa-solid fa-users"></i><span>Medarbejdere</span></a></li>{% endif %}
-        {% if can('company.approvals') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'hr.approvals' }}" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-circle-check"></i><span>Godkendelser</span></a></li>{% endif %}
-        {% if can('company.analytics') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'hr.analytics' }}" href="{{ url_for('hr_dashboard.learning_analytics') }}"><i class="fa-solid fa-chart-line"></i><span>Læringsanalyse</span></a></li>{% endif %}
-        {% if can('company.workspace') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'hr.training' }}" href="{{ url_for('hr_ext.training_plan') }}"><i class="fa-solid fa-list-check"></i><span>Træningsplan</span></a></li>{% endif %}
-        {% if can('company.analytics') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'hr.compliance' }}" href="{{ url_for('hr_dashboard.compliance_matrix') }}"><i class="fa-solid fa-clipboard-check"></i><span>Compliance</span></a></li>{% endif %}
-        {% if can('company.workspace') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'hr.procurement' }}" href="{{ url_for('hr_ext.procurement') }}"><i class="fa-solid fa-store"></i><span>Indkøb</span></a></li>{% endif %}
-        {% if can('company.analytics') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'hr.reports' }}" href="{{ url_for('hr_dashboard.reports') }}"><i class="fa-solid fa-file-arrow-down"></i><span>Rapporter &amp; eksport</span></a></li>{% endif %}
+        {% if can('company.workspace') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'hr.overview' }}" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i><span>Overblik</span></a></li>{% endif %}
+        {% if can('company.employees') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'hr.organisation' }}" href="{{ url_for('companies.employees') }}"><i class="fa-solid fa-sitemap"></i><span>Organisation</span></a></li>{% endif %}
+        {% if can('company.approvals') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'hr.orders' }}" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-circle-check"></i><span>Bestillinger</span></a></li>{% endif %}
+        {% if can('company.workspace') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'hr.training' }}" href="{{ url_for('hr_ext.training_plan') }}"><i class="fa-solid fa-list-check"></i><span>Læring</span></a></li>{% endif %}
+        {% if can('company.workspace') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'hr.finance' }}" href="{{ url_for('hr_dashboard.department_budgets') }}"><i class="fa-solid fa-wallet"></i><span>Økonomi</span></a></li>{% endif %}
+        {% if can('company.analytics') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'hr.insight' }}" href="{{ url_for('hr_dashboard.learning_analytics') }}"><i class="fa-solid fa-chart-line"></i><span>Indsigt</span></a></li>{% endif %}
+        {% if can('company.employees') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'hr.onboarding' }}" href="{{ url_for('customer_success.readiness') }}"><i class="fa-solid fa-rocket"></i><span>Kom i gang</span></a></li>{% endif %}
+        {% if can('company.employees') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'hr.mail' }}" href="{{ url_for('mail_delivery.deliveries') }}"><i class="fa-solid fa-envelope"></i><span>Mail og leveringer</span></a></li>{% endif %}
         {% if can('company.assistant') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'hr.assistant' }}" href="{{ url_for('hr_dashboard.hr_chatbot') }}"><i class="fa-solid fa-robot"></i><span>HR-assistent</span></a></li>{% endif %}
         {% if can('company.settings') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'hr.settings' }}" href="{{ url_for('settings_hub.index') }}"><i class="fa-solid fa-gear"></i><span>Virksomhedsindstillinger</span></a></li>{% endif %}
       </ul>
@@ -159,6 +159,7 @@
         <li><a class="fm-nav-link {{ 'active' if _nav == 'admin.notifications' }}" href="{{ url_for('admin_notifications.notifications_dashboard') }}"><i class="fa-solid fa-bullhorn"></i><span>Send notifikationer</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if _nav == 'admin.log' }}" href="{{ url_for('admin_dashboard.admin_audit_log') }}"><i class="fa-solid fa-clock-rotate-left"></i><span>Aktivitetslog</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if _nav == 'admin.health' }}" href="{{ url_for('admin_dashboard.admin_system_health') }}"><i class="fa-solid fa-heart-pulse"></i><span>Systemstatus</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if _nav == 'admin.mail' }}" href="{{ url_for('mail_delivery.deliveries') }}"><i class="fa-solid fa-envelope"></i><span>Mail og leveringer</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if _nav == 'admin.gdpr' }}" href="{{ url_for('gdpr.admin_console') }}"><i class="fa-solid fa-user-shield"></i><span>GDPR / datasletning</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if _nav == 'admin.ui' }}" href="{{ url_for('futurematch.showcase_index') }}"><i class="fa-solid fa-swatchbook"></i><span>Designgalleri</span></a></li>
       </ul>

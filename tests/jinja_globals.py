@@ -6,6 +6,7 @@ import os
 import asset_version
 import capabilities
 import dashboard
+import futurematch_ui
 import order_lifecycle
 
 _STATIC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static")
@@ -18,6 +19,7 @@ def add_app_globals(env):
     env.filters.setdefault("dkmoney", dashboard.dkmoney)
     env.globals.setdefault("course_date", dashboard.course_date)
     env.globals.setdefault("can", capabilities.can)
+    env.globals.setdefault("hr_tab_group", futurematch_ui.hr_tab_group)
     env.globals.setdefault("has_endpoint", lambda name: False)
     env.globals.setdefault("credit_chip", lambda: {"scope": "personal", "balance": 0, "label": "0"})
     env.globals.setdefault("order_status_label", order_lifecycle.status_label)

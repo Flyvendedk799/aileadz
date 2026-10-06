@@ -1,0 +1,14 @@
+{% set booking = sections.booking %}
+<section class="fm-card os-card" id="booking" data-section="booking_card">
+    <h2>Bekræftet booking</h2>
+    <p>{{ booking.start_at|dkdate(style='long', with_time=True) }}{% if booking.end_at %} &ndash; {{ booking.end_at|dkdate(style='long', with_time=True) }}{% endif %}{% if booking.location %} · {{ booking.location }}{% endif %}</p>
+    {% if booking.join_url %}
+        <p><a href="{{ booking.join_url }}" rel="noopener" target="_blank">Åbn mødelink</a></p>
+    {% endif %}
+    <p>Reference: {{ booking.reference or 'Bekræftet i portalen' }}</p>
+    {% if booking.instructions %}<p>{{ booking.instructions }}</p>{% endif %}
+    <p>Afbestillingsvilkår: {{ booking.cancellation_terms or sections.fulfillment.quote_json.cancellation_terms or 'Kontakt udbyderen for vilkår før ændringer.' }}</p>
+    {% if booking.cancellation_fee is defined %}
+        <p>Aftalt afbestillingsgebyr: {{ booking.cancellation_fee|dkmoney }}</p>
+    {% endif %}
+</section>

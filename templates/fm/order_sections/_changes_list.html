@@ -1,0 +1,48 @@
+<div id="aendring" data-section="changes_list">
+{% for c in sections.changes %}
+    <section class="fm-card os-card{% if c.status == 'pending' %} os-pending{% endif %}" data-change-id="{{ c.id }}" data-change-status="{{ c.status }}">
+        <h3>{{ change_kind_label(c.kind) }} · {{ change_status_label(c.status) }}</h3>
+        {% if c.payload.note %}<p>{{ c.payload.note }}</p>{% endif %}
+        {% if c.payload.quote %}
+            <p>Nyt hold: {{ c.payload.quote.variant_date|dkdate(style='long') }} · {{ c.payload.quote.variant_location }} · {{ c.payload.quote.price|dkmoney }}</p>
+        {% endif %}
+        {% if c.payload.participant %}
+            <p>Ny deltager: {{ c.payload.participant.name }}</p>
+        {% endif %}
+        {% if c.decision_note %}<p>{{ c.decision_note }}</p>{% endif %}
+        {% if c.can_resolve %}
+            <form method="post" action="{{ sections.post_url }}">
+                <input type="hidden" name="action" value="resolve">
+                <input type="hidden" name="change_id" value="{{ c.id }}">
+                <label class="fm-field">
+                    <span>Bekræftelse eller begrundelse</span>
+                    <textarea class="fm-input" name="note" required maxlength="4000"></textarea>
+                </label>
+                {% if c.kind == "reschedule" %}
+                    <p class="muted">Bookingreference, praktisk information og mødelink beholdes. Udfyld kun felter, der skal ændres.</p>
+                    <label class="fm-field">
+                        <span>Nyt starttidspunkt (valgfrit, dansk tid)</span>
+                        <input class="fm-input" type="datetime-local" name="new_start_at">
+                    </label>
+                    <label class="fm-field">
+                        <span>Ny bookingreference (valgfrit)</span>
+                        <input class="fm-input" name="new_reference" maxlength="255">
+                    </label>
+                    <label class="fm-field">
+                        <span>Ny praktisk information (valgfrit)</span>
+                        <textarea class="fm-input" name="new_instructions" maxlength="4000"></textarea>
+                    </label>
+                {% endif %}
+                {% if c.kind == "cancel" %}
+                    <label class="fm-field">
+                        <span>Aftalt gebyr i kr. (resten frigives fra budgettet)</span>
+                        <input class="fm-input" type="number" name="fee" value="0" min="0" max="{{ order.price }}" step="0.01">
+                    </label>
+                {% endif %}
+                <button class="btn btn-primary" name="decision" value="accept">Accepter ændring</button>
+                <button class="btn btn-ghost" name="decision" value="reject">Afvis ændring</button>
+            </form>
+        {% endif %}
+    </section>
+{% endfor %}
+</div>

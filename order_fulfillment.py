@@ -10,6 +10,7 @@ import json
 from urllib.parse import urlparse
 import order_service as orders
 import order_lifecycle as lc
+import order_timing
 
 
 def _error(message, code="bad_transition"):
@@ -107,10 +108,20 @@ def book(ctx, order_id, booking=None, note=None):
         if not allowed:
             return _error(message, code)
         values = booking_values(row, booking)
+        history_note = str(note or values["reference"] or "").strip()
+        ordered = order_timing.differs_from_ordered_session(row, values["start_at"])
+        if ordered:
+            if str((booking or {}).get("confirm_date_change") or "").strip().lower() not in ("1", "true", "on", "yes"):
+                return _error(
+                    "Datoen afviger fra den bestilte session (%s). Sæt hak ved „Datoen afviger fra den bestilte session“ for at bekræfte, at det er aftalt."
+                    % ordered,
+                    "date_differs",
+                )
+            history_note = (history_note + " " if history_note else "") + "Datoen afviger fra den bestilte session (bestilt: %s)." % ordered
         _save_details(cur, row, values)
         capture_baseline(cur, row)
         orders._confirm_booking_details(cur, row, values)
-        info = orders._apply_transition(cur, ctx, row, lc.BOOKED, actors, note=note or values["reference"])
+        info = orders._apply_transition(cur, ctx, row, lc.BOOKED, actors, note=history_note or None)
         conn.commit()
         orders._after_transition(ctx, row, info["old"], lc.BOOKED, info, note=note)
         return {
@@ -136,9 +147,15 @@ def book(ctx, order_id, booking=None, note=None):
 
 
 def request_change(ctx, order_id, kind, payload=None):
-    payload = dict(payload or {})
     if kind not in ("cancel", "reschedule", "substitute"):
         return _error("Ukendt ændring.")
+    supplied = dict(payload or {})
+    # Only the fields that belong to the chosen kind are kept; the form may carry the others.
+    payload = {"note": supplied.get("note")}
+    if kind == "reschedule":
+        payload["session_id"] = supplied.get("session_id")
+    elif kind == "substitute":
+        payload["user_id"] = supplied.get("user_id")
     conn = orders._get_connection()
     cur = orders._dict_cursor(conn)
     try:
@@ -166,6 +183,9 @@ def request_change(ctx, order_id, kind, payload=None):
             }
         if kind == "reschedule":
             import enrollment_service
+
+            if not str(payload.get("session_id") or "").strip():
+                return _error("Vælg det nye hold, før du sender ønsket.")
 
             payload["quote"] = enrollment_service.quote_course(
                 row["product_handle"], row.get("company_id"), session_id=payload.get("session_id")

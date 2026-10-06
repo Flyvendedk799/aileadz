@@ -1,0 +1,40 @@
+{% set state = sections.completion_state %}
+<section class="fm-card os-card" id="deltagelse" data-section="attendance">
+    <h2>Deltagelse og dokumentation</h2>
+    {% if sections.status == 'completed' %}
+        <p>Deltagelsen er bekræftet</p>
+    {% else %}
+        <p>{{ {'none':'Ikke rapporteret','reported':'Medarbejderen har rapporteret deltagelse; afventer bekræftelse','verified':'Deltagelsen er bekræftet'}.get(state,'Ikke rapporteret') }}</p>
+    {% endif %}
+    {% if sections.fulfillment.evidence_note %}<p>{{ sections.fulfillment.evidence_note }}</p>{% endif %}
+    {% if sections.fulfillment.evidence_url %}
+        <a href="{{ sections.fulfillment.evidence_url }}" target="_blank" rel="noopener">Åbn dokumentation</a>
+    {% endif %}
+    {% if sections.held_message %}
+        <p class="muted" data-held-hint>{{ sections.held_message }}</p>
+    {% endif %}
+    {% if sections.can_report %}
+        <form method="post" action="{{ sections.post_url }}">
+            <input type="hidden" name="action" value="report">
+            <label class="fm-field">
+                <span>Hvad gennemførte du?</span>
+                <textarea class="fm-input" name="evidence_note" maxlength="4000" required></textarea>
+            </label>
+            <label class="fm-field">
+                <span>Link til kursusbevis (valgfrit)</span>
+                <input class="fm-input" type="url" name="evidence_url">
+            </label>
+            <button class="btn btn-primary">Indsend deltagelse til bekræftelse</button>
+        </form>
+    {% endif %}
+    {% if sections.can_verify %}
+        <form method="post" action="{{ sections.post_url }}">
+            <input type="hidden" name="action" value="verify">
+            <label class="fm-field">
+                <span>Bekræftelsesgrundlag</span>
+                <input class="fm-input" name="note" required maxlength="1000">
+            </label>
+            <button class="btn btn-primary">Bekræft gennemført kursus</button>
+        </form>
+    {% endif %}
+</section>

@@ -1,0 +1,59 @@
+<section class="fm-card os-card" id="anmod-aendring" data-section="change_request">
+    <h2>Anmod om ændring</h2>
+    <p>Bookingen og budgetbindingen gælder, indtil ændringen er accepteret.</p>
+    <form method="post" action="{{ sections.post_url }}" data-change-form>
+        <input type="hidden" name="action" value="change">
+        <label class="fm-field">
+            <span>Ændring</span>
+            <select class="fm-select" name="kind" data-change-kind>
+                {% for value, label in sections.change_kinds %}
+                    <option value="{{ value }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        {% if sections.variants %}
+            <label class="fm-field" data-kind-field="reschedule">
+                <span>Nyt hold (ved ombooking)</span>
+                <select class="fm-select" name="session_id">
+                    <option value="">Vælg hold</option>
+                    {% for v in sections.variants %}
+                        <option value="{{ v.session_id }}">{{ v.date|dkdate(style='long') }} · {{ v.location }} · {{ v.price_label }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+        {% endif %}
+        {% if sections.people %}
+            <label class="fm-field" data-kind-field="substitute">
+                <span>Ny deltager (ved skift af deltager)</span>
+                <select class="fm-select" name="user_id">
+                    <option value="">Vælg medarbejder</option>
+                    {% for p in sections.people %}
+                        <option value="{{ p.user_id }}">{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+        {% endif %}
+        <label class="fm-field">
+            <span>Begrundelse</span>
+            <textarea class="fm-input" name="note" required maxlength="4000"></textarea>
+        </label>
+        <button class="btn btn-ghost">Send ændringsønske</button>
+    </form>
+    {# Without JavaScript every field shows and the server ignores the ones that do not belong to the chosen kind. #}
+    <script>
+        (function () {
+            var form = document.currentScript.parentNode.querySelector('[data-change-form]');
+            var kind = form.querySelector('[data-change-kind]');
+            var fields = form.querySelectorAll('[data-kind-field]');
+            function sync() {
+                fields.forEach(function (f) {
+                    var on = f.getAttribute('data-kind-field') === kind.value;
+                    f.hidden = !on;
+                    f.querySelectorAll('select,input').forEach(function (i) { i.disabled = !on; });
+                });
+            }
+            kind.addEventListener('change', sync);
+            sync();
+        })();
+    </script>
+</section>

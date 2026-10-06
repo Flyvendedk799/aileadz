@@ -135,7 +135,7 @@ class FulfillmentLaunchTests(OrderFlowBase):
         oid2 = self.create(handle="itil", variant_date="3. december 2026")["order_id"]
         self.assertTrue(orders.set_status(self.hr(), oid2, "approved")["success"])
         self.assertTrue(orders.book_order(self.hr(), oid2, booking={
-            "reference": "TI-2", "start_at": "2026-12-04T09:00:00+01:00", "location": "Kontoret"})["success"])
+            "reference": "TI-2", "start_at": "2026-12-04T09:00:00+01:00", "location": "Kontoret", "confirm_date_change": "1"})["success"])
         self.assertEqual(self.order(oid2)["variant_date"], "4. december 2026")
 
     def test_iso_variant_dates_are_migrated_once(self):

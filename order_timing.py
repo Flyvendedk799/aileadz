@@ -30,7 +30,7 @@ import datetime as _dt
 import re
 from zoneinfo import ZoneInfo
 
-__all__ = ["not_yet_held_message", "reporting_opens_on", "booking_start_text", "course_start", "course_end", "has_taken_place", "course_label", "session_label", "format_date", "now"]
+__all__ = ["differs_from_ordered_session", "not_yet_held_message", "reporting_opens_on", "booking_start_text", "course_start", "course_end", "has_taken_place", "course_label", "session_label", "format_date", "now"]
 
 TZ = ZoneInfo("Europe/Copenhagen")
 
@@ -168,6 +168,22 @@ def reporting_opens_on(row, booking=None):
     if end == _end_of_day(end.date()):
         return end.date() + _dt.timedelta(days=1)
     return end.date()
+
+
+def differs_from_ordered_session(row, start_at):
+    """The ordered session label when the booked ``start_at`` falls outside the
+    ordered session's day(s), else ``None``. Unknown dates never differ."""
+    label = (row or {}).get("variant_date") if isinstance(row, dict) else None
+    ordered = {"variant_date": label}
+    start = course_start(ordered)
+    booked, _ = _parse(start_at)
+    if start is None or booked is None:
+        return None
+    end = course_end(ordered)
+    last = (end if end is not None and end >= start else start).date()
+    if start.date() <= booked.date() <= last:
+        return None
+    return str(label)
 
 
 def not_yet_held_message(row, booking=None, now=None):

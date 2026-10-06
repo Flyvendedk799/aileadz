@@ -57,8 +57,18 @@ _READ_ONLY_RE = re.compile(
 )
 _THIS_THREAD_RE = re.compile(
     r"(?:i\s+denne\s+samtale|senest\s+gældende\s+søgekrav|"
-    r"opsu(?:mmer|mmer)\s+kun\s+de\s+senest)",
+    r"opsu(?:mmer|mmer)\s+kun\s+de\s+senest|"
+    r"søgekrav\s+i\s+denne|gældende\s+søgekrav)",
     re.IGNORECASE,
+)
+# Topic cues for conversation-scoped constraints (not profile preferences).
+_TOPIC_CUES = (
+    (re.compile(r"\bexcel\b", re.IGNORECASE), "Excel"),
+    (re.compile(r"\bledelse\b|\bleder(?:skab|kurser)?\b|\bleadership\b", re.IGNORECASE), "ledelse"),
+    (re.compile(r"\bagil(?:e)?\b|projektledelse", re.IGNORECASE), "projektledelse"),
+    (re.compile(r"\bitil\b", re.IGNORECASE), "ITIL"),
+    (re.compile(r"\bpowerpoint\b|\bppt\b", re.IGNORECASE), "PowerPoint"),
+    (re.compile(r"\bsql\b|database", re.IGNORECASE), "SQL"),
 )
 _ORDINAL_RE = re.compile(
     r"\b(?:nummer|nr\.?)\s*(\d+)\b|"
@@ -147,6 +157,13 @@ def parse_constraint_updates(user_text: str, current: Optional[dict] = None) -> 
     if price is not None:
         patch["price_max"] = price
         patch["price_inclusive"] = bool(_BUDGET_INCL_VAT.search(text))
+
+    # Capture explicit topic cues so leadership vs Excel chats stay distinct
+    # even before a catalog_search tool call writes search_args.
+    for cre, label in _TOPIC_CUES:
+        if cre.search(text):
+            patch["topic"] = label
+            break
 
     return patch
 
@@ -331,6 +348,12 @@ def asks_for_this_thread_constraints(user_text: str) -> bool:
     return bool(_THIS_THREAD_RE.search(user_text or ""))
 
 
+def should_suppress_cross_session_digests(user_text: str) -> bool:
+    """L11: when the user asks for *this* chat's search constraints, digests
+    from other conversations (Excel/budget etc.) must not enter context."""
+    return asks_for_this_thread_constraints(user_text)
+
+
 def filter_cards_to_focus(cards: List[dict], state: Optional[dict]) -> List[dict]:
     """When a focused course is set, drop cards that do not match its handle.
 
@@ -462,11 +485,13 @@ def build_thread_constraints_message(state: Optional[dict]) -> Optional[dict]:
         return {
             "role": "system",
             "content": (
-                "SØGEKRAV I DENNE SAMTALE: ingen midlertidige søgekrav er "
-                "registreret endnu. Opsummér KUN det der står i denne tråds "
-                "beskeder. Brug IKKE krav fra andre samtaler, mode-digest eller "
-                "gemte profilpræferencer som om de var denne samtale søgekrav. "
-                "Skeln mellem midlertidige katalogopslag og gemte profilfakta."
+                "SØGEKRAV I DENNE SAMTALE (autoritative): ingen midlertidige "
+                "søgekrav er registreret endnu for DENNE session. Opsummér KUN "
+                "det der står i denne tråds egne beskeder. FORBUDT: at bruge "
+                "Excel/budget/emne fra andre samtaler, mode-digest, "
+                "other_mode_digest eller gemte profilpræferencer som om de var "
+                "denne samtale søgekrav. Skeln mellem midlertidige "
+                "katalogopslag og gemte profilfakta."
             ),
         }
     bits = [f"version={c.get('version')}"]
@@ -484,11 +509,12 @@ def build_thread_constraints_message(state: Optional[dict]) -> Optional[dict]:
     return {
         "role": "system",
         "content": (
-            "SØGEKRAV I DENNE SAMTALE (midlertidige katalogopslag — IKKE "
-            "gemte profilpræferencer, IKKE andre chats):\n• "
+            "SØGEKRAV I DENNE SAMTALE — AUTORITATIVE (midlertidige "
+            "katalogopslag). OVERSKRIV digests/andre chats/profilpræferencer:\n• "
             + "\n• ".join(bits)
-            + "\nNår brugeren spørger 'i denne samtale', svar KUN ud fra disse "
-            "og trådens egne beskeder."
+            + "\nNår brugeren spørger 'i denne samtale' / om senest gældende "
+            "søgekrav, svar KUN ud fra disse felter og trådens egne beskeder. "
+            "Nævn ALDRIG emne/budget fra en anden samtale her."
         ),
     }
 

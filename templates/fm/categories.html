@@ -1,10 +1,11 @@
 {% extends "fm_base.html" %}
 {% block page_id %}catalog{% endblock %}
-{% block title %}Futurematch{% endblock %}
+{% block title %}Kategorier · Futurematch{% endblock %}
 {% block topbar_title %}Kategorier{% endblock %}
 {% block topbar_sub %}Find kurser efter emne og fagområde.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
+<h1 class="fm-sr-only">Kategorier</h1>
   <div class="crumb"><a href="{{ url_for('catalog.catalog_index') }}">Katalog</a><i class="fa-solid fa-chevron-right"></i><span>Kategorier</span></div>
 
   <div class="pg-subnav">

@@ -1,10 +1,11 @@
 {% extends "fm_base.html" %}
 {% block page_id %}catalog{% endblock %}
-{% block title %}Futurematch{% endblock %}
+{% block title %}Leverandører · Futurematch{% endblock %}
 {% block topbar_title %}Leverandører{% endblock %}
 {% block topbar_sub %}{{ vendors|length if vendors else 0 }} kursusudbydere på Futurematch.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
+<h1 class="fm-sr-only">Leverandører</h1>
   <div class="crumb"><a href="{{ url_for('catalog.catalog_index') }}">Katalog</a><i class="fa-solid fa-chevron-right"></i><span>Leverandører</span></div>
 
   <div class="pg-subnav">

@@ -1,7 +1,7 @@
 {% extends "fm_base.html" %}
 {% from 'fm/_ring.html' import ring %}
 {% block page_id %}profile{% endblock %}
-{% block title %}Futurematch{% endblock %}
+{% block title %}Profil &amp; CV · Futurematch{% endblock %}
 {% block topbar_title %}Profil &amp; CV{% endblock %}
 {% block topbar_sub %}Din kompetenceprofil — jo mere udfyldt, jo bedre anbefalinger.{% endblock %}
 {% block extra_head %}
@@ -315,8 +315,8 @@
           <div class="fm-card-body">
             <div id="skillMatrix"><div class="muted" style="font-size:13px;padding:8px 0">Indlæser…</div></div>
             <div class="inline-add" id="addSkill">
-              <div class="fm-field" style="flex:2;min-width:180px"><label>Kompetence</label><input class="fm-input" id="skName" placeholder="fx Power BI, Forhandling…" /></div>
-              <div class="fm-field" style="flex:1;min-width:140px"><label>Niveau</label><select class="fm-select" id="skLevel"><option value="begynder">Begynder</option><option value="mellem" selected>Mellem</option><option value="avanceret">Avanceret</option><option value="ekspert">Ekspert</option></select></div>
+              <div class="fm-field" style="flex:2;min-width:180px"><label for="skName">Kompetence</label><input class="fm-input" id="skName" placeholder="fx Power BI, Forhandling…" /></div>
+              <div class="fm-field" style="flex:1;min-width:140px"><label for="skLevel">Niveau</label><select class="fm-select" id="skLevel"><option value="begynder">Begynder</option><option value="mellem" selected>Mellem</option><option value="avanceret">Avanceret</option><option value="ekspert">Ekspert</option></select></div>
               <button class="btn btn-primary" onclick="addSkill()">Tilføj</button>
               <button class="btn btn-ghost" onclick="openAdd(false)">Annullér</button>
             </div>
@@ -328,10 +328,10 @@
           <div class="fm-card" data-reveal data-d="1" id="experience"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-briefcase"></i></span><h3>Erhvervserfaring</h3><button class="ch-add" onclick="toggleForm('addExp')"><i class="fa-solid fa-plus"></i> Tilføj</button><a class="ch-ai" href="{{ url_for('futurematch.chat') }}?from=profile&amp;focus=section:experience" title="Uddyb med AI Profiler" aria-label="Uddyb med AI Profiler"><i class="fa-solid fa-wand-magic-sparkles"></i><span class="t">Uddyb med AI</span></a></div>
             <div class="fm-card-body">
               <div class="inline-add" id="addExp" style="margin-top:0;margin-bottom:14px">
-                <div class="fm-field" style="flex:2;min-width:160px"><label>Stilling / titel</label><input class="fm-input" id="expTitle" placeholder="F.eks. Projektleder" /></div>
-                <div class="fm-field" style="flex:2;min-width:160px"><label>Virksomhed</label><input class="fm-input" id="expCompany" placeholder="F.eks. Nordi A/S" /></div>
-                <div class="fm-field" style="flex:1;min-width:90px"><label>Startår</label><input class="fm-input" id="expStart" type="number" placeholder="2020" /></div>
-                <div class="fm-field" style="flex:1;min-width:90px"><label>Slutår</label><input class="fm-input" id="expEnd" type="number" placeholder="2024" /></div>
+                <div class="fm-field" style="flex:2;min-width:160px"><label for="expTitle">Stilling / titel</label><input class="fm-input" id="expTitle" placeholder="F.eks. Projektleder" /></div>
+                <div class="fm-field" style="flex:2;min-width:160px"><label for="expCompany">Virksomhed</label><input class="fm-input" id="expCompany" placeholder="F.eks. Nordi A/S" /></div>
+                <div class="fm-field" style="flex:1;min-width:90px"><label for="expStart">Startår</label><input class="fm-input" id="expStart" type="number" placeholder="2020" /></div>
+                <div class="fm-field" style="flex:1;min-width:90px"><label for="expEnd">Slutår</label><input class="fm-input" id="expEnd" type="number" placeholder="2024" /></div>
                 <label class="chk"><input type="checkbox" id="expCurrent" /> Nuværende</label>
                 <button class="btn btn-primary" onclick="addExperience()">Gem</button>
                 <button class="btn btn-ghost" onclick="toggleForm('addExp', false)">Annullér</button>
@@ -343,9 +343,9 @@
             <div class="fm-card" data-reveal data-d="2" id="education"><div class="fm-card-head"><span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-gold) 16%,transparent);color:var(--fm-gold)"><i class="fa-solid fa-graduation-cap"></i></span><h3>Uddannelse</h3><button class="ch-add" onclick="toggleForm('addEdu')"><i class="fa-solid fa-plus"></i> Tilføj</button><a class="ch-ai" href="{{ url_for('futurematch.chat') }}?from=profile&amp;focus=section:education" title="Uddyb med AI Profiler" aria-label="Uddyb med AI Profiler"><i class="fa-solid fa-wand-magic-sparkles"></i><span class="t">Uddyb med AI</span></a></div>
               <div class="fm-card-body">
                 <div class="inline-add" id="addEdu" style="margin-top:0;margin-bottom:12px">
-                  <div class="fm-field" style="flex:2;min-width:160px"><label>Uddannelse / grad</label><input class="fm-input" id="eduDegree" placeholder="F.eks. Cand.merc." /></div>
-                  <div class="fm-field" style="flex:2;min-width:160px"><label>Institution</label><input class="fm-input" id="eduInst" placeholder="F.eks. CBS" /></div>
-                  <div class="fm-field" style="flex:1;min-width:90px"><label>Afsluttet år</label><input class="fm-input" id="eduYear" type="number" placeholder="2020" /></div>
+                  <div class="fm-field" style="flex:2;min-width:160px"><label for="eduDegree">Uddannelse / grad</label><input class="fm-input" id="eduDegree" placeholder="F.eks. Cand.merc." /></div>
+                  <div class="fm-field" style="flex:2;min-width:160px"><label for="eduInst">Institution</label><input class="fm-input" id="eduInst" placeholder="F.eks. CBS" /></div>
+                  <div class="fm-field" style="flex:1;min-width:90px"><label for="eduYear">Afsluttet år</label><input class="fm-input" id="eduYear" type="number" placeholder="2020" /></div>
                   <button class="btn btn-primary" onclick="addEducation()">Gem</button>
                   <button class="btn btn-ghost" onclick="toggleForm('addEdu', false)">Annullér</button>
                 </div>
@@ -355,8 +355,8 @@
             <div class="fm-card" data-reveal data-d="3" id="languages"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-language"></i></span><h3>Sprog</h3><button class="ch-add" onclick="toggleForm('addLang')"><i class="fa-solid fa-plus"></i> Tilføj</button><a class="ch-ai" href="{{ url_for('futurematch.chat') }}?from=profile&amp;focus=section:languages" title="Uddyb med AI Profiler" aria-label="Uddyb med AI Profiler"><i class="fa-solid fa-wand-magic-sparkles"></i><span class="t">Uddyb med AI</span></a></div>
               <div class="fm-card-body">
                 <div class="inline-add" id="addLang" style="margin-top:0;margin-bottom:12px">
-                  <div class="fm-field" style="flex:2;min-width:140px"><label>Sprog</label><input class="fm-input" id="langName" placeholder="F.eks. Engelsk" /></div>
-                  <div class="fm-field" style="flex:1;min-width:130px"><label>Niveau</label><select class="fm-select" id="langLevel"><option value="begynder">Begynder</option><option value="mellem" selected>Mellem</option><option value="flydende">Flydende</option><option value="modersmaal">Modersmål</option></select></div>
+                  <div class="fm-field" style="flex:2;min-width:140px"><label for="langName">Sprog</label><input class="fm-input" id="langName" placeholder="F.eks. Engelsk" /></div>
+                  <div class="fm-field" style="flex:1;min-width:130px"><label for="langLevel">Niveau</label><select class="fm-select" id="langLevel"><option value="begynder">Begynder</option><option value="mellem" selected>Mellem</option><option value="flydende">Flydende</option><option value="modersmaal">Modersmål</option></select></div>
                   <button class="btn btn-primary" onclick="addLanguage()">Gem</button>
                   <button class="btn btn-ghost" onclick="toggleForm('addLang', false)">Annullér</button>
                 </div>
@@ -366,8 +366,8 @@
             <div class="fm-card" data-reveal data-d="4" id="portfolio"><div class="fm-card-head"><span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-clay) 16%,transparent);color:var(--fm-clay)"><i class="fa-solid fa-link"></i></span><h3>Portfolio &amp; links</h3><button class="ch-add" onclick="toggleForm('addLink')"><i class="fa-solid fa-plus"></i> Tilføj</button><a class="ch-ai" href="{{ url_for('futurematch.chat') }}?from=profile&amp;focus=section:portfolio" title="Uddyb med AI Profiler" aria-label="Uddyb med AI Profiler"><i class="fa-solid fa-wand-magic-sparkles"></i><span class="t">Uddyb med AI</span></a></div>
               <div class="fm-card-body">
                 <div class="inline-add" id="addLink" style="margin-top:0;margin-bottom:12px">
-                  <div class="fm-field" style="flex:1;min-width:120px"><label>Tekst</label><input class="fm-input" id="lnkLabel" placeholder="F.eks. LinkedIn" /></div>
-                  <div class="fm-field" style="flex:2;min-width:170px"><label>URL</label><input class="fm-input" id="lnkUrl" placeholder="https://…" /></div>
+                  <div class="fm-field" style="flex:1;min-width:120px"><label for="lnkLabel">Tekst</label><input class="fm-input" id="lnkLabel" placeholder="F.eks. LinkedIn" /></div>
+                  <div class="fm-field" style="flex:2;min-width:170px"><label for="lnkUrl">URL</label><input class="fm-input" id="lnkUrl" placeholder="https://…" /></div>
                   <button class="btn btn-primary" onclick="addLink()">Gem</button>
                   <button class="btn btn-ghost" onclick="toggleForm('addLink', false)">Annullér</button>
                 </div>
@@ -383,12 +383,12 @@
         <!-- Certifications (first-class) -->
         <div class="fm-section-head" id="certifications"><div><span class="fm-eyebrow"><i class="fa-solid fa-shield-halved"></i> Beviser</span><h2 class="fm-section-title">Certificeringer</h2></div><button class="ch-add" onclick="toggleForm('addCert')"><i class="fa-solid fa-plus"></i> Tilføj certificering</button><a class="ch-ai" href="{{ url_for('futurematch.chat') }}?from=profile&amp;focus=section:certifications" title="Uddyb med AI Profiler" aria-label="Uddyb med AI Profiler"><i class="fa-solid fa-wand-magic-sparkles"></i><span class="t">Uddyb med AI</span></a></div>
         <div class="inline-add" id="addCert" style="margin-bottom:16px">
-          <div class="fm-field" style="flex:2;min-width:180px"><label>Certificering</label><input class="fm-input" id="crtName" placeholder="F.eks. PRINCE2 Foundation" /></div>
-          <div class="fm-field" style="flex:2;min-width:160px"><label>Udsteder</label><input class="fm-input" id="crtIssuer" placeholder="F.eks. AXELOS" /></div>
-          <div class="fm-field" style="flex:1;min-width:110px"><label>Udstedt</label><input class="fm-input" id="crtIssued" placeholder="2023" /></div>
-          <div class="fm-field" style="flex:1;min-width:140px"><label>Udløber (tom = aldrig)</label><input class="fm-input" id="crtExpiry" placeholder="2026" /></div>
-          <div class="fm-field" style="flex:1;min-width:120px"><label>Bevis-ID</label><input class="fm-input" id="crtCredId" placeholder="Valgfri" /></div>
-          <div class="fm-field" style="flex:2;min-width:160px"><label>Verificerings-URL</label><input class="fm-input" id="crtCredUrl" placeholder="Valgfri" /></div>
+          <div class="fm-field" style="flex:2;min-width:180px"><label for="crtName">Certificering</label><input class="fm-input" id="crtName" placeholder="F.eks. PRINCE2 Foundation" /></div>
+          <div class="fm-field" style="flex:2;min-width:160px"><label for="crtIssuer">Udsteder</label><input class="fm-input" id="crtIssuer" placeholder="F.eks. AXELOS" /></div>
+          <div class="fm-field" style="flex:1;min-width:110px"><label for="crtIssued">Udstedt</label><input class="fm-input" id="crtIssued" placeholder="2023" /></div>
+          <div class="fm-field" style="flex:1;min-width:140px"><label for="crtExpiry">Udløber (tom = aldrig)</label><input class="fm-input" id="crtExpiry" placeholder="2026" /></div>
+          <div class="fm-field" style="flex:1;min-width:120px"><label for="crtCredId">Bevis-ID</label><input class="fm-input" id="crtCredId" placeholder="Valgfri" /></div>
+          <div class="fm-field" style="flex:2;min-width:160px"><label for="crtCredUrl">Verificerings-URL</label><input class="fm-input" id="crtCredUrl" placeholder="Valgfri" /></div>
           <button class="btn btn-primary" onclick="addCertification()">Gem</button>
           <button class="btn btn-ghost" onclick="toggleForm('addCert', false)">Annullér</button>
         </div>
@@ -681,7 +681,7 @@
       const cur = (_profile && _profile.target_role) || '';
       box.innerHTML =
         '<i class="fa-solid fa-bullseye" style="color:var(--fm-primary)"></i>' +
-        '<input id="cvTargetInput" class="fm-input" style="flex:1;min-width:120px;height:30px;font-size:13px" placeholder="fx Data Analyst, IT-projektleder" value="' + esc(cur) + '" />' +
+        '<input id="cvTargetInput" aria-label="Målrolle" class="fm-input" style="flex:1;min-width:120px;height:30px;font-size:13px" placeholder="fx Data Analyst, IT-projektleder" value="' + esc(cur) + '" />' +
         '<button class="fm-badge teal" style="border:none;cursor:pointer" onclick="saveTargetRole()">Gem</button>' +
         '<button class="fm-badge" style="border:none;cursor:pointer;background:var(--fm-surface-2)" onclick="renderTargetRole()">Annullér</button>';
       const inp = document.getElementById('cvTargetInput');

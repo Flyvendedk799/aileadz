@@ -191,6 +191,10 @@
   @media (max-width: 1080px) {
     .pd-rail { position: static; }
   }
+  /* One call to action at a time: beside the sticky rail the bar carries none; on small screens the bar's
+     button shows only while the rail's button is scrolled out of view (see the script below). */
+  @media (min-width: 1081px) { .pd-sticky .pd-cta { display: none; } }
+  .pd-sticky.pd-cta-hide .pd-cta { display: none; }
   @media (max-width: 760px) {
     :root { --pd-top: 62px; }
     .pd-sticky { margin-left: 0; margin-right: 0; }
@@ -300,7 +304,8 @@
   {# "Næste hold" is the first bookable date, i.e. the one preselected below. #}
   {% set next_variant = first if (first and first.date) else ((variants|selectattr('date')|first) if variants else None) %}
   <div class="pd-facts">
-    {% if product.format %}
+    {# "Kursus" is the catalogue default and says nothing; show the format only when it is specific. #}
+    {% if product.format and product.format|lower not in ['kursus', 'course'] %}
     <div class="pd-fact"><div class="pd-fact-k">Format</div><div class="pd-fact-v">{{ product.format }}</div></div>
     {% endif %}
     {% if meta.duration_days %}
@@ -663,6 +668,14 @@
 
 {% block extra_scripts %}
 <script>
+(function () {
+  var bar = document.querySelector('.pd-sticky');
+  var railCta = document.querySelector('.pd-rail .pd-cta');
+  if (!bar || !railCta || !('IntersectionObserver' in window)) return;
+  new IntersectionObserver(function (entries) {
+    bar.classList.toggle('pd-cta-hide', entries[0].isIntersecting);
+  }).observe(railCta);
+})();
 (function () {
   var modal = document.getElementById('pd-request');
   var form = document.getElementById('pd-request-form');

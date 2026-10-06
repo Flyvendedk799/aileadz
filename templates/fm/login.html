@@ -103,7 +103,7 @@
         </div>
         <div class="fm-field">
           <label for="p">Adgangskode</label>
-          <div class="input-wrap"><i class="fa-solid fa-lock"></i><input class="fm-input" id="p" name="password" type="password" placeholder="••••••••" autocomplete="current-password" required /><button type="button" class="eye" onclick="const p=document.getElementById('p');p.type=p.type==='password'?'text':'password';this.querySelector('i').classList.toggle('fa-eye');this.querySelector('i').classList.toggle('fa-eye-slash')"><i class="fa-solid fa-eye"></i></button></div>
+          <div class="input-wrap"><i class="fa-solid fa-lock"></i><input class="fm-input" id="p" name="password" type="password" placeholder="••••••••" autocomplete="current-password" required /><button type="button" class="eye" aria-label="Vis adgangskode" aria-controls="p" onclick="const p=document.getElementById('p');const show=p.type==='password';p.type=show?'text':'password';this.setAttribute('aria-label',show?'Skjul adgangskode':'Vis adgangskode');this.querySelector('i').classList.toggle('fa-eye');this.querySelector('i').classList.toggle('fa-eye-slash')"><i class="fa-solid fa-eye"></i></button></div>
         </div>
         <div class="form-row">
           <label class="remember"><input type="checkbox" name="remember" checked /> Husk mig</label>

@@ -1,6 +1,6 @@
 {% extends "fm_base.html" %}
 {% block page_id %}hr{% endblock %}
-{% block title %}Futurematch{% endblock %}
+{% block title %}Samtale · {{ username or 'Ukendt' }} · Futurematch{% endblock %}
 {% block topbar_title %}Samtale · {{ username or 'Ukendt' }}{% endblock %}
 {% block topbar_sub %}{{ interactions|length }} beskeder · session {{ session_id[:12] }}…{% endblock %}
 {% block extra_head %}

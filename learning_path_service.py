@@ -27,31 +27,173 @@ def get_steps(cur, company_id, path_id):
     return list(cur.fetchall() or [])
 
 
+def _money(value):
+    try:
+        from dashboard import dkmoney
+
+        return dkmoney(value) if value not in (None, "") else ""
+    except Exception:
+        return ""
+
+
+def _next_session(variants):
+    """"3. december 2026 · Aarhus" for the earliest upcoming session, else ''."""
+    import datetime
+
+    from calendar_service import parse_danish_date
+    import order_timing
+
+    today = datetime.date.today()
+    upcoming = []
+    for v in variants or []:
+        day = parse_danish_date(v.get("date")) if isinstance(v, dict) else None
+        if day and day >= today:
+            upcoming.append((day, v))
+    if not upcoming:
+        return ""
+    day, v = min(upcoming, key=lambda item: item[0])
+    where = v.get("city") or v.get("location") or ""
+    return order_timing.format_date(day, style="long") + (" · %s" % where if where else "")
+
+
+def describe_course(handle, company_id):
+    """What HR needs to recognise a course in the step editor, or None when it no longer
+    exists: ``{handle, title, vendor, price, price_label, next_session, format, internal}``."""
+    import enrollment_service
+
+    try:
+        product = enrollment_service.get_course(handle, company_id)
+    except Exception:
+        product = None
+    if not product:
+        return None
+    internal = str(handle).startswith("internal:")
+    price = product.get("price_min")
+    return {
+        "handle": handle,
+        "title": product.get("title") or handle,
+        "vendor": "Internt kursus" if internal else (product.get("vendor") or ""),
+        "price": price,
+        "price_label": _money(price),
+        "next_session": _next_session(product.get("variants")),
+        "format": product.get("format") or "",
+        "internal": internal,
+    }
+
+
+def search_catalog(cur, company_id, query, limit=10):
+    """Courses HR can put in a path: the shared catalogue plus the company's own internal
+    courses (labelled). Company-scoped; a query shorter than two characters lists nothing."""
+    query = (query or "").strip()
+    if len(query) < 2 or not company_id:
+        return []
+    import catalog_service
+
+    limit = max(1, min(int(limit or 10), 25))
+    results = []
+    try:
+        like = "%" + query.lower() + "%"
+        cur.execute(
+            "SELECT id FROM company_courses WHERE company_id = %s AND is_active = 1 AND "
+            "(LOWER(title) LIKE %s OR LOWER(COALESCE(skill_tags, '')) LIKE %s) ORDER BY title LIMIT %s",
+            (company_id, like, like, limit),
+        )
+        for row in list(cur.fetchall() or []):
+            info = describe_course("internal:%s" % row["id"], company_id)
+            if info:
+                results.append(info)
+    except Exception as e:
+        logger.debug("learning_path_service: internal course search skipped: %s", e)
+    try:
+        found = catalog_service.search_products({"q": query}, per_page=limit, company_id=company_id)
+    except Exception as e:
+        logger.warning("learning_path_service: catalogue search failed: %s", e)
+        found = {"products": []}
+    for product in found.get("products") or []:
+        results.append({
+            "handle": product["handle"],
+            "title": product["title"],
+            "vendor": product.get("vendor") or "",
+            "price": product.get("price_min"),
+            "price_label": _money(product.get("price_min")),
+            "next_session": _next_session(product.get("variants")),
+            "format": product.get("format") or "",
+            "internal": False,
+        })
+    return results[:limit]
+
+
+def steps_from_form(getlist):
+    """Structured editor fields (``step_type[]``, ``course_handle[]``, ``title[]``) as step dicts.
+
+    ``getlist`` is ``request.form.getlist``. Rows stay aligned by index; a row is whatever the
+    editor posted, validation happens in ``save_steps``."""
+    types = getlist("step_type[]")
+    handles = getlist("course_handle[]")
+    titles = getlist("title[]")
+    rows = []
+    for i, step_type in enumerate(types):
+        rows.append({
+            "step_type": "catalog" if step_type == "catalog" else "info",
+            "course_handle": (handles[i] if i < len(handles) else "").strip(),
+            "title": (titles[i] if i < len(titles) else "").strip(),
+        })
+    return rows
+
+
+def steps_from_text(text):
+    """The no-JS fallback: one step per line, ``handle | label`` or ``# guidance``."""
+    steps = []
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            steps.append({"step_type": "info", "title": line.lstrip("# ").strip()})
+        else:
+            handle, _, title = line.partition("|")
+            steps.append({"step_type": "catalog", "course_handle": handle.strip(), "title": title.strip()})
+    return steps
+
+
+def validate_steps(company_id, steps):
+    """Clean step dicts plus ``errors`` = {row index: Danish message}. Every bad row is reported."""
+    clean, errors = [], {}
+    for i, s in enumerate(steps or []):
+        handle = (s.get("course_handle") or "").strip()
+        title = (s.get("title") or "").strip()
+        kind = s.get("step_type") or ("catalog" if handle else "info")
+        if kind == "catalog" or handle:
+            if not handle:
+                errors[i] = "Vælg et kursus fra kataloget, eller fjern trinnet."
+                continue
+            info = describe_course(handle, company_id)
+            if not info:
+                errors[i] = "Kurset ‘%s’ findes ikke i kataloget." % handle
+                continue
+            clean.append({"index": i, "step_type": "catalog", "course_handle": handle,
+                          "title": (title or info["title"])[:255]})
+        elif title:
+            clean.append({"index": i, "step_type": "info", "course_handle": None, "title": title[:255]})
+    return clean, errors
+
+
 def save_steps(cur, company_id, path_id, steps, *, actor_user_id=None, note=None):
     """Replace a path's steps and record the PREVIOUS state as a version.
 
-    ``steps`` = [{"course_handle"?, "title"?, "step_type"?}]. Catalog steps whose
-    handle is unknown are rejected with a clear message. Returns {success, version}."""
+    ``steps`` = [{"course_handle"?, "title"?, "step_type"?}]. A catalog step whose handle is
+    missing or unknown is rejected, naming the row: ``{success: False, message, errors}`` with
+    ``errors`` = {row index: message} for EVERY bad row, so the editor can show them all and
+    keep what was entered. Returns {success, version, steps} otherwise."""
     cur.execute("SELECT id, version FROM learning_paths WHERE id = %s AND company_id = %s FOR UPDATE", (path_id, company_id))
     path = cur.fetchone()
     if not path:
         return {"success": False, "message": "Læringsforløbet blev ikke fundet."}
-    clean = []
-    for i, s in enumerate(steps or []):
-        handle = (s.get("course_handle") or "").strip()
-        title = (s.get("title") or "").strip()
-        if handle:
-            try:
-                import enrollment_service
-
-                p = enrollment_service.get_course(handle, company_id)
-            except Exception:
-                p = None
-            if not p:
-                return {"success": False, "message": "Kurset ‘%s’ findes ikke i kataloget." % handle}
-            clean.append({"position": i + 1, "step_type": "catalog", "course_handle": handle, "title": title or p.get("title") or handle})
-        elif title:
-            clean.append({"position": i + 1, "step_type": "info", "course_handle": None, "title": title[:255]})
+    clean, errors = validate_steps(company_id, steps)
+    if errors:
+        return {"success": False, "errors": errors, "message": errors[min(errors)]}
+    for position, step in enumerate(clean, start=1):
+        step["position"] = position
     before = get_steps(cur, company_id, path_id)
     version = int(path.get("version") or 1)
     if before:

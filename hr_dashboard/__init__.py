@@ -3729,39 +3729,86 @@ def create_hr_dashboard_blueprint():
             flash("Tildelingen mislykkedes. Prøv igen om lidt.", "danger")
         return redirect(url_for('hr_dashboard.learning_paths'))
 
+    @hr_dashboard_bp.route('/learning-paths/catalog-search')
+    def learning_path_catalog_search():
+        """JSON for the step editor's course picker: the catalogue plus this company's internal
+        courses (labelled ``internal``). Company-scoped and limited to people who edit paths."""
+        if 'company_id' not in session:
+            return jsonify({'error': 'Ikke logget ind'}), 401
+        if not can('company.learning_paths'):
+            return jsonify({'error': 'Du har ikke rettigheder til at redigere forløb.'}), 403
+        import learning_path_service
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        try:
+            results = learning_path_service.search_catalog(cur, session['company_id'], request.args.get('q', ''))
+        finally:
+            cur.close()
+        return jsonify({'results': results})
+
+    def _step_rows(company_id, steps, errors=None):
+        """Editor rows for stored or posted steps: the real course next to HR's optional label."""
+        import learning_path_service
+        rows = []
+        for i, s in enumerate(steps):
+            handle = (s.get('course_handle') or '').strip()
+            is_course = (s.get('step_type') == 'catalog') or bool(handle)
+            info = learning_path_service.describe_course(handle, company_id) if handle else None
+            label = (s.get('title') or '').strip()
+            if info and label == info['title']:
+                label = ''
+            rows.append({'step_type': 'catalog' if is_course else 'info', 'course_handle': handle,
+                         'info': info, 'label': label if is_course else '',
+                         'title': '' if is_course else (s.get('title') or ''),
+                         'error': (errors or {}).get(i)})
+        return rows
+
+    @hr_dashboard_bp.route('/learning-paths/<int:path_id>/trin', methods=['GET', 'POST'])
     @hr_dashboard_bp.route('/learning-paths/<int:path_id>/steps', methods=['POST'])
-    def save_learning_path_steps(path_id):
-        """Edit a path's steps. One step per line: ``kursus-handle`` (catalog step,
-        ordered on assignment) or free text (guidance). Every save is versioned."""
+    def learning_path_steps(path_id):
+        """The step editor of one path. Steps are picked from the catalogue (structured fields
+        ``step_type[]``/``course_handle[]``/``title[]``); a hidden text field is the no-JS
+        fallback (one line per step). A rejected save re-renders the editor with everything HR
+        entered and an inline message on each bad row; a good save creates a new version."""
         if 'company_id' not in session:
             return jsonify({'error': 'Ikke logget ind'}), 401
         if not can('company.learning_paths'):
             flash("Kun HR-ledere kan redigere forløbets trin.", "danger")
             return redirect(url_for('hr_dashboard.learning_paths'))
         import learning_path_service
-        steps = []
-        for line in (request.form.get('steps') or '').splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            if line.startswith('#'):
-                steps.append({'title': line.lstrip('# ').strip()})
-            else:
-                handle, _, title = line.partition('|')
-                steps.append({'course_handle': handle.strip(), 'title': title.strip()})
+        company_id = session['company_id']
         conn = current_app.mysql.connection
         cur = conn.cursor(MySQLdb.cursors.DictCursor)
-        res = learning_path_service.save_steps(cur, session['company_id'], path_id, steps,
-                                               actor_user_id=session.get('user_id'),
-                                               note=(request.form.get('note') or None))
-        if res.get('success'):
-            conn.commit()
-            flash(f"Trin gemt (version {res['version']}).", "success")
-        else:
-            conn.rollback()
-            flash(res.get('message', 'Trinene kunne ikke gemmes.'), "danger")
-        cur.close()
-        return redirect(url_for('hr_dashboard.learning_paths'))
+        try:
+            cur.execute("SELECT * FROM learning_paths WHERE id = %s AND company_id = %s", (path_id, company_id))
+            path = cur.fetchone()
+            if not path:
+                flash("Læringsforløbet blev ikke fundet.", "warning")
+                return redirect(url_for('hr_dashboard.learning_paths'))
+            ctx = {'path': path, 'note': '', 'text_fallback': '', 'errors': {}, 'active_hr_page': 'learning_paths'}
+            if request.method == 'POST':
+                if 'step_type[]' in request.form:
+                    posted = learning_path_service.steps_from_form(request.form.getlist)
+                else:
+                    ctx['text_fallback'] = request.form.get('steps') or ''
+                    posted = learning_path_service.steps_from_text(ctx['text_fallback'])
+                ctx['note'] = (request.form.get('note') or '').strip()
+                res = learning_path_service.save_steps(cur, company_id, path_id, posted,
+                                                       actor_user_id=session.get('user_id'),
+                                                       note=ctx['note'] or None)
+                if res.get('success'):
+                    conn.commit()
+                    flash(f"Trin gemt (version {res['version']}).", "success")
+                    return redirect(url_for('hr_dashboard.learning_paths'))
+                conn.rollback()
+                ctx['errors'] = res.get('errors') or {}
+                if not ctx['errors']:
+                    flash(res.get('message', 'Trinene kunne ikke gemmes.'), "danger")
+                ctx['rows'] = _step_rows(company_id, posted, ctx['errors'])
+                return render_template('fm/learning_path_steps.html', **ctx)
+            ctx['rows'] = _step_rows(company_id, learning_path_service.get_steps(cur, company_id, path_id))
+            return render_template('fm/learning_path_steps.html', **ctx)
+        finally:
+            cur.close()
 
     @hr_dashboard_bp.route('/learning-paths/<int:path_id>/toggle', methods=['POST'])
     def toggle_learning_path(path_id):

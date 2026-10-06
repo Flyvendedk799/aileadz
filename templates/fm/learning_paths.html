@@ -58,13 +58,9 @@
       <details style="font-size:13px">
         <summary style="cursor:pointer;font-weight:600">Kursustrin ({{ psteps|length }}) · version {{ path.version or 1 }}</summary>
         {% if psteps %}<ol style="margin:8px 0 8px 18px;padding:0">{% for s in psteps %}<li>{{ s.title }}{% if s.step_type == 'catalog' %} <span class="fm-badge teal">bestilles ved tildeling</span>{% endif %}</li>{% endfor %}</ol>
-        {% else %}<p class="muted" style="margin:8px 0">Ingen trin endnu. Tilføj kursus-handles fra kataloget, så tildelingen også bestiller kurserne (via godkendelse og budget).</p>{% endif %}
+        {% else %}<p class="muted" style="margin:8px 0">Ingen trin endnu. Vælg kurser fra kataloget, så tildelingen også bestiller kurserne.</p>{% endif %}
         {% if can_manage %}
-        <form method="post" action="{{ url_for('hr_dashboard.save_learning_path_steps', path_id=path.id) }}">
-          <textarea class="fm-input" name="steps" rows="4" placeholder="prince2-grundkursus | PRINCE2 Foundation&#10;# Sæt tid af til øvelser med din leder" style="width:100%">{% for s in psteps %}{% if s.step_type == 'catalog' %}{{ s.course_handle }} | {{ s.title }}{% else %}# {{ s.title }}{% endif %}
-{% endfor %}</textarea>
-          <div class="fm-flex fm-gap8" style="margin-top:6px"><button class="btn btn-ghost btn-sm" type="submit">Gem trin</button><span class="muted" style="font-size:12px">Hver gem oprettes som ny version. En linje = ét trin; start med # for vejledning uden kursus.</span></div>
-        </form>
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('hr_dashboard.learning_path_steps', path_id=path.id) }}" style="margin-top:6px"><i class="fa-solid fa-pen"></i> Redigér trin</a>
         {% endif %}
       </details>
 

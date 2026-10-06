@@ -6,6 +6,8 @@
   <title>{% block title %}Futurematch{% endblock %}{% if white_label_active and company_branding.company_name %} · {{ company_branding.company_name }}{% endif %}</title>
   {% if white_label_active and company_branding.favicon_url %}
   <link rel="icon" href="{{ company_branding.favicon_url }}">
+  {% else %}
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" sizes="any">
   {% endif %}
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -33,7 +35,7 @@
 {% set _uname = session.get('user') or 'Gæst' %}
 {% set _initials = (_uname[:2] | upper) if _uname else 'FM' %}
 {% set _usermeta = (session.get('company_name') ~ ' · ' ~ (session.get('company_role') or 'Bruger')) if session.get('company_name') else 'Futurematch' %}
-<body data-page="{% block page_id %}{% endblock %}" data-role="{{ _role }}" data-brand-server="1" class="{% block body_class %}{% endblock %}">
+<body data-page="{% block page_id %}{% endblock %}" data-role="{{ _role }}" data-auth="{{ '1' if session.get('user') else '0' }}" data-brand-server="1" class="{% block body_class %}{% endblock %}">
 
 {# The server decides the brand. A white-label tenant pushes its brand into the
    browser (for the live preview in the branding editor); everyone else clears any
@@ -56,7 +58,8 @@
 <script>try { localStorage.removeItem('fm-brand'); } catch (e) {}</script>
 {% endif %}
 
-<div class="fm-shell">
+<div class="fm-shell{% if not session.get('user') %} fm-shell-public{% endif %}">
+  {% if session.get('user') %}
   <aside class="fm-side" id="fmSide" aria-label="Primær navigation">
     <div class="fm-side-head">
       <a class="fm-brand" href="{{ url_for('futurematch.employee_home') if session.get('user') else url_for('dashboard.dashboard') }}">
@@ -187,10 +190,34 @@
       {% endif %}
     </div>
   </aside>
+  {% endif %}
 
   <div class="fm-main">
+    {% if not session.get('user') %}
+    {# Logged-out visitors get a public header, not the account sidebar. #}
+    <header class="fm-pubnav" role="banner">
+      <a class="fm-brand" href="{{ url_for('dashboard.dashboard') }}">
+        {% if white_label_active and company_branding.company_logo %}
+        <span class="fm-mark"><img src="{{ company_branding.company_logo }}" alt="{{ platform_name }}" style="width:100%;height:100%;object-fit:contain;border-radius:inherit"></span>
+        {% else %}
+        <span class="fm-mark">{{ platform_name[:1]|upper }}</span>
+        {% endif %}
+        <span class="fm-brand-tx"><span class="fm-brand-name">{{ platform_name }}</span></span>
+      </a>
+      <nav class="fm-pubnav-links" aria-label="Primær navigation">
+        <a href="{{ url_for('catalog.catalog_index') }}">Katalog</a>
+        <a href="{{ url_for('futurematch.chat') }}">Rådgiver</a>
+        {% if has_endpoint('customer_success.sales') %}<a href="{{ url_for('customer_success.sales') }}">For virksomheder</a>{% endif %}
+      </nav>
+      <div class="fm-pubnav-actions">
+        <button class="fm-icon-btn" data-theme-toggle aria-label="Tema"><i class="fa-solid fa-moon"></i></button>
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('auth.login') }}">Log ind</a>
+        <a class="btn btn-primary btn-sm" href="{{ url_for('auth.register') }}">Opret konto</a>
+      </div>
+    </header>
+    {% endif %}
     <header class="fm-top">
-      <button class="fm-icon-btn fm-menu-btn" data-side-open aria-label="Menu"><i class="fa-solid fa-bars"></i></button>
+      {% if session.get('user') %}<button class="fm-icon-btn fm-menu-btn" data-side-open aria-label="Menu"><i class="fa-solid fa-bars"></i></button>{% endif %}
       <div class="fm-top-lead">{% block topbar_lead %}{% endblock %}</div>
       <div class="fm-top-titles">
         <div class="fm-top-title">{% block topbar_title %}{% endblock %}</div>
@@ -198,20 +225,18 @@
       </div>
       <div class="fm-top-actions">
         {% block topbar_extra %}{% endblock %}
+        {% if session.get('user') %}
         <button class="fm-icon-btn" data-theme-toggle aria-label="Tema"><i class="fa-solid fa-moon"></i></button>
         <a class="fm-icon-btn" href="{{ url_for('pages.notifications') }}" aria-label="Notifikationer"><i class="fa-solid fa-bell"></i><span class="dot" data-notif-dot hidden></span><span class="fm-bell-count" data-notif-count hidden></span></a>
-        {% if session.get('user') %}
         {# The credits balance means something to credit managers and platform admins only; employees have "Mit forbrug" in the menu. #}
         {% if can('company.credits') or can('platform.admin') %}{% set _cc = credit_chip() %}<a class="fm-chip credits" href="{{ url_for('credits.company_credits') if _cc.scope == 'company' and has_endpoint('credits.company_credits') and can('company.credits') else url_for('pages.analytics') }}" title="{{ 'Virksomhedens AI-kreditter' if _cc.scope == 'company' else 'Dine AI-kreditter' }}" style="text-decoration:none"><i class="fa-solid fa-coins"></i> {{ _cc.label }}</a>{% endif %}
         <form method="post" action="{{ url_for('auth.logout') }}" style="display:inline;margin:0"><button type="submit" class="fm-icon-btn" aria-label="Log ud" title="Log ud"><i class="fa-solid fa-arrow-right-from-bracket"></i></button></form>
-        {% else %}
-        <a class="fm-chip" href="{{ url_for('auth.login') }}" style="text-decoration:none"><i class="fa-solid fa-arrow-right-to-bracket"></i> Log ind</a>
         {% endif %}
       </div>
     </header>
 
     {# Conversation history for the AI pages: a floating panel opened from the header (see ai-sidebar.js). #}
-    {% if _in_ai %}{% include 'fm/_ai_sidebar.html' %}{% endif %}
+    {% if _in_ai and session.get('user') %}{% include 'fm/_ai_sidebar.html' %}{% endif %}
 
     <main class="fm-content">
       {% if session.get('admin_acting_company_id') %}
@@ -255,7 +280,7 @@
 </div>
 
 <script src="{{ url_for('static', filename='futurematch/assets/shell.js') }}?v={{ asset_version('futurematch/assets/shell.js') }}"></script>
-{% if self.page_id()|trim in ['chat', 'mindmap'] %}
+{% if self.page_id()|trim in ['chat', 'mindmap'] and session.get('user') %}
 <script src="{{ url_for('static', filename='futurematch/assets/ai-sidebar.js') }}?v={{ asset_version('futurematch/assets/ai-sidebar.js') }}"></script>
 {% endif %}
 {% block extra_scripts %}{% endblock %}

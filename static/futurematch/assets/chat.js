@@ -13,7 +13,11 @@
   // prevent breakout. Falls back to a neutral icon when empty/invalid.
   const icon = (s) => (String(s == null ? "" : s).replace(/[^a-z0-9 _-]/gi, "").slice(0, 40) || "fa-graduation-cap");
   let activeConvId = null;
+  // Server-rendered on <body data-auth>: anonymous visitors must not trigger
+  // XHRs that need a session (they would answer 401).
+  const LOGGED_IN = document.body.dataset.auth !== "0";
   function trackLearner(event, meta) {
+    if (!LOGGED_IN) return;
     try {
       fetch("/api/learner/events", {
         method: "POST", credentials: "same-origin",
@@ -112,6 +116,7 @@
   }
   async function loadWorkspace() {
     const bar = $("#aiWorkspaceStatus");
+    if (!LOGGED_IN) { if (bar) bar.hidden = true; return; }
     try {
       const resp = await fetch("/api/profile/workspace", {
         headers: { "X-Requested-With": "XMLHttpRequest" },
@@ -2060,6 +2065,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
   function hideNudge() { const n = $("#nudge"); if (n) n.classList.remove("show"); }
 
   async function loadNudges() {
+    if (!LOGGED_IN) { hideNudge(); return; }
     try {
       const resp = await fetch("/app1/nudges", {
         headers: { "X-Requested-With": "XMLHttpRequest" },

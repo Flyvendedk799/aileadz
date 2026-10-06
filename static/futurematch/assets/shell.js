@@ -114,6 +114,8 @@
     const navBadges = document.querySelectorAll("[data-notif-badge]");
     if (!dots.length && !counts.length && !navBadges.length) return;
     if (!window.fetch) return;
+    // Anonymous visitors have no notifications; the endpoint would answer 401.
+    if (document.body.dataset.auth === "0") return;
 
     function paint(n) {
       const has = n > 0;

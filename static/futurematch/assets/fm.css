@@ -893,3 +893,23 @@ html, body { max-width: 100%; overflow-x: hidden; overflow-x: clip; }
 @media (prefers-reduced-motion: reduce) {
   .fm-skel { animation: none; }
 }
+
+/* ---- Public header for logged-out visitors (replaces the account sidebar) ---- */
+.fm-pubnav {
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  padding: 10px 24px; background: var(--fm-bg);
+  border-bottom: 1px solid color-mix(in srgb, var(--fm-ink) 8%, transparent);
+}
+.fm-pubnav .fm-brand { text-decoration: none; }
+.fm-pubnav-links { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; flex-wrap: wrap; }
+.fm-pubnav-links a {
+  padding: 8px 12px; border-radius: var(--r-md, 10px); font-weight: 600; font-size: 14px;
+  color: var(--fm-ink-2, var(--fm-ink)); text-decoration: none;
+}
+.fm-pubnav-links a:hover { background: color-mix(in srgb, var(--fm-ink) 6%, transparent); color: var(--fm-ink); }
+.fm-pubnav-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+@media (max-width: 640px) {
+  .fm-pubnav { padding: 8px 14px; gap: 8px 12px; }
+  .fm-pubnav-links { order: 3; flex-basis: 100%; }
+  .fm-pubnav-links a { padding: 6px 10px; font-size: 13.5px; }
+}

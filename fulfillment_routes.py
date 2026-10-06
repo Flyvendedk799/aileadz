@@ -31,10 +31,6 @@ ACTION_ANCHORS = {
 _MAX_OUTCOME_ROWS = 5
 
 
-def _truthy(value):
-    return str(value or "").strip().lower() in ("1", "true", "on", "yes")
-
-
 def perform_action(ctx, order_id, form, *, vendor=False):
     """Run one console action posted by ``ctx`` and return ``(result, anchor)``.
 
@@ -247,31 +243,37 @@ def order_page_url(order_id, actors, anchor=""):
     return url + ("#" + anchor if anchor else "")
 
 
-def workflow(ctx, order_id, *, vendor=False):
+def vendor_workflow(ctx, order_id):
+    """The vendor's one order page (``/vendor/orders/<id>/booking``): GET renders the
+    portal page with the order sections, POST runs the shared action handler."""
     row = orders.get_order(ctx, order_id)
     if not row or not orders.actors_for(ctx, row):
         abort(404)
-    target = url_for("vendor.vendor_booking", order_id=order_id) if vendor else url_for("fulfillment.order_workflow", order_id=order_id)
+    target = url_for("vendor.vendor_booking", order_id=order_id)
     if request.method == "POST":
-        result, anchor = perform_action(ctx, order_id, request.form, vendor=vendor)
+        result, anchor = perform_action(ctx, order_id, request.form, vendor=True)
         flash_result(result)
         return redirect(target + ("#" + anchor if anchor else ""))
-    sections = order_sections(ctx, row, vendor=vendor, post_url=target)
+    sections = order_sections(ctx, row, vendor=True, post_url=target)
     return render_template(
-        "fm/vendor_booking.html" if vendor else "fm/booking_workflow.html",
+        "fm/vendor_booking.html",
         order=row,
         status_label=orders.lc.status_label(row["status"]),
         actors=sections["actors"],
         sections=sections,
         post_url=target,
-        vendor_mode=vendor,
+        vendor_mode=True,
     )
 
 
 @fulfillment_bp.route("/ordre/<order_id>/handling", methods=["POST"])
 @login_required
 def order_action(order_id):
-    """Every action posted from the HR and admin order pages."""
+    """Every action posted from the HR order page."""
+    return _act_and_return(order_id)
+
+
+def _act_and_return(order_id):
     ctx = orders.OrderContext.from_session(source="order_page")
     row = orders.get_order(ctx, order_id)
     actors = orders.actors_for(ctx, row) if row else set()
@@ -282,13 +284,29 @@ def order_action(order_id):
     return redirect(order_page_url(order_id, actors, anchor))
 
 
+def _redirect_to_order_page(order_id, anchor=""):
+    ctx = orders.OrderContext.from_session(source="order_page")
+    row = orders.get_order(ctx, order_id)
+    actors = orders.actors_for(ctx, row) if row else set()
+    if not actors:
+        abort(404)
+    return redirect(order_page_url(order_id, actors, anchor))
+
+
 @fulfillment_bp.route("/ordre/<order_id>/booking", methods=["GET", "POST"])
 @login_required
 def order_workflow(order_id):
-    return workflow(orders.OrderContext.from_session(source="booking_console"), order_id)
+    """Retired console URL, kept for old mails and bookmarks: every role is sent to its
+    one order page. POST (an old form) is still handled by the shared action handler."""
+    if request.method == "POST":
+        return _act_and_return(order_id)
+    return _redirect_to_order_page(order_id)
 
 
 @fulfillment_bp.route("/hr/ordre/<order_id>/udbytte", methods=["GET", "POST"])
 @login_required
 def outcome(order_id):
-    return workflow(orders.OrderContext.from_session(source="outcome_review"), order_id)
+    """Retired outcome-review URL: the review lives on the HR order page."""
+    if request.method == "POST":
+        return _act_and_return(order_id)
+    return _redirect_to_order_page(order_id, "udbytte")

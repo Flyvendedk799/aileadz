@@ -140,7 +140,7 @@ class BookedDateRenderingTests(Base):
         return {
             "min-ordre": self.client_as("ada", 1).get("/min-ordre/ord-1"),
             "hr-detaljer": self.client_as("hr", 3, "hr_manager").get("/hr/order/ord-1/details"),
-            "booking": self.client_as("ada", 1).get("/ordre/ord-1/booking"),
+            "booking": self.client_as("ada", 1).get("/ordre/ord-1/booking", follow_redirects=True),
             "tidslinje": self.client_as("ada", 1).get("/min-tidslinje"),
         }
 
@@ -169,7 +169,7 @@ class BookedDateRenderingTests(Base):
         root = pathlib.Path(__file__).resolve().parent.parent / "templates" / "fm"
         pattern = re.compile(r"round\(2\)|\{:,\.0f\}")
         offenders = []
-        for name in ("my_order.html", "order_details.html", "_booking_workflow.html", "confirm_course_assignment.html",
+        for name in ("my_order.html", "order_details.html", "vendor_booking.html", "confirm_course_assignment.html",
                      "mt_order_detail.html", "reports_dashboard.html", "admin_dashboard.html", "approvals.html",
                      "timeline.html", "vendor_orders.html", "billing.html", "billing_summary.html", "budgets.html",
                      "departments.html", "roi.html", "team_cockpit.html"):

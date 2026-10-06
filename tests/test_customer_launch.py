@@ -101,7 +101,7 @@ class CustomerLaunchTests(unittest.TestCase):
         self.assertEqual(result.status_code, 302)
         order = self.db.one("SELECT * FROM course_orders")
         self.assertEqual(order["internal_course_id"], 5)
-        self.assertEqual(learner.get("/ordre/%s/booking" % order["order_id"]).status_code, 200)
+        self.assertEqual(learner.get("/min-ordre/%s" % order["order_id"]).status_code, 200)
         other = client_as(self.app, user="other", user_id=99, company_id=8, company_role="hr_manager")
         self.assertEqual(other.get("/interne-kurser/5").status_code, 404)
 

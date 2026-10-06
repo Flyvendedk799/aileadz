@@ -33,7 +33,7 @@ class SectionBase(Base):
             )
 
     def page(self, client):
-        resp = client.get("/ordre/ord-1/booking")
+        resp = client.get("/ordre/ord-1/booking", follow_redirects=True)
         self.assertEqual(resp.status_code, 200)
         return resp.get_data(as_text=True)
 
@@ -76,7 +76,8 @@ class SectionTableTests(SectionBase):
 
     def test_booked_order_with_a_pending_change_shows_the_change_instead_of_a_new_request(self):
         self.set_state("booked", change="cancel")
-        self.assertEqual(self.shown(self.hr()), ["booking_card", "changes_list", "attendance"])
+        # HR's page puts the open change first.
+        self.assertEqual(self.shown(self.hr()), ["changes_list", "booking_card", "attendance"])
         self.assertIn("Accepter ændring", self.page(self.hr()))
         # The requester (the learner) cannot resolve their own request.
         learner_html = self.page(self.learner())
@@ -451,3 +452,52 @@ class VendorPageTests(SectionBase):
         self.assertIn('class="badge ok"', html)
         self.set_state("booked", booking=False, change="cancel")
         self.assertIn("Ændringsønske afventer", self.orders_page())
+
+
+class RetiredConsoleRedirectTests(SectionBase):
+    """/ordre/<id>/booking and /hr/ordre/<id>/udbytte only forward to each role's one page."""
+
+    def setUp(self):
+        super().setUp()
+        self.set_state("booked")
+
+    def location(self, client, path="/ordre/ord-1/booking"):
+        resp = client.get(path)
+        self.assertEqual(resp.status_code, 302)
+        return resp.headers["Location"]
+
+    def test_owner_hr_and_admin_land_on_their_own_page(self):
+        self.assertTrue(self.location(self.learner()).endswith("/min-ordre/ord-1"))
+        self.assertTrue(self.location(self.hr()).endswith("/hr/order/ord-1/details"))
+        admin = self.client_as("root", 9, "company_admin")
+        with admin.session_transaction() as s:
+            s.update(role="admin", company_id=None, company_role=None)
+        self.assertTrue(self.location(admin).endswith("/admin/orders/ord-1"))
+
+    def test_the_old_outcome_link_lands_on_the_hr_outcome_section(self):
+        self.assertTrue(self.location(self.hr(), "/hr/ordre/ord-1/udbytte").endswith("/hr/order/ord-1/details#udbytte"))
+
+    def test_foreign_users_get_404_and_nothing_leaks(self):
+        self.assertEqual(self.client_as("bo", 2).get("/ordre/ord-1/booking").status_code, 404)
+        self.assertEqual(self.client_as("bo", 2).get("/hr/ordre/ord-1/udbytte").status_code, 404)
+        self.assertEqual(self.client_as("bo", 2).post("/ordre/ord-1/booking", data={"action": "report", "evidence_note": "x"}).status_code, 404)
+        elsewhere = self.app.test_client()
+        with elsewhere.session_transaction() as s:
+            s.update(user="x", user_id=77, company_id=8, company_role="hr_manager")
+        self.assertEqual(elsewhere.get("/ordre/ord-1/booking").status_code, 404)
+
+    def test_an_old_form_post_is_still_handled_and_lands_on_the_role_page(self):
+        resp = self.learner().post("/ordre/ord-1/booking", data={"action": "change", "kind": "cancel", "note": "Syg"})
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(resp.headers["Location"].endswith("/min-ordre/ord-1#aendring"), resp.headers["Location"])
+        self.assertEqual(self.db.one("SELECT status FROM course_order_changes")["status"], "pending")
+
+    def test_no_template_includes_the_retired_console(self):
+        import pathlib
+
+        hits = [
+            str(path)
+            for path in pathlib.Path("templates").rglob("*.html")
+            if any(word in path.read_text(encoding="utf-8") for word in ("_booking_workflow", "order_workflow"))
+        ]
+        self.assertEqual(hits, [])

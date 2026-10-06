@@ -918,8 +918,8 @@ def _order_action_response(order_id, fn_name, ok_msg):
 @vendor_bp.route('/orders/<order_id>/booking',methods=['GET','POST'])
 @_vendor_login_required
 def vendor_booking(order_id):
-    from fulfillment_routes import workflow
-    return workflow(_active_vendor_ctx(),order_id,vendor=True)
+    from fulfillment_routes import vendor_workflow
+    return vendor_workflow(_active_vendor_ctx(), order_id)
 
 
 @vendor_bp.route("/orders/<order_id>/book", methods=["POST"])

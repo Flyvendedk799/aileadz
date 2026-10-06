@@ -47,6 +47,15 @@ def dkmoney(value):
     return '%s kr.' % dknum(rounded, 0 if float(rounded).is_integer() else 2)
 
 
+@dashboard_bp.app_template_global('course_date')
+def course_date(order, booking=None, with_time=True, style='long'):
+    """The course date of an order for display ("3. december 2026 kl. 09.00"):
+    the booking's start when booked, else the ordered session label. See
+    ``order_timing.course_label``."""
+    import order_timing
+    return order_timing.course_label(order, booking, with_time=with_time, style=style)
+
+
 @dashboard_bp.app_template_filter('dkdate')
 def dkdate(value, with_time=False, style=None):
     """Danish date format 'dd.mm.yyyy' (optionally ' hh:mm') for datetimes and

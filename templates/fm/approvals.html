@@ -11,7 +11,7 @@
   {% for a in approvals %}{% if a.status == 'pending' and a.price %}{% set _ps.total = _ps.total + a.price|float %}{% endif %}{% endfor %}
   {% set pending_sum = _ps.total %}
   <div class="kpi-row k3">
-    <div class="kpi-tile ico"><span class="ki clay"><i class="fa-solid fa-clock"></i></span><div><div class="kl">Afventer</div><div class="kv tnum">{{ pending_count or 0 }}</div><div class="kd">samlet {{ '{:,.0f}'.format(pending_sum).replace(',', '.') }} kr</div></div></div>
+    <div class="kpi-tile ico"><span class="ki clay"><i class="fa-solid fa-clock"></i></span><div><div class="kl">Afventer</div><div class="kv tnum">{{ pending_count or 0 }}</div><div class="kd">samlet {{ pending_sum|dkmoney }}</div></div></div>
     <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-check"></i></span><div><div class="kl">Godkendt</div><div class="kv tnum">{{ approvals|selectattr('status','equalto','approved')|list|length }}</div><div class="kd">i denne oversigt</div></div></div>
     <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-xmark"></i></span><div><div class="kl">Afvist</div><div class="kv tnum">{{ approvals|selectattr('status','equalto','rejected')|list|length }}</div><div class="kd">i denne oversigt</div></div></div>
   </div>
@@ -34,8 +34,8 @@
   <div class="fm-card" id="approval-row-{{ a.id }}" style="padding:16px 18px;margin-bottom:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
     {% if a.status == 'pending' %}<input type="checkbox" class="appr-check" value="{{ a.id }}" aria-label="Vælg anmodning">{% endif %}
     <div class="fm-flex fm-ac fm-gap12" style="flex:1;min-width:220px"><span class="ra">{{ (a.user_name or a.requester_username or 'U')[:2]|upper }}</span><div><div style="font-weight:650">{{ a.user_name or a.requester_username }}</div><div style="font-size:12px;color:var(--fm-ink-3)">{{ a.department or 'Ingen afdeling' }}{% if a.requested_at %} · {{ a.requested_at.strftime('%d/%m %H:%M') }}{% endif %}</div></div></div>
-    <div style="flex:1;min-width:180px"><div style="font-weight:600;font-size:13.5px">{{ a.product_title }}</div><div style="font-size:12px;color:var(--fm-ink-2)">{% if a.variant_location %}{{ a.variant_location }} · {% endif %}<span class="mono" style="color:var(--fm-primary);font-weight:700">{{ '{:,.0f}'.format(a.price|float).replace(',', '.') }} kr</span></div>
-      {% if a.status == 'pending' and a.dept_remaining is not none %}<div style="font-size:12px;color:{{ 'var(--fm-danger)' if a.over_budget else 'var(--fm-ink-3)' }}"><i class="fa-solid fa-wallet"></i> Afdelingens resterende budget: {{ '{:,.0f}'.format(a.dept_remaining).replace(',', '.') }} kr{% if a.over_budget %} · overskrider budgettet{% endif %}</div>{% endif %}</div>
+    <div style="flex:1;min-width:180px"><div style="font-weight:600;font-size:13.5px">{{ a.product_title }}</div><div style="font-size:12px;color:var(--fm-ink-2)">{% if a.variant_location %}{{ a.variant_location }} · {% endif %}<span class="mono" style="color:var(--fm-primary);font-weight:700">{{ a.price|dkmoney }}</span></div>
+      {% if a.status == 'pending' and a.dept_remaining is not none %}<div style="font-size:12px;color:{{ 'var(--fm-danger)' if a.over_budget else 'var(--fm-ink-3)' }}"><i class="fa-solid fa-wallet"></i> Afdelingens resterende budget: {{ a.dept_remaining|dkmoney }}{% if a.over_budget %} · overskrider budgettet{% endif %}</div>{% endif %}</div>
     <div class="fm-flex fm-gap8" data-action-cell>
       {% if a.status == 'pending' %}
       <button class="btn btn-primary btn-sm" onclick="decideApproval({{ a.id }}, 'approved')"><i class="fa-solid fa-check"></i> Godkend</button>

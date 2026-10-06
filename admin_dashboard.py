@@ -417,6 +417,7 @@ def admin_order_detail(order_id):
     Read-only: changes are made in the company's own HR workspace (the page links
     there through the admin 'act as' flow) so every write still goes through the
     tenant-scoped order routes and is audited as such."""
+    import order_fulfillment
     import order_lifecycle as lc
     import order_service
     try:
@@ -447,6 +448,7 @@ def admin_order_detail(order_id):
         status_labels=lc.STATUS_LABELS_SHORT, billing=billing, billing_label=lc.billing_label(billing),
         billing_tone=lc.BILLING_TONES[billing], billing_transitions=[], billing_labels=lc.BILLING_LABELS,
         can_bill=False, can_manage=False, next_statuses=[], admin_view=True,
+        booking=order_fulfillment.booking_for(order_id),
     )
 
 

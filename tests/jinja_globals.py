@@ -16,6 +16,7 @@ def add_app_globals(env):
     env.filters.setdefault("dknum", dashboard.dknum)
     env.filters.setdefault("dkdate", dashboard.dkdate)
     env.filters.setdefault("dkmoney", dashboard.dkmoney)
+    env.globals.setdefault("course_date", dashboard.course_date)
     env.globals.setdefault("can", capabilities.can)
     env.globals.setdefault("has_endpoint", lambda name: False)
     env.globals.setdefault("credit_chip", lambda: {"scope": "personal", "balance": 0, "label": "0"})

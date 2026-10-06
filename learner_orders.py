@@ -20,6 +20,7 @@ from flask import (abort, current_app, flash, jsonify, redirect, render_template
                    request, Response, session, url_for)
 
 import order_lifecycle as lc
+import order_timing
 
 logger = logging.getLogger(__name__)
 
@@ -174,16 +175,20 @@ def register_learner_order_routes(bp):
             from calendar_service import build_ics_feed
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
             cur.execute(
-                """SELECT order_id, product_title, variant_date, variant_location, completion_deadline, status
-                   FROM course_orders
-                   WHERE (username = %s OR (user_id IS NOT NULL AND user_id = %s))
-                     AND status IN ('approved', 'booked')
-                   ORDER BY created_at DESC LIMIT 100""",
+                """SELECT co.order_id, co.product_title, co.variant_date, co.variant_location,
+                          co.completion_deadline, co.status, d.booking_json
+                   FROM course_orders co
+                   LEFT JOIN course_order_details d ON d.order_id = co.order_id
+                   WHERE (co.username = %s OR (co.user_id IS NOT NULL AND co.user_id = %s))
+                     AND co.status IN ('approved', 'booked')
+                   ORDER BY co.created_at DESC LIMIT 100""",
                 (session.get("user"), session.get("user_id")))
             for r in cur.fetchall() or []:
                 link = request.url_root.rstrip("/") + url_for("futurematch.my_order", order_id=r["order_id"])
-                if r.get("variant_date"):
-                    events.append({"title": "Kursus: %s" % r["product_title"], "start": r["variant_date"],
+                # The booked start (with time) wins over the human session label.
+                booked_start = order_timing.booking_start_text(r)
+                if booked_start or r.get("variant_date"):
+                    events.append({"title": "Kursus: %s" % r["product_title"], "start": booked_start or r["variant_date"],
                                    "location": r.get("variant_location") or "", "url": link,
                                    "uid": "kursus-%s@futurematch" % r["order_id"]})
                 elif r.get("completion_deadline"):

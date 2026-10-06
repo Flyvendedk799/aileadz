@@ -44,7 +44,7 @@
         </div>
         {% if budget %}
         <div>
-          <div style="font-weight:700;font-size:18px;color:var(--fm-success)" class="tnum">{{ '{:,.0f}'.format(budget).replace(',','.') }} kr</div>
+          <div style="font-weight:700;font-size:18px;color:var(--fm-success)" class="tnum">{{ (budget)|dkmoney }}</div>
           <div style="font-size:11.5px;color:var(--fm-ink-3)">Budget/person</div>
         </div>
         {% endif %}

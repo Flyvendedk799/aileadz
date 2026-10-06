@@ -126,6 +126,29 @@ class FulfillmentLaunchTests(OrderFlowBase):
         self.assertEqual(self.spent(), 3000)
         self.assertEqual(self.order(oid)["variant_date"], "2099-01-01")
 
+    def test_booking_keeps_variant_date_human_and_never_writes_iso(self):
+        oid = self.create(variant_date="3. december 2026")["order_id"]
+        self.assertTrue(orders.set_status(self.hr(), oid, "approved")["success"])
+        self.assertTrue(orders.book_order(self.hr(), oid, booking={
+            "reference": "TI-1", "start_at": "2026-12-03T09:00", "location": "Kontoret"})["success"])
+        self.assertEqual(self.order(oid)["variant_date"], "3. december 2026")
+        oid2 = self.create(handle="itil", variant_date="3. december 2026")["order_id"]
+        self.assertTrue(orders.set_status(self.hr(), oid2, "approved")["success"])
+        self.assertTrue(orders.book_order(self.hr(), oid2, booking={
+            "reference": "TI-2", "start_at": "2026-12-04T09:00:00+01:00", "location": "Kontoret"})["success"])
+        self.assertEqual(self.order(oid2)["variant_date"], "4. december 2026")
+
+    def test_iso_variant_dates_are_migrated_once(self):
+        import schema_registry
+        self.db.execute("UPDATE course_orders SET variant_date='2026-12-03T09:00:00+01:00' WHERE order_id=%s",
+                        (self.create(variant_date="x")["order_id"],))
+        self.create(handle="itil", variant_date="3. december 2026")
+        cur = self.db.connection.cursor()
+        self.assertEqual(schema_registry.migrate_iso_variant_dates(cur), 1)
+        self.assertEqual(schema_registry.migrate_iso_variant_dates(cur), 0)
+        dates = sorted(r["variant_date"] for r in self.db.query("SELECT variant_date FROM course_orders"))
+        self.assertEqual(dates, ["3. december 2026", "3. december 2026"])
+
     def test_accepted_reschedule_keeps_the_booking_and_lists_the_change_in_history(self):
         import json
         oid = self.create(variant_date="3. december 2026")["order_id"]

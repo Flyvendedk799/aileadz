@@ -30,7 +30,7 @@ import datetime as _dt
 import re
 from zoneinfo import ZoneInfo
 
-__all__ = ["course_start", "course_end", "has_taken_place", "course_label", "session_label", "format_date", "now"]
+__all__ = ["booking_start_text", "course_start", "course_end", "has_taken_place", "course_label", "session_label", "format_date", "now"]
 
 TZ = ZoneInfo("Europe/Copenhagen")
 
@@ -99,6 +99,11 @@ def _booking_of(row, booking):
             return {}
         return loaded if isinstance(loaded, dict) else {}
     return {}
+
+
+def booking_start_text(row, booking=None):
+    """The booking's raw ``start_at`` text ('' when the order is not booked)."""
+    return str(_booking_of(row, booking).get("start_at") or "").strip()
 
 
 def course_start(row, booking=None):

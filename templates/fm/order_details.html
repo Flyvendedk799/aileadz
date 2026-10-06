@@ -42,8 +42,8 @@
       <div class="kv"><span class="k">Kursus</span><span class="v">{{ order.product_title }}</span></div>
       {% if order.product_handle %}<div class="kv"><span class="k">Kursus i kataloget</span><span class="v"><a href="{{ url_for('catalog.product_detail', handle=order.product_handle) }}">{{ order.product_handle }}</a></span></div>{% endif %}
       {% if order.variant_location %}<div class="kv"><span class="k">Lokation</span><span class="v">{{ order.variant_location }}</span></div>{% endif %}
-      {% if order.variant_date %}<div class="kv"><span class="k">Dato</span><span class="v">{{ order.variant_date }}</span></div>{% endif %}
-      <div class="kv"><span class="k">Pris</span><span class="v mono" style="color:var(--fm-primary)">{{ '{:,.0f}'.format(order.price|float).replace(',', '.') }} kr</span></div>
+      {% if order.variant_date or (booking and booking.start_at) %}<div class="kv"><span class="k">Dato</span><span class="v">{{ course_date(order, booking) }}</span></div>{% endif %}
+      <div class="kv"><span class="k">Pris</span><span class="v mono" style="color:var(--fm-primary)">{{ order.price|dkmoney }}</span></div>
       <div class="kv"><span class="k">Oprettet</span><span class="v">{{ order.created_at.strftime('%d.%m.%Y %H:%M') if order.created_at else 'Ikke angivet' }}</span></div>
       {% if order.booked_at %}<div class="kv"><span class="k">Booket</span><span class="v">{{ order.booked_at.strftime('%d.%m.%Y') }}{% if order.booked_by %} · {{ order.booked_by }}{% endif %}</span></div>{% endif %}
       {% if order.completion_deadline %}<div class="kv"><span class="k">Frist</span><span class="v">{{ order.completion_deadline.strftime('%d.%m.%Y') }}</span></div>{% endif %}

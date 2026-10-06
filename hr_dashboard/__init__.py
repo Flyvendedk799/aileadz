@@ -895,10 +895,13 @@ def create_hr_dashboard_blueprint():
             _ctx = order_service.OrderContext.from_session(source='hr')
             _ctx.company_id = company['id']
             history = order_service.get_history(_ctx, order_id)
+            import order_fulfillment
+            _booking = order_fulfillment.booking_for(order_id)
             _status = _lc.normalize_status(order.get('status'))
             _bill = _lc.normalize_billing(order.get('billing_status'))
             return render_template('fm/order_details.html',
                                    order=order,
+                                   booking=_booking,
                                    company=company,
                                    history=history,
                                    status=_status,

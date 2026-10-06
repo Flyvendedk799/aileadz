@@ -11,11 +11,12 @@ os.environ.setdefault("SCHEDULER_OPPORTUNISTIC", "0")
 import order_service as svc  # noqa: E402
 import run  # noqa: E402
 from tests.sqlite_mysql import SqliteMysql  # noqa: E402
+from tests.sqlite_platform import PlatformDB  # noqa: E402
 
 
 class Base(unittest.TestCase):
     def setUp(self):
-        self.db = SqliteMysql()
+        self.db = getattr(self, "DB_CLASS", SqliteMysql)()
         for uid, name in ((1, "ada"), (2, "bo"), (3, "hr")):
             self.db.execute("INSERT INTO users (id, username, email) VALUES (%s, %s, %s)", (uid, name, name + "@f.dk"))
         self.db.execute("INSERT INTO companies (id, company_name) VALUES (7, 'Firma')")
@@ -116,6 +117,62 @@ class TimelineBadgeTests(Base):
         self.assertEqual(lc.approval_label("rejected"), "Afvist")
         self.assertEqual(lc.approval_label(None), "")
         self.assertEqual(lc.approval_label("noget"), "")
+
+
+class BookedDateRenderingTests(Base):
+    """After booking no page shows an ISO timestamp; prices use one format."""
+
+    ISO = r"\d{4}-\d{2}-\d{2}T"
+    DB_CLASS = PlatformDB
+
+    def setUp(self):
+        super().setUp()
+        self.db.execute("UPDATE course_orders SET variant_date='3. december 2026', price=12500 WHERE order_id='ord-1'")
+        self.db.execute("INSERT INTO course_order_details (order_id, company_id, user_id, booking_json) VALUES "
+                        "('ord-1', 7, 1, %s)", ('{"start_at": "2026-12-03T09:00:00+01:00", "end_at": "2026-12-03T16:00:00+01:00", '
+                                                '"location": "Kontoret", "reference": "TI-48213", "instructions": "Medbring laptop"}',))
+
+    def _pages(self):
+        return {
+            "min-ordre": self.client_as("ada", 1).get("/min-ordre/ord-1"),
+            "hr-detaljer": self.client_as("hr", 3, "hr_manager").get("/hr/order/ord-1/details"),
+            "booking": self.client_as("ada", 1).get("/ordre/ord-1/booking"),
+            "tidslinje": self.client_as("ada", 1).get("/min-tidslinje"),
+        }
+
+    def test_no_page_shows_an_iso_timestamp_and_the_date_is_danish(self):
+        import re
+        for name, resp in self._pages().items():
+            self.assertEqual(resp.status_code, 200, name)
+            html = resp.get_data(as_text=True)
+            self.assertIsNone(re.search(self.ISO, html), name)
+        self.assertIn("3. december 2026 kl. 09.00", self._pages()["min-ordre"].get_data(as_text=True))
+        self.assertIn("3. december 2026 kl. 09.00", self._pages()["hr-detaljer"].get_data(as_text=True))
+        self.assertIn("3. december 2026 kl. 09.00", self._pages()["booking"].get_data(as_text=True))
+
+    def test_prices_use_one_format(self):
+        for name, resp in self._pages().items():
+            html = resp.get_data(as_text=True)
+            self.assertNotRegex(html, r"12500(\.0+)? kr", name)
+            self.assertNotRegex(html, r"12\.500 kr(?!\.)", name)
+        self.assertIn("12.500 kr.", self._pages()["min-ordre"].get_data(as_text=True))
+        self.assertIn("12.500 kr.", self._pages()["hr-detaljer"].get_data(as_text=True))
+        self.assertIn("12.500 kr.", self._pages()["tidslinje"].get_data(as_text=True))
+
+    def test_templates_have_no_adhoc_price_formatting_left(self):
+        import pathlib
+        import re
+        root = pathlib.Path(__file__).resolve().parent.parent / "templates" / "fm"
+        pattern = re.compile(r"round\(2\)|\{:,\.0f\}")
+        offenders = []
+        for name in ("my_order.html", "order_details.html", "_booking_workflow.html", "confirm_course_assignment.html",
+                     "mt_order_detail.html", "reports_dashboard.html", "admin_dashboard.html", "approvals.html",
+                     "timeline.html", "vendor_orders.html", "billing.html", "billing_summary.html", "budgets.html",
+                     "departments.html", "roi.html", "team_cockpit.html"):
+            for no, line in enumerate((root / name).read_text(encoding="utf-8").splitlines(), 1):
+                if pattern.search(line):
+                    offenders.append("%s:%d" % (name, no))
+        self.assertEqual(offenders, [])
 
 
 class ActionTests(Base):

@@ -27,6 +27,18 @@ def details(cur, order_id):
     return row
 
 
+def booking_for(order_id):
+    """The booking details of an order for display only ({} when none; never raises)."""
+    try:
+        cur = orders._dict_cursor(orders._get_connection())
+        try:
+            return details(cur, order_id).get("booking_json") or {}
+        finally:
+            cur.close()
+    except Exception:
+        return {}
+
+
 def booking_values(row, supplied):
     from calendar_service import parse_danish_date
 

@@ -59,9 +59,9 @@
           <div class="info-list" style="margin-top:14px">
             <div class="kv"><span class="k">Kursus</span><span class="v">{% if order.product_handle %}<a href="{{ url_for('catalog.product_detail', handle=order.product_handle) }}">{{ order.product_title }}</a>{% else %}{{ order.product_title }}{% endif %}</span></div>
             {% if vendor_name %}<div class="kv"><span class="k">Udbyder</span><span class="v">{{ vendor_name }}</span></div>{% endif %}
-            {% if order.variant_date %}<div class="kv"><span class="k">Dato</span><span class="v">{{ order.variant_date }}</span></div>{% endif %}
+            {% if order.variant_date or fulfillment.booking_json.start_at %}<div class="kv"><span class="k">Dato</span><span class="v">{{ course_date(order, fulfillment.booking_json) }}</span></div>{% endif %}
             {% if order.variant_location %}<div class="kv"><span class="k">Sted</span><span class="v">{{ order.variant_location }}</span></div>{% endif %}
-            {% if order.price %}<div class="kv"><span class="k">Pris</span><span class="v">{{ '{:,.0f}'.format(order.price).replace(',', '.') }} kr.</span></div>{% endif %}
+            {% if order.price %}<div class="kv"><span class="k">Pris</span><span class="v">{{ order.price|dkmoney }}</span></div>{% endif %}
             <div class="kv"><span class="k">Bestilt</span><span class="v">{{ order.created_at.strftime('%d.%m.%Y') if order.created_at else '' }}</span></div>
             <div class="kv"><span class="k">Fakturering</span><span class="v">{{ billing_label }}</span></div>
           </div>

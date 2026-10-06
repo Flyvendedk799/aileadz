@@ -1,10 +1,10 @@
 <h1>{{ order.product_title }}</h1>
-<p>{{ order.user_name or order.username }} · {{ status_label }} · {{ order.price }} kr.</p>
+<p>{{ order.user_name or order.username }} · {{ status_label }} · {{ order.price|dkmoney }}</p>
 {% set booking = fulfillment.booking_json %}
 {% if booking %}
     <section class="fm-card" style="padding:20px;margin-bottom:16px">
         <h2>Bekræftet booking</h2>
-        <p>{{ booking.start_at }}{% if booking.end_at %} – {{ booking.end_at }}{% endif %} · {{ booking.location }}</p>
+        <p>{{ booking.start_at|dkdate(style='long', with_time=True) }}{% if booking.end_at %} – {{ booking.end_at|dkdate(style='long', with_time=True) }}{% endif %} · {{ booking.location }}</p>
         {% if booking.join_url %}
             <a href="{{ booking.join_url }}" rel="noopener" target="_blank">Åbn mødelink</a>
         {% endif %}
@@ -12,7 +12,7 @@
         <p>{{ booking.instructions }}</p>
         <p>Afbestillingsvilkår: {{ booking.cancellation_terms or fulfillment.quote_json.cancellation_terms or 'Kontakt udbyderen for vilkår før ændringer.' }}</p>
         {% if booking.cancellation_fee is defined %}
-            <p>Aftalt afbestillingsgebyr: {{ booking.cancellation_fee }} kr.</p>
+            <p>Aftalt afbestillingsgebyr: {{ booking.cancellation_fee|dkmoney }}</p>
         {% endif %}
     </section>
 {% endif %}
@@ -114,7 +114,7 @@
         <h3>{{ change_kind_label(c.kind) }} · {{ change_status_label(c.status) }}</h3>
         <p>{{ c.payload.note }}</p>
         {% if c.payload.quote %}
-            <p>Nyt hold: {{ c.payload.quote.variant_date }} · {{ c.payload.quote.variant_location }} · {{ c.payload.quote.price }} kr.</p>
+            <p>Nyt hold: {{ c.payload.quote.variant_date }} · {{ c.payload.quote.variant_location }} · {{ c.payload.quote.price|dkmoney }}</p>
         {% endif %}
         {% if c.payload.participant %}
             <p>Ny deltager: {{ c.payload.participant.name }}</p>

@@ -2062,9 +2062,15 @@ def _replace_order_participant(cur, ctx, row, participant):
 
 
 def _confirm_booking_details(cur, row, booking):
+    """Record the confirmed place on the order. ``variant_date`` stays the human
+    session label ("3. december 2026"): it only changes, to a long Danish date and
+    never an ISO timestamp, when the booked day differs from the ordered session.
+    The exact ``start_at`` lives in ``course_order_details.booking_json``."""
+    from order_timing import session_label
+    label = session_label(row.get('variant_date') or '', booking['start_at'])
     cur.execute('UPDATE course_orders SET variant_date=%s,variant_location=%s WHERE order_id=%s',
-                (booking['start_at'],booking['location'] or 'Online',row['order_id']))
-    row.update(variant_date=booking['start_at'],variant_location=booking['location'] or 'Online')
+                (label,booking['location'] or 'Online',row['order_id']))
+    row.update(variant_date=label,variant_location=booking['location'] or 'Online')
 
 
 def _queue_transition_emails(ctx,row,old,new,*,note=None,reason=None,cursor=None):

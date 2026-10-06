@@ -24,10 +24,10 @@
   <p class="bill-note"><i class="fa-solid fa-circle-info"></i> Fakturaen ligger i jeres eksterne økonomisystem. Her registrerer I fakturanummer, forfaldsdato og betaling, så status er ens for HR, administrator og medarbejder.</p>
 
   <div class="kpi-row k4">
-    <div class="kpi-tile ico"><span class="ki clay"><i class="fa-solid fa-circle-xmark"></i></span><div><div class="kl">Ikke faktureret</div><div class="kv tnum">{{ summary.not_invoiced or 0 }}</div><div class="kd">{{ "{:,.0f}".format(summary.not_invoiced_value or 0).replace(",", ".") }} kr</div></div></div>
-    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-file-invoice"></i></span><div><div class="kl">Faktureret</div><div class="kv tnum">{{ summary.invoiced or 0 }}</div><div class="kd">{{ "{:,.0f}".format(summary.invoiced_value or 0).replace(",", ".") }} kr</div></div></div>
-    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-check"></i></span><div><div class="kl">Betalt</div><div class="kv tnum">{{ summary.paid or 0 }}</div><div class="kd">{{ "{:,.0f}".format(summary.paid_value or 0).replace(",", ".") }} kr</div></div></div>
-    <a class="kpi-tile ico" href="?billing_status=overdue" style="text-decoration:none"><span class="ki clay"><i class="fa-solid fa-triangle-exclamation"></i></span><div><div class="kl">Forfaldne</div><div class="kv tnum {{ 'bill-overdue' if summary.overdue }}">{{ summary.overdue or 0 }}</div><div class="kd">{{ "{:,.0f}".format(summary.overdue_value or 0).replace(",", ".") }} kr</div></div></a>
+    <div class="kpi-tile ico"><span class="ki clay"><i class="fa-solid fa-circle-xmark"></i></span><div><div class="kl">Ikke faktureret</div><div class="kv tnum">{{ summary.not_invoiced or 0 }}</div><div class="kd">{{ (summary.not_invoiced_value or 0)|dkmoney }}</div></div></div>
+    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-file-invoice"></i></span><div><div class="kl">Faktureret</div><div class="kv tnum">{{ summary.invoiced or 0 }}</div><div class="kd">{{ (summary.invoiced_value or 0)|dkmoney }}</div></div></div>
+    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-check"></i></span><div><div class="kl">Betalt</div><div class="kv tnum">{{ summary.paid or 0 }}</div><div class="kd">{{ (summary.paid_value or 0)|dkmoney }}</div></div></div>
+    <a class="kpi-tile ico" href="?billing_status=overdue" style="text-decoration:none"><span class="ki clay"><i class="fa-solid fa-triangle-exclamation"></i></span><div><div class="kl">Forfaldne</div><div class="kv tnum {{ 'bill-overdue' if summary.overdue }}">{{ summary.overdue or 0 }}</div><div class="kd">{{ (summary.overdue_value or 0)|dkmoney }}</div></div></a>
   </div>
 
   <form method="GET" class="fm-card" style="padding:14px 16px;margin:16px 0">
@@ -76,7 +76,7 @@
           <td class="mono" style="font-weight:650"><a href="{{ url_for('hr_dashboard.company_order_details', order_id=o.order_id) }}">{{ o.order_id[:8] }}</a></td>
           <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ o.product_title }}">{{ o.product_title }}</td>
           <td>{{ o.user_name or o.username }}<div class="muted" style="font-size:11.5px">{{ o.department or '' }}</div></td>
-          <td class="mono nw" style="font-weight:650">{{ "{:,.0f}".format(o.price or 0).replace(",", ".") }} kr</td>
+          <td class="mono nw" style="font-weight:650">{{ (o.price or 0)|dkmoney }}</td>
           <td><span class="fm-badge {{ order_status_tone(o.status) }} dot">{{ order_status_label(o.status, short=True) }}</span></td>
           <td><span class="fm-badge {{ order_billing_tone(o.billing_status) }} dot">{{ order_billing_label(o.billing_status) }}</span></td>
           <td class="muted"><small>{{ o.invoice_number or '-' }}</small></td>

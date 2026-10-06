@@ -5,9 +5,9 @@
     <div class="fm-wrap">
         <article class="fm-card" style="padding:24px;max-width:760px">
             <h1>{{ quote.product_title }}</h1>
-            <p>{{ quote.variant_date or 'Dato aftales med HR eller udbyderen' }} · {{ quote.variant_location or 'Sted aftales' }}</p>
+            <p>{{ quote.variant_date|dkdate(style='long') or 'Dato aftales med HR eller udbyderen' }} · {{ quote.variant_location or 'Sted aftales' }}</p>
             <p>
-                {{ quote.price }} kr. pr. deltager · {{ people|length }} deltagere · <strong>{{ (quote.price * (people|length))|round(2) }} kr. i alt</strong>
+                {{ quote.price|dkmoney }} pr. deltager · {{ people|length }} deltagere · <strong>{{ (quote.price * (people|length))|dkmoney }} i alt</strong>
             </p>
             {% if quote.agreement_reference %}
                 <p>Aftale: {{ quote.agreement_reference }}</p>

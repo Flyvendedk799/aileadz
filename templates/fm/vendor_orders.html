@@ -72,7 +72,7 @@
             {% if o.user_email %} · {{ o.user_email }}{% endif %}{% if o.user_phone %} · {{ o.user_phone }}{% endif %}
           </div>
           <div class="m">
-            {% if o.variant_date %}<i class="fa-regular fa-calendar"></i> {{ o.variant_date }} {% endif %}
+            {% if o.variant_date %}<i class="fa-regular fa-calendar"></i> {{ o.variant_date|dkdate(style='long') }} {% endif %}
             {% if o.variant_location %}<i class="fa-solid fa-location-dot"></i> {{ o.variant_location }}{% endif %}
             · ordre {{ o.order_id[:8] }}
           </div>

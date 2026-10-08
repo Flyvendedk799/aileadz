@@ -108,8 +108,6 @@ def session_fact(variant: dict, *, product: dict | None = None) -> dict:
 
 def course_fact_bundle(product: dict, *, location_filter: str = "", exact_city: bool = False) -> dict:
     """Canonical course + matching-session bundle for tools and cards."""
-    from catalog_service import extract_city_name
-
     p = product if isinstance(product, dict) else {}
     variants = [v for v in (p.get("variants") or []) if isinstance(v, dict)]
     sessions = [session_fact(v, product=p) for v in variants]

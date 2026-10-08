@@ -36,7 +36,7 @@ function harness(kind, chunks, response = {}) {
         ok: response.status == null || response.status < 400,
         status: response.status || 200,
         redirected: response.redirected || false,
-        headers: { get: () => response.contentType || 'text/event-stream' },
+        headers: { get: name => name.toLowerCase() === 'content-type' ? (response.contentType || 'text/event-stream') : name === 'X-Chat-ID' ? response.chatId : null },
         json: async () => response.json || {},
         body: { getReader: () => reader },
       };
@@ -376,5 +376,23 @@ for (const kind of ['panel', 'page']) {
     assert.ok(h.body.textContent.includes('Ny samtale'));
     assert.equal(h.input.value, 'Min kladde');
     assert.equal(h.timers.size, 0);
+  });
+}
+
+for (const kind of ['shared', 'employee']) {
+  test(`${kind}: chat ID is available from headers even when the stream fails`, async () => {
+    const h = harness(kind, [], { chatId: 'chat-from-server' });
+    const ids = [];
+    h.context.window.FMChatDebug = { setId: id => ids.push(id) };
+    await h.run();
+    assert.deepEqual(ids, ['chat-from-server']);
+    assert.equal(errors(h).length, 1);
+  });
+  test(`${kind}: initial heartbeat supplies the same copyable chat ID`, async () => {
+    const h = harness(kind, ['data: {"type":"ping","chat_id":"chat-from-server","scope":"employee"}\n\n', chunk('Svar'), done]);
+    const ids = [];
+    h.context.window.FMChatDebug = { setId: id => ids.push(id) };
+    await h.run();
+    assert.deepEqual(ids, ['chat-from-server']);
   });
 }

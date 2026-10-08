@@ -1827,7 +1827,16 @@ def adminlog():
     from app1.memory_store import get_debug_sessions, get_debug_logs_for_session
     import datetime as _dt
 
-    sessions = get_debug_sessions(limit=50)
+    chat_id = (request.args.get("chat_id") or "").strip()
+    if chat_id:
+        from app1.chat_diagnostics import valid_chat_id
+        if not valid_chat_id(chat_id):
+            abort(400)
+        entries = get_debug_logs_for_session(chat_id)
+        sessions = [{"session_id": chat_id, "entry_count": len(entries),
+                     "started": entries[0]["timestamp"] if entries else 0}]
+    else:
+        sessions = get_debug_sessions(limit=50)
 
     # Enrich each session with formatted time and first query preview
     for s in sessions:
@@ -1846,9 +1855,9 @@ def adminlog():
         for log in logs:
             step = log.get("step", "")
             data = log.get("data", {}) or {}
-            if step == "user_query" and not first_query:
-                first_query = (data.get("query", "") or "")[:80]
-                if data.get("logged_in"):
+            if step in ("user_query", "chat_turn_start") and not first_query:
+                first_query = (data.get("query") or data.get("user_message") or "")[:80]
+                if data.get("logged_in") or data.get("username"):
                     logged_in = True
             if step == "tool_call":
                 tool_calls += 1
@@ -1862,7 +1871,7 @@ def adminlog():
                     low_confidence += 1
             if step in ("profile_event", "ui_card"):
                 profile_events += 1
-            if step == "tool_error":
+            if step in ("tool_error", "chat_error"):
                 errors += 1
 
         s["first_query"] = first_query
@@ -1879,9 +1888,14 @@ def adminlog():
 @app1_bp.route("/adminlog/session/<session_id>")
 @_require_role("admin")
 def adminlog_session(session_id):
-    from app1.memory_store import get_debug_logs_for_session
-    logs = get_debug_logs_for_session(session_id)
-    return jsonify({"logs": logs})
+    from app1.chat_diagnostics import load_diagnostics, valid_chat_id
+    if not valid_chat_id(session_id):
+        return jsonify({"error": "Ugyldigt chat-id"}), 400
+    response = jsonify(load_diagnostics(session_id))
+    response.headers["Cache-Control"] = "no-store"
+    if request.args.get("download") == "1":
+        response.headers["Content-Disposition"] = f'attachment; filename="chat-{session_id}.json"'
+    return response
 
 
 @app1_bp.route("/adminlog/sessions_summary")

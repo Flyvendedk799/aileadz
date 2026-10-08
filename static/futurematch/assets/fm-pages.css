@@ -349,3 +349,11 @@ body:has(.fm-aip) .fm-foot{padding-right:150px}
 .fm-checklist-body p { margin: 3px 0 0; font-size: 13px; color: var(--fm-ink-2); }
 @media (max-width: 640px) { .fm-checklist-item { flex-wrap: wrap; } .fm-checklist-item .btn { width: 100%; justify-content: center; } }
 .fm-checklist { margin: 18px 0; }
+
+/* Keep the support ID action readable beside compact chat header controls. */
+.fm-icon-btn[data-chat-id-copy] { width: auto; padding-inline: 10px; gap: 6px; font-size: 12px; white-space: nowrap; }
+.fm-aip-hist button[data-chat-id-copy] { width: auto; padding-inline: 8px; gap: 5px; white-space: nowrap; }
+[data-chat-id-copy]:disabled { opacity: .5; cursor: default; }
+@media (max-width: 640px) {
+  .ai-lead-btn[data-chat-id-copy] [data-chat-id-label] { display: none; }
+}

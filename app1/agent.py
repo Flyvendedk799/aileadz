@@ -2096,6 +2096,8 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
     logged_in_user = None if sid_override else session.get("user")  # From auth blueprint
     company_id_for_turn = company_override if company_override is not None else session.get("company_id")
     sid = sid_override or _conv.resolve_sid(session, mode, username=logged_in_user)
+    from app1.chat_diagnostics import bind_chat, instrument_response, record_failure
+    bind_chat(sid)
 
     # 5.4: Assign prompt version for A/B testing
     _get_prompt_version(sid)
@@ -3914,7 +3916,7 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
             # disconnect branch below. Otherwise a slow or failing provider is
             # misread as "the client hung up", nothing is yielded, and the user
             # stares at a blank reply for the full AI_LIVE_TOOL_EVENTS_TIMEOUT_SECONDS.
-            print(f"[Agent Timeout] {timeout_err}")
+            record_failure(sid, timeout_err)
             try:
                 for _fb in provider_fallback_events(user_query, timeout_err, company_id=company_id_for_turn):
                     yield _fb
@@ -3922,9 +3924,10 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                 pass  # Client really is gone
         except (OSError, BrokenPipeError, ConnectionResetError) as pipe_err:
             # Client disconnected (SIGPIPE / broken pipe) — log but don't try to send
-            print(f"[Agent] Client disconnected: {pipe_err}")
+            record_failure(sid, pipe_err)
+            return
         except Exception as e:
-            print(f"[Agent Error] {e}")
+            record_failure(sid, e)
             try:
                 for _fb in provider_fallback_events(user_query, e, company_id=company_id_for_turn):
                     yield _fb
@@ -3932,13 +3935,16 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                 pass  # Client already gone
         finally:
             close_flask_mysql_connection()
-            try:
-                yield "data: [DONE]\n\n"
-            except (OSError, BrokenPipeError, ConnectionResetError):
-                pass  # Client already gone
+        # Outside finally: closing during a normal or fallback chunk must not
+        # yield again during GeneratorExit (which would break stream cleanup).
+        try:
+            yield "data: [DONE]\n\n"
+        except (OSError, BrokenPipeError, ConnectionResetError):
+            pass  # Client already gone
 
     response = Response(stream_with_context(stream_generator()), mimetype="text/event-stream")
     response.headers['X-Accel-Buffering'] = 'no'
     response.headers['Cache-Control'] = 'no-cache'
     response.headers['Connection'] = 'keep-alive'
-    return response
+    return instrument_response(response, chat_id=sid, query=user_query,
+                               scope="widget" if sid_override else "employee", company_id=company_id_for_turn)

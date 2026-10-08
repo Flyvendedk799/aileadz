@@ -206,6 +206,7 @@
   <section class="vp-ai-panel" id="vpAiPanel" hidden aria-live="polite" aria-label="Leverandør-assistent">
     <header class="vp-ai-head">
       <i class="fa-solid fa-robot" style="color:var(--fm-primary)"></i> Leverandør-assistent
+      <button type="button" data-chat-id-copy data-chat-scope="vendor" disabled aria-label="Kopiér chat-id"><span data-chat-id-label>Kopiér chat-id</span></button>
       <button type="button" class="x" id="vpAiClose" aria-label="Luk"><i class="fa-solid fa-xmark"></i></button>
     </header>
     <div class="vp-ai-body" id="vpAiBody">
@@ -320,6 +321,7 @@
         body: JSON.stringify({ message: q })
       })
         .then(function (r) {
+          if (window.FMChatDebug && r.headers.get('X-Chat-ID')) window.FMChatDebug.setId(r.headers.get('X-Chat-ID'), 'vendor');
           if (!r.ok || !r.body) {
             out.classList.remove('thinking');
             out.textContent = 'Kunne ikke hente svar.';
@@ -341,6 +343,7 @@
                 if (line.indexOf('data: ') !== 0) return;
                 var d;
                 try { d = JSON.parse(line.substring(6)); } catch (err) { return; }
+                if (d.chat_id && window.FMChatDebug) window.FMChatDebug.setId(d.chat_id, 'vendor');
                 if (d.type === 'thinking' && !acc) {
                   out.textContent = d.content || 'Arbejder…';
                 } else if (d.type === 'tool_call') {

@@ -368,6 +368,10 @@
         </button>
     </div>
 
+    <div class="branding">
+      <button type="button" data-chat-id-copy data-chat-scope="widget" disabled><span data-chat-id-label>Kopiér chat-id</span></button>
+    </div>
+    <script src="{{ url_for('static', filename='futurematch/assets/chat-debug.js') }}?v={{ asset_version('futurematch/assets/chat-debug.js') if asset_version is defined else 1 }}"></script>
     <script>
     (function() {
         const chatMessages = document.getElementById('chatMessages');
@@ -591,6 +595,7 @@
                     body: JSON.stringify({ query: query })
                 });
 
+                if (window.FMChatDebug && resp.headers.get('X-Chat-ID')) window.FMChatDebug.setId(resp.headers.get('X-Chat-ID'), 'widget');
                 if (!resp.ok) {
                     // Surface the server's Danish message for origin/rate errors
                     // (403/429) instead of a generic failure.
@@ -634,6 +639,7 @@
 
                         try {
                             const data = JSON.parse(raw);
+                            if (data.chat_id && window.FMChatDebug) window.FMChatDebug.setId(data.chat_id, 'widget');
                             if (data.type === 'ping' || data.type === 'meta') continue;
 
                             if (data.type === 'thinking') {

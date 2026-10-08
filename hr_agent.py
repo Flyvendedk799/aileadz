@@ -218,6 +218,8 @@ def handle_hr_ask(user_query, flask_session, page=None):
 
     username = flask_session.get("user")
     hr_sid = hr_conversations.resolve_sid(flask_session, username)
+    from app1.chat_diagnostics import bind_chat, instrument_response, record_failure
+    bind_chat(hr_sid)
     history = hr_conversations.load(username, hr_sid)
     # The turn's own messages: system prompt + stored transcript + this question.
     base_messages = [{"role": "system", "content": get_hr_system_prompt()}] + history
@@ -484,9 +486,7 @@ def handle_hr_ask(user_query, flask_session, page=None):
             yield "data: [DONE]\n\n"
 
         except Exception as e:
-            print(f"[HR Agent Error] {e}")
-            import traceback
-            traceback.print_exc()
+            record_failure(hr_sid, e)
             # Resolve the message helper defensively: if the failure happened
             # before the in-try `from ai_runtime import ...` ran, the name would
             # be unbound and raise NameError out of the generator.
@@ -501,8 +501,9 @@ def handle_hr_ask(user_query, flask_session, page=None):
         finally:
             close_flask_mysql_connection()
 
-    return Response(
+    response = Response(
         stream_with_context(stream_generator()),
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
     )
+    return instrument_response(response, chat_id=hr_sid, query=user_query, scope="hr")

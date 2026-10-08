@@ -28,6 +28,7 @@ offered, the model decides; nothing here may add a mandatory step.
 | Confirm/audit helper for write tools | `tool_confirm.py` |
 | Confirm-token store (MySQL `ai_confirm_tokens`) | `app1/confirm_store.py` |
 | Grounding circuit-breaker + `delimit_untrusted` fence | `grounding.py` |
+| Chat ID propagation, full streamed-turn capture and admin diagnostic export | `app1/chat_diagnostics.py`, `static/futurematch/assets/chat-debug.js`; [debug runbook](runbooks/CHAT_DEBUG.md) |
 | Conversation state (sessions, pointers, `rev`, digests) | `app1/conversation_state.py` |
 | Semantic user index + `recall_about_user` | `app1/user_knowledge.py` |
 | Platform help KB + `search_platform_help` | `app1/help_kb.py`, `app1/help_kb/*.md` |

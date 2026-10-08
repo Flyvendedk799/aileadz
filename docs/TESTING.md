@@ -17,11 +17,12 @@ CI (`.github/workflows/ci.yml`) additionally runs against a real MySQL 8 service
 
 ## Browser chat transport regressions
 
-`node --test tests/js/chat_stream.test.cjs` executes the shipped employee and shared
+`node --test tests/js/*.test.cjs` executes the shipped employee and shared
 chat transports with in-memory streams and controlled timers. It covers fragmented
 UTF-8/SSE, incomplete answers, errors, deadlines, cancellation, explicit resending,
 empty answers, HR draft preservation, and reset failures without a provider key
-or network access.
+or network access. Chat-ID tests also cover copy/clipboard fallback, exact-ID log
+lookup, complete and interrupted capture, and platform-admin access.
 `tests/test_chat_stream_js.py` runs this from pytest when Node.js is installed and
 reports a skip when it is unavailable. These tests do not replace browser visual
 checks or live provider evaluation.

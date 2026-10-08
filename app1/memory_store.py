@@ -398,6 +398,7 @@ def log_debug(session_id, step, data=None):
     _auto_cleanup()  # Periodic cleanup (skips if < 1 hour since last)
     _run("INSERT INTO ai_debug_logs (session_id, timestamp, step, data) VALUES (%s, %s, %s, %s)",
          (session_id, time.time(), step, json.dumps(data or {}, ensure_ascii=False, default=str)))
+    return True
 
 
 def get_debug_sessions(limit=50):
@@ -411,12 +412,14 @@ def get_debug_sessions(limit=50):
         return []
 
 
-def get_debug_logs_for_session(session_id):
+def get_debug_logs_for_session(session_id, *, strict=False):
     """Get all debug log entries for a specific session, ordered chronologically."""
     try:
         rows = _run("SELECT step, timestamp, data FROM ai_debug_logs WHERE session_id = %s "
                     "ORDER BY timestamp ASC, id ASC", (session_id,), fetch=True).rows
     except Exception:
+        if strict:
+            raise
         return []
     return [{"step": r["step"], "timestamp": r["timestamp"], "data": _loads(r["data"], r["data"])}
             for r in rows]

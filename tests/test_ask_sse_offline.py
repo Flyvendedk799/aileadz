@@ -369,6 +369,8 @@ class AskSSEOfflineTests(unittest.TestCase):
             self.assertEqual(resp.status_code, 200)
             self.assertIn("text/event-stream", resp.content_type)
             raw = resp.get_data(as_text=True)
+            self.assertTrue(resp.headers.get("X-Chat-ID"))
+            self.assertEqual(_parse_sse(raw)[0]["chat_id"], resp.headers["X-Chat-ID"])
 
         return _parse_sse(raw), fake_responses, fake_stream, fake_execute
 

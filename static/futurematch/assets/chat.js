@@ -1663,6 +1663,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
           context ? { context: context } : {})),
         signal: controller.signal,
       });
+      if (window.FMChatDebug && resp.headers.get("X-Chat-ID")) window.FMChatDebug.setId(resp.headers.get("X-Chat-ID"), "employee");
       if (!resp.ok || !(resp.headers.get("content-type") || "").includes("text/event-stream")) {
         const payload = await resp.json().catch(() => ({}));
         const err = new Error("HTTP " + resp.status);
@@ -1698,6 +1699,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
             throw err;
           }
           if (data.type === "done") { done = true; break; }
+          if (data.chat_id && window.FMChatDebug) window.FMChatDebug.setId(data.chat_id, "employee");
           if (data.type === "ping") continue;
           eventsReceived++;
           if (data.type === "fallback") { fallbackSeen = true; continue; }
@@ -2000,6 +2002,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
     paintRecents();
   }
   async function newChat() {
+    if (window.FMChatDebug) window.FMChatDebug.setId(null, "employee");
     attached = []; renderRef(); input.value = ""; toggleSend();
     // Honest reset: clear the server-side session (CHAT_MEMORY, shown products,
     // stage, rejections) BEFORE painting the welcome screen, so a "new" chat
@@ -2007,12 +2010,13 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
     // call still resets the UI — better a fresh screen than a stuck button.
     try {
       // Reset this surface's open conversation on the server.
-      await fetch("/app1/new_session", {
+      const reset = await fetch("/app1/new_session", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
         credentials: "same-origin",
         body: JSON.stringify({ mode: (window.CHAT_MODE || "default") }),
       });
+      if (reset.ok && window.FMChatDebug) window.FMChatDebug.setId((await reset.json()).session_id, "employee");
     } catch (e) { /* offline / anonymous: still reset the UI */ }
     activeConvId = null;
     syncConvUrl(null);
@@ -2099,7 +2103,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
       });
       if (resp.ok) {
         const data = await resp.json();
-        if (data && data.status === "ok") { renderHistory(data.messages); input.focus(); return true; }
+        if (data && data.status === "ok") { if (window.FMChatDebug) window.FMChatDebug.setId(data.session_id, "employee"); renderHistory(data.messages); input.focus(); return true; }
       }
     } catch (e) { /* fall through to read-only load */ }
     // Resume unavailable (offline/older backend): still show the transcript.
@@ -2110,7 +2114,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
       if (r2.ok) {
         const d2 = await r2.json();
         const conv = d2 && (d2.conversation || d2);
-        if (conv && conv.messages) { renderHistory(conv.messages); return true; }
+        if (conv && conv.messages) { if (window.FMChatDebug) window.FMChatDebug.setId(conv.session_id, "employee"); renderHistory(conv.messages); return true; }
       }
     } catch (e) { /* leave current view untouched */ }
     return false;

@@ -318,6 +318,12 @@
   </div>
 
   <div class="container">
+    <form method="get" action="{{ url_for('app1.adminlog') }}" style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
+      <label for="chatIdLookup">Find chat-id</label>
+      <input id="chatIdLookup" name="chat_id" value="{{ request.args.get('chat_id', '') }}" pattern="[A-Za-z0-9_-]{1,255}" maxlength="255" placeholder="Indsæt det kopierede chat-id" required>
+      <button class="btn" type="submit">Find samtale og logs</button>
+    </form>
+    <p>Debug-udtræk indeholder hele de optagede svar, også afbrudte svar, samt værktøjslogs. Debug-logs gemmes i 7 dage; ældre eller ikke-optagede beskeder kan mangle.</p>
     {% if sessions %}
       {% for s in sessions %}
       <div class="session-card" data-sid="{{ s.session_id }}">
@@ -342,14 +348,15 @@
           <div class="session-toolbar" style="flex-wrap:wrap;">
             <button class="btn" onclick="copySession('{{ s.session_id }}')">Kopier session log</button>
             <button class="btn" onclick="copySessionJSON('{{ s.session_id }}')">Kopier som JSON</button>
+            <a class="btn" href="{{ url_for('app1.adminlog_session', session_id=s.session_id, download=1) }}">Download samtale og logs</a>
             <span style="border-left:1px solid rgba(255,255,255,0.06);height:20px;margin:0 4px;"></span>
             <button class="btn filter-btn active" data-filter="all" onclick="filterLogs('{{ s.session_id }}', 'all', this)">Alle</button>
-            <button class="btn filter-btn" data-filter="user_query" onclick="filterLogs('{{ s.session_id }}', 'user_query', this)">Queries</button>
+            <button class="btn filter-btn" data-filter="user_query,chat_turn_start" onclick="filterLogs('{{ s.session_id }}', 'user_query,chat_turn_start', this)">Queries</button>
             <button class="btn filter-btn" data-filter="tool_call" onclick="filterLogs('{{ s.session_id }}', 'tool_call', this)">Tools</button>
-            <button class="btn filter-btn" data-filter="ai_response" onclick="filterLogs('{{ s.session_id }}', 'ai_response', this)">AI svar</button>
+            <button class="btn filter-btn" data-filter="ai_response,chat_turn_end" onclick="filterLogs('{{ s.session_id }}', 'ai_response,chat_turn_end', this)">AI svar</button>
             <button class="btn filter-btn" data-filter="profile_event,ui_card" onclick="filterLogs('{{ s.session_id }}', 'profile_event,ui_card', this)">Profil</button>
             <button class="btn filter-btn" data-filter="matching_summary" onclick="filterLogs('{{ s.session_id }}', 'matching_summary', this)">Search</button>
-            <button class="btn filter-btn" data-filter="tool_error,iteration_limit" onclick="filterLogs('{{ s.session_id }}', 'tool_error,iteration_limit', this)">Fejl</button>
+            <button class="btn filter-btn" data-filter="tool_error,iteration_limit,chat_error" onclick="filterLogs('{{ s.session_id }}', 'tool_error,iteration_limit,chat_error', this)">Fejl</button>
           </div>
           <div class="log-entries" id="logs-{{ s.session_id }}">
             <div style="padding: 20px; text-align: center; color: #71717a; font-size: 13px;"><span class="spinner"></span>Indlæser logs...</div>
@@ -369,6 +376,7 @@
 
   <script>
   const loadedSessions = {};
+  const diagnostics = {};
 
   function toggleSession(headerEl) {
     const card = headerEl.closest('.session-card');
@@ -382,9 +390,10 @@
   }
 
   function fetchSessionLogs(sid) {
-    fetch('/app1/adminlog/session/' + sid)
+    fetch('/app1/adminlog/session/' + encodeURIComponent(sid))
       .then(r => r.json())
       .then(data => {
+        diagnostics[sid] = data;
         loadedSessions[sid] = data.logs;
         renderLogs(sid, data.logs);
       })
@@ -520,7 +529,7 @@
   function copySessionJSON(sid) {
     const logs = loadedSessions[sid];
     if (!logs) { showToast('Indlæs sessionen først'); return; }
-    const json = JSON.stringify({ session_id: sid, logs: logs }, null, 2);
+    const json = JSON.stringify(diagnostics[sid] || { chat_id: sid, logs: logs }, null, 2);
     navigator.clipboard.writeText(json).then(() => showToast('JSON kopieret'));
   }
 

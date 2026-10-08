@@ -58,6 +58,7 @@
   <div class="fm-spread" style="margin-bottom:14px;flex-wrap:wrap;gap:10px">
     <div class="fm-eyebrow"><i class="fa-solid fa-robot"></i> Spørg om alt i din virksomheds uddannelse</div>
     <div class="fm-flex fm-gap8">
+      <button type="button" class="btn btn-ghost btn-sm" data-chat-id-copy data-chat-scope="hr" disabled title="Chat-id bliver tilgængeligt, når samtalen starter"><i class="fa-regular fa-copy"></i> <span data-chat-id-label>Kopiér chat-id</span></button>
       <button class="btn btn-ghost btn-sm" onclick="resetChat()" title="Ny samtale"><i class="fa-solid fa-rotate-right"></i> Ny samtale</button>
       <a href="{{ url_for('hr_dashboard.chatbot_sessions') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-clock-rotate-left"></i> Samtaler</a>
       <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-arrow-left"></i> Oversigt</a>
@@ -246,6 +247,7 @@ function resetChat(){
     .then(r => { if (!r.ok) throw new Error('Reset failed'); return r.json(); })
     .then(j => {
       if (!j || j.success !== true) throw new Error('Reset failed');
+      if (window.FMChatDebug) window.FMChatDebug.setId(j.session_id, 'hr');
       // Keep an unsent draft when starting a new conversation.
       chatMessages.innerHTML = '';
       appendMessage('assistant', 'Ny samtale. Hvad vil du vide?');
@@ -292,7 +294,7 @@ function openSession(sid){
   fetch('{{ url_for("hr_dashboard.hr_chatbot_open") }}', {
     method: 'POST', headers: {'Content-Type': 'application/json'}, credentials: 'same-origin',
     body: JSON.stringify({session_id: sid})
-  }).then(r => r.ok ? r.json() : null).then(j => { if (j){ renderHistory(j.messages); loadSessions(); } });
+  }).then(r => r.ok ? r.json() : null).then(j => { if (j){ if (window.FMChatDebug) window.FMChatDebug.setId(j.session_id, 'hr'); renderHistory(j.messages); loadSessions(); } });
 }
 
 function loadAlerts(){
@@ -318,7 +320,7 @@ function loadAlerts(){
 document.addEventListener('DOMContentLoaded', () => {
   chatInput.focus(); loadAlerts(); loadSessions();
   fetch('{{ url_for("hr_dashboard.hr_chatbot_history") }}', {credentials: 'same-origin'})
-    .then(r => r.ok ? r.json() : null).then(j => { if (j) renderHistory(j.messages); }).catch(() => {});
+    .then(r => r.ok ? r.json() : null).then(j => { if (j && !isProcessing){ if (window.FMChatDebug) window.FMChatDebug.setId(j.session_id, 'hr'); renderHistory(j.messages); } }).catch(() => {});
 });
 </script>
 {% endblock %}

@@ -65,6 +65,23 @@ class ProviderFallbackTests(unittest.TestCase):
         self.assertIn("course_cards", kinds)
         self.assertTrue(hasattr(agent, "provider_fallback_events"))
 
+    def test_closing_during_fallback_preserves_partial_diagnostics(self):
+        import app1.chat_diagnostics as diagnostics
+        client = self.app.test_client()
+        with mock.patch("ai_runtime.run_agent_with_fallback", side_effect=RuntimeError("provider unavailable")), \
+                mock.patch("ai_runtime.iter_completion_stream", side_effect=RuntimeError("provider unavailable"), create=True), \
+                mock.patch("catalog_service.search_products", return_value={"products": [PRODUCT]}), \
+                mock.patch.object(diagnostics, "_record") as record:
+            response = client.post("/app1/ask", json={"query": "projektledelse"}, buffered=False)
+            for piece in response.response:
+                if b'"type": "chunk"' in piece:
+                    break
+            response.close()
+        ends = [call.args[2] for call in record.call_args_list if call.args[1] == "chat_turn_end"]
+        self.assertEqual(len(ends), 1)
+        self.assertTrue(ends[0]["assistant_text"])
+        self.assertEqual(ends[0]["outcome"], "interrupted")
+
     def test_anonymous_chat_config_has_no_profile_chips(self):
         html = self.app.test_client().get("/chat").get_data(as_text=True)
         self.assertIn('"loggedIn": false', html.replace('"loggedIn":false', '"loggedIn": false'))

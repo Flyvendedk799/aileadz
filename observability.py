@@ -35,10 +35,12 @@ class RequestIdFilter(logging.Filter):
         record.request_id = "-"
         record.path = "-"
         record.user = "-"
+        record.chat_id = getattr(record, "chat_id", "-")
         try:
             from flask import g, has_request_context, request, session
             if has_request_context():
                 record.request_id = getattr(g, "request_id", "-")
+                record.chat_id = getattr(g, "chat_id", record.chat_id)
                 record.path = request.path
                 record.user = session.get("user") or "-"
         except Exception:
@@ -55,6 +57,7 @@ class JsonFormatter(logging.Formatter):
             "msg": record.getMessage(),
             "request_id": getattr(record, "request_id", "-"),
             "path": getattr(record, "path", "-"),
+            "chat_id": getattr(record, "chat_id", "-"),
             "user": getattr(record, "user", "-"),
         }
         if record.exc_info:
@@ -73,7 +76,7 @@ def configure_logging():
             handler.setFormatter(JsonFormatter())
         elif not isinstance(handler.formatter, JsonFormatter):
             handler.setFormatter(logging.Formatter(
-                "%(asctime)s %(levelname)s [%(request_id)s] %(name)s: %(message)s"))
+                "%(asctime)s %(levelname)s [%(request_id)s chat=%(chat_id)s] %(name)s: %(message)s"))
 
 
 def init_error_tracking(app):

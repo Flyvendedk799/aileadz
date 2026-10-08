@@ -287,6 +287,7 @@
 {% if self.page_id()|trim in ['chat', 'mindmap'] and session.get('user') %}
 <script src="{{ url_for('static', filename='futurematch/assets/ai-sidebar.js') }}?v={{ asset_version('futurematch/assets/ai-sidebar.js') }}"></script>
 {% endif %}
+<script src="{{ url_for('static', filename='futurematch/assets/chat-debug.js') }}?v={{ asset_version('futurematch/assets/chat-debug.js') }}"></script>
 {% block extra_scripts %}{% endblock %}
 </body>
 </html>

@@ -113,6 +113,7 @@
       if (!d || typeof d !== "object" || typeof d.type !== "string") {
         throw new Error("Invalid assistant event");
       }
+      if (d.chat_id && window.FMChatDebug) window.FMChatDebug.setId(d.chat_id, d.scope || "hr");
       if (handlers.event) handlers.event(d);
       var type = d.type === "chunk" ? "text" : d.type;
       if (type === "done") { complete(d); return; }
@@ -157,6 +158,9 @@
         method: "POST", headers: headers, body: JSON.stringify(body || {}),
         credentials: opts.credentials || "same-origin", signal: controller.signal,
       });
+      if (window.FMChatDebug && resp.headers.get("X-Chat-ID")) {
+        window.FMChatDebug.setId(resp.headers.get("X-Chat-ID"), resp.headers.get("X-Chat-Scope") || "hr");
+      }
       var ct = resp.headers.get("content-type") || "";
       if (!resp.ok || ct.indexOf("text/event-stream") === -1) {
         var j = await resp.json().catch(function () { return {}; });

@@ -1045,6 +1045,8 @@ def vendor_ask():
     import vendor_conversations
     who = vendor_conversations.owner(vendor_id)
     sid = vendor_conversations.resolve_sid(session, vendor_id)
+    from app1.chat_diagnostics import bind_chat, instrument_response, record_failure
+    bind_chat(sid)
     if sid not in VENDOR_CHAT_MEMORY:
         VENDOR_CHAT_MEMORY[sid] = [{"role": "system", "content": VENDOR_SYSTEM_PROMPT}] + [
             dict(m, _ts=time.time()) for m in vendor_conversations.load(who, sid)]
@@ -1222,7 +1224,7 @@ def vendor_ask():
 
             yield _vendor_sse({"type": "done"})
         except Exception as e:
-            logger.warning("vendor_ask: stream failed: %s", e)
+            record_failure(sid, e)
             try:
                 from ai_runtime import user_facing_error_message as _ufem
                 _err_msg = _ufem(e)
@@ -1237,8 +1239,9 @@ def vendor_ask():
             except Exception:
                 pass
 
-    return Response(
+    response = Response(
         stream_with_context(stream_generator()),
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+    return instrument_response(response, chat_id=sid, query=user_query, scope="vendor")

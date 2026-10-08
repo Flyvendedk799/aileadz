@@ -15,6 +15,17 @@ SANDBOX=1 AI_WARMUP_ON_IMPORT=0 py -c "from run import create_app; create_app()"
 
 CI (`.github/workflows/ci.yml`) additionally runs against a real MySQL 8 service; `tests/test_schema_baseline.py` and the disposable-sandbox concurrency regression in `tests/test_launch_mysql.py` need it (builds every table from scratch and asserts `verify_schema` finds nothing missing). A handful of tests skip when the real Shopify export or MySQL is absent (`test_catalog_service.py`, `test_ask_sse_offline.py`).
 
+## Browser chat transport regressions
+
+`node --test tests/js/chat_stream.test.cjs` executes the shipped employee and shared
+chat transports with in-memory streams and controlled timers. It covers fragmented
+UTF-8/SSE, incomplete answers, errors, deadlines, cancellation, explicit resending,
+empty answers, HR draft preservation, and reset failures without a provider key
+or network access.
+`tests/test_chat_stream_js.py` runs this from pytest when Node.js is installed and
+reports a skip when it is unavailable. These tests do not replace browser visual
+checks or live provider evaluation.
+
 ## Which harness to use
 
 | You are testing | Use | Example |

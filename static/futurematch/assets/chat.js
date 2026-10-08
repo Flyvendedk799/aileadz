@@ -773,11 +773,16 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
 
   // APPEND an error row instead of wiping the body — already-streamed content
   // (partial answer, cards, tool chips) must survive a dropped connection.
-  function appendError(body, query, retryOpts) {
+  function appendError(body, query, retryOpts, message) {
     const row = document.createElement("div");
     row.className = "err";
-    row.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>Forbindelsen blev afbrudt — Prøv igen.</span><button class="retry">Prøv igen</button>`;
-    row.querySelector(".retry").onclick = () => { row.remove(); run(query, Object.assign({}, retryOpts || {}, { skipUser: true })); };
+    row.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span></span><button type="button" class="retry">Send igen</button>`;
+    row.setAttribute("role", "alert");
+    row.querySelector("span").textContent = message || "Forbindelsen blev afbrudt, før svaret var færdigt. Det modtagne svar er bevaret.";
+    row.querySelector(".retry").onclick = () => {
+      if (sending) return;
+      row.remove(); run(query, Object.assign({}, retryOpts || {}, { skipUser: true }));
+    };
     place(body, "foot", row); down();
   }
 
@@ -1599,7 +1604,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
     // ping and heartbeats far below this threshold).
     const controller = new AbortController();
     currentAbort = controller;
-    let timedOut = false, watchdog = null, sawContent = false;
+    let timedOut = false, watchdog = null, deadline = null, reader = null, sawContent = false;
     const armWatchdog = () => {
       if (watchdog) clearTimeout(watchdog);
       watchdog = setTimeout(() => { timedOut = true; try { controller.abort(); } catch (e) {} },
@@ -1613,7 +1618,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
     let cardsSeen = 0, productSeen = 0;   // pair structured course_cards with fallback product HTML
     let questionsSeen = false;            // a question sheet already answers this turn's questions
     let awaiting = false;                 // a card is waiting for the user's decision: no generic follow-ups on top of it
-    let eventsReceived = 0;               // meaningful events (excl. ping) — gates the silent retry
+    let eventsReceived = 0;               // meaningful events (excl. ping)
 
     // rAF-throttled rendering: buffer chunks and re-parse markdown at most once
     // per animation frame instead of on every chunk.
@@ -1649,6 +1654,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
 
     try {
       armWatchdog();
+      deadline = setTimeout(() => { timedOut = true; controller.abort(); }, 180000);
       const resp = await fetch(ASK_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1657,26 +1663,41 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
           context ? { context: context } : {})),
         signal: controller.signal,
       });
-      if (!resp.ok || !resp.body) throw new Error("HTTP " + resp.status);
+      if (!resp.ok || !(resp.headers.get("content-type") || "").includes("text/event-stream")) {
+        const payload = await resp.json().catch(() => ({}));
+        const err = new Error("HTTP " + resp.status);
+        err.userMessage = resp.status === 401 || resp.redirected
+          ? "Din session er udløbet. Log ind igen for at fortsætte."
+          : resp.status === 429 ? "Du sender beskeder lidt for hurtigt. Vent et øjeblik og prøv igen."
+          : "Svaret kunne ikke hentes. Prøv igen om lidt.";
+        if (payload && typeof payload.error === "string") err.userMessage = payload.error;
+        else if (payload?.answers?.[0] && typeof payload.answers[0].content === "string") err.userMessage = payload.answers[0].content;
+        throw err;
+      }
+      if (!resp.body) throw new Error("Missing assistant stream");
 
-      const reader = resp.body.getReader();
+      reader = resp.body.getReader();
 
       while (!done) {
         if (aborted) { try { reader.cancel(); } catch (e) {} break; }
         const r = await reader.read();
-        if (r.done) break;
-        armWatchdog();
-        buffer += decoder.decode(r.value, { stream: true });
-        const parts = buffer.split("\n\n");
+        if (!r.done) armWatchdog();
+        buffer += r.done ? decoder.decode() + "\n\n" : decoder.decode(r.value, { stream: true });
+        const parts = buffer.split(/\r?\n\r?\n/);
         buffer = parts.pop();
         for (const part of parts) {
-          const line = part.split("\n").find((l) => l.startsWith("data: "));
-          if (!line) continue;
-          const raw = line.slice(6).trim();
+          const lines = part.split(/\r?\n/).filter((l) => l.startsWith("data:"));
+          if (!lines.length) continue;
+          const raw = lines.map((l) => l.slice(5).replace(/^ /, "")).join("\n").trim();
           if (raw === "[DONE]") { done = true; break; }
-          let data;
-          try { data = JSON.parse(raw); } catch (e) { continue; }
-
+          const data = JSON.parse(raw);
+          if (!data || typeof data.type !== "string") throw new Error("Invalid assistant event");
+          if (data.type === "error") {
+            const err = new Error("Assistant error");
+            err.userMessage = typeof data.content === "string" ? data.content : "Svaret kunne ikke færdiggøres. Prøv igen.";
+            throw err;
+          }
+          if (data.type === "done") { done = true; break; }
           if (data.type === "ping") continue;
           eventsReceived++;
           if (data.type === "fallback") { fallbackSeen = true; continue; }
@@ -1806,6 +1827,10 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
             renderComplianceCard(body, data);
           }
         }
+        if (r.done) {
+          if (!done) throw new Error("Incomplete assistant stream");
+          break;
+        }
       }
     } catch (e) {
       // User Stop aborts the fetch — that is a graceful end, return the partial
@@ -1815,10 +1840,13 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
         renderFinal();
         const err = e instanceof Error ? e : new Error(String(e));
         err.eventsReceived = eventsReceived;
+        if (timedOut) err.userMessage = "Svaret tog for lang tid. Det modtagne svar er bevaret. Prøv igen om lidt.";
         throw err;
       }
     } finally {
       if (watchdog) clearTimeout(watchdog);
+      if (deadline) clearTimeout(deadline);
+      if (reader) { reader.cancel().catch(() => {}); reader.releaseLock(); }
       if (currentAbort === controller) currentAbort = null;
     }
     renderFinal();
@@ -1831,7 +1859,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
     // Render suggestion chips last, like the source UI. The server now
     // guarantees a set, but keep a client-side net so a turn never dead-ends
     // even if the suggestions event is dropped.
-    if (awaiting || fallbackSeen) suggestions = [];
+    if (awaiting || fallbackSeen || aborted) suggestions = [];
     else if (!suggestions || !suggestions.length) {
       suggestions = cardsSeen > 0
         ? ["Sammenlign de to bedste", "Vis billigere alternativer", "Fortæl mig mere"]
@@ -1848,12 +1876,11 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
     document.querySelector(".welcome")?.remove();
     if (!opts.skipUser) addUser(query);
     // Reference any attached products the same way the real app1 UI does.
-    // Composed ONCE per turn (before the retry loop) so the silent auto-retry
-    // and the manual "Prøv igen" resend the same effective query; refs are
+    // Compose once so an explicit resend keeps the same effective query; refs are
     // consumed by this send so stale course attachments stop steering
     // retrieval on the next question.
     let actualQuery = query;
-    if (attached.length) {
+    if (!opts.skipUser && attached.length) {
       const refs = attached.map((t) => `[VEDHÆFTET KURSUS: "${t}"]`).join(" ");
       actualQuery = refs + "\n" + query;
       attached = []; renderRef();
@@ -1862,28 +1889,23 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).r
     // A handoff ({from, focus}) rides on the first message after arriving from
     // another surface only; a retry of that message re-sends it.
     const context = opts.context !== undefined ? opts.context : takeHandoff();
-    input.value = ""; resize(); toggleSend();
+    if (!opts.skipUser) { input.value = ""; resize(); }
+    toggleSend();
     setSending(true);
     const body = addBot();
     const th = thinking(body);
     let result = null, lastErr = null;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        result = await streamFromBackend(body, actualQuery, opts.kind, context);
-        lastErr = null;
-        break;
-      } catch (e) {
-        lastErr = e;
-        // One silent auto-retry, only when the stream died before delivering
-        // anything (zero events) and the user didn't stop it themselves.
-        if (attempt === 0 && !aborted && !(e && e.eventsReceived > 0)) continue;
-        break;
-      }
+    try {
+      result = await streamFromBackend(body, actualQuery, opts.kind, context);
+    } catch (e) {
+      // A lost response does not prove that the server did not execute tools.
+      // Resending a turn is always an explicit user decision.
+      lastErr = e;
     }
     th.remove();
     if (lastErr) {
       settleToolChips(body);
-      appendError(body, actualQuery, { kind: opts.kind, context: context });
+      appendError(body, actualQuery, { kind: opts.kind, context: context }, lastErr.userMessage);
     } else {
       // User Stop: mark the cut-off, but still render the feedback row so
       // aborted answers are measurable.

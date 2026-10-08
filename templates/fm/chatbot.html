@@ -110,7 +110,7 @@ const typingText = document.getElementById('typingText');
 let isProcessing = false;
 let activeToolRun = null;
 
-function sendSuggestion(el){ chatInput.value = el.textContent; sendMessage(); }
+function sendSuggestion(el){ return sendMessage(el.textContent); }
 
 function scrollDown(){ chatMessages.scrollTop = chatMessages.scrollHeight; }
 
@@ -132,11 +132,11 @@ function appendMessage(role, content, returnBubble){
   return returnBubble ? bubble : msg;
 }
 
-function sendMessage(){
-  const query = chatInput.value.trim();
-  if (!query || isProcessing) return;
+function sendMessage(suggestion){
+  const query = (suggestion === undefined ? chatInput.value : suggestion).trim();
+  if (!query || isProcessing) return false;
   isProcessing = true;
-  chatInput.value = '';
+  if (suggestion === undefined) chatInput.value = '';
   document.getElementById('sendBtn').disabled = true;
   activeToolRun = null;
   chatMessages.querySelectorAll('.fm-chips').forEach(n => n.remove());
@@ -157,11 +157,17 @@ function sendMessage(){
   FMAI.ask('{{ url_for("hr_dashboard.hr_chatbot_ask") }}', {query: query, page: 'chatbot'}, {
     tool_call: d => { typingText.textContent = `Kører: ${formatToolName(d)}...`; renderToolCall(d); },
     text: d => { ensureBubble(); acc += d.content || ''; bubble.innerHTML = FMAI.md(acc); scrollDown(); },
-    suggestions: d => { ensureBubble(); FMAI.chips(wrapper, d.items, label => { chatInput.value = label; sendMessage(); }); scrollDown(); },
+    suggestions: d => { ensureBubble(); FMAI.chips(wrapper, d.items, label => sendMessage(label)); scrollDown(); },
     confirm_card: d => { ensureBubble(); FMAI.confirmCard(wrapper, d); scrollDown(); },
     ui_action: d => { ensureBubble(); FMAI.action(wrapper, d); scrollDown(); },
     meta: d => { msgIndex = d.message_index; },
-    error: d => { ensureBubble(); bubble.innerHTML = FMAI.md(d.content || 'Der opstod en fejl. Prøv igen.'); },
+    error: d => {
+      ensureBubble();
+      const notice = document.createElement('div');
+      notice.setAttribute('role', 'alert');
+      notice.textContent = d.content || 'Der opstod en fejl. Prøv igen.';
+      bubble.appendChild(notice); scrollDown();
+    },
     done: () => {
       typingIndicator.classList.remove('active');
       isProcessing = false; activeToolRun = null;
@@ -173,6 +179,7 @@ function sendMessage(){
       loadSessions();
     }
   });
+  return true;
 }
 
 function safeHtml(value){
@@ -230,7 +237,27 @@ function renderToolCall(data){
 }
 
 function resetChat(){
-  fetch('{{ url_for("hr_dashboard.hr_chatbot_reset") }}', {method: 'POST', credentials: 'same-origin'}).then(() => location.reload());
+  if (isProcessing) return;
+  isProcessing = true;
+  document.getElementById('sendBtn').disabled = true;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  return fetch('{{ url_for("hr_dashboard.hr_chatbot_reset") }}', {method: 'POST', credentials: 'same-origin', signal: controller.signal})
+    .then(r => { if (!r.ok) throw new Error('Reset failed'); return r.json(); })
+    .then(j => {
+      if (!j || j.success !== true) throw new Error('Reset failed');
+      // Keep an unsent draft when starting a new conversation.
+      chatMessages.innerHTML = '';
+      appendMessage('assistant', 'Ny samtale. Hvad vil du vide?');
+      loadSessions();
+    }).catch(() => {
+      const notice = appendMessage('assistant', 'Jeg kunne ikke starte en ny samtale. Prøv igen om lidt.', true);
+      notice.setAttribute('role', 'alert');
+    }).finally(() => {
+      clearTimeout(timeout);
+      isProcessing = false;
+      document.getElementById('sendBtn').disabled = false;
+    });
 }
 
 /* ---- durable history: resume the last conversation, list and reopen earlier ones ---- */

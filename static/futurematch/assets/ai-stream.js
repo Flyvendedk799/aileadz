@@ -80,55 +80,123 @@
   /* ---- streaming ---- */
   // handlers: { event(d) } called for every parsed event, plus per-type callbacks
   // (text, suggestions, confirm_card, ui_action, tool_call, meta, error, done).
-  function ask(url, body, handlers, opts) {
+  async function ask(url, body, handlers, opts) {
     handlers = handlers || {};
     opts = opts || {};
-    var headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
-    return fetch(url, {
-      method: "POST", headers: headers, body: JSON.stringify(body || {}),
-      credentials: opts.credentials || "same-origin", signal: opts.signal,
-    }).then(function (resp) {
+    var controller = new AbortController(), reader, idleTimer, totalTimer;
+    var finished = false, timedOut = false, hasAnswer = false;
+    function complete(data) {
+      if (finished) return;
+      if (!hasAnswer && !(data && (data.failed || data.aborted))) {
+        fail("Jeg fik ikke et svar denne gang. Prøv at sende din besked igen.");
+        return;
+      }
+      finished = true;
+      if (handlers.done) handlers.done(Object.assign({ type: "done" }, data || {}));
+    }
+    function fail(content, status) {
+      if (finished) return;
+      try {
+        if (handlers.error) handlers.error({ type: "error", content: content, status: status });
+      } finally { complete({ failed: true }); }
+    }
+    function timeout() { timedOut = true; controller.abort(); }
+    function armIdle() {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(timeout, opts.idleTimeoutMs || 90000);
+    }
+    function abort() { controller.abort(); }
+    function dispatch(raw) {
+      if (finished) return;
+      if (raw.trim() === "[DONE]") { complete(); return; }
+      var d = JSON.parse(raw);
+      if (!d || typeof d !== "object" || typeof d.type !== "string") {
+        throw new Error("Invalid assistant event");
+      }
+      if (handlers.event) handlers.event(d);
+      var type = d.type === "chunk" ? "text" : d.type;
+      if (type === "done") { complete(d); return; }
+      if (type === "error") { fail(d.content || "Svaret kunne ikke færdiggøres. Prøv igen."); return; }
+      if ((type === "text" && typeof d.content === "string" && d.content.trim()) ||
+          ((type === "confirm_card" || type === "ui_action") && handlers[type])) hasAnswer = true;
+      if (handlers[type]) handlers[type](d);
+    }
+    // Parse complete SSE frames, including multiline data and CRLF split across reads.
+    var pending = "", dataLines = [];
+    function line(value) {
+      if (!value) {
+        if (dataLines.length) dispatch(dataLines.join("\n"));
+        dataLines = [];
+      } else if (value === "data" || value.indexOf("data:") === 0) {
+        dataLines.push(value === "data" ? "" : value.slice(5).replace(/^ /, ""));
+      }
+    }
+    function consume(text, eof) {
+      pending += text;
+      var match;
+      while (!finished && (match = /\r\n|\r|\n/.exec(pending))) {
+        if (!eof && match[0] === "\r" && match.index === pending.length - 1) break;
+        line(pending.slice(0, match.index));
+        pending = pending.slice(match.index + match[0].length);
+      }
+      if (eof && !finished) {
+        if (pending) line(pending);
+        line("");
+      }
+    }
+    try {
+      if (opts.signal) {
+        opts.signal.addEventListener("abort", abort, { once: true });
+        if (opts.signal.aborted) abort();
+      }
+      armIdle();
+      // Heartbeats keep an idle connection alive, but cannot keep the composer busy forever.
+      totalTimer = setTimeout(timeout, opts.maxDurationMs || 180000);
+      var headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
+      var resp = await fetch(url, {
+        method: "POST", headers: headers, body: JSON.stringify(body || {}),
+        credentials: opts.credentials || "same-origin", signal: controller.signal,
+      });
       var ct = resp.headers.get("content-type") || "";
       if (!resp.ok || ct.indexOf("text/event-stream") === -1) {
-        // Guard responses (credits paused, forbidden, empty) are JSON, not a stream.
-        return resp.json().catch(function () { return {}; }).then(function (j) {
-          var msg = j.error || (j.answers && j.answers[0] && j.answers[0].content) || "Der opstod en fejl. Prøv igen.";
-          if (handlers.error) handlers.error({ type: "error", content: msg, status: resp.status });
-          if (handlers.done) handlers.done({ type: "done", failed: true });
-        });
+        var j = await resp.json().catch(function () { return {}; });
+        if (controller.signal.aborted) throw new Error("Aborted assistant response");
+        var msg = resp.status === 401 || resp.redirected ? "Din session er udløbet. Log ind igen for at fortsætte."
+          : resp.status === 429 ? "Du sender beskeder lidt for hurtigt. Vent et øjeblik og prøv igen."
+          : "Svaret kunne ikke hentes. Prøv igen om lidt.";
+        if (j && typeof j.error === "string") msg = j.error;
+        else if (j && j.answers && j.answers[0] && typeof j.answers[0].content === "string") msg = j.answers[0].content;
+        fail(msg, resp.status);
+        return;
       }
-      var reader = resp.body.getReader(), dec = new TextDecoder(), buf = "", finished = false;
-      function dispatch(line) {
-        if (line.indexOf("data: ") !== 0) return;
-        var raw = line.substring(6).trim();
-        if (raw === "[DONE]") { if (!finished) { finished = true; if (handlers.done) handlers.done({ type: "done" }); } return; }
-        var d;
-        try { d = JSON.parse(raw); } catch (e) { return; }
-        if (handlers.event) handlers.event(d);
-        var type = d.type === "chunk" ? "text" : d.type;
-        if (type === "done") { if (!finished) { finished = true; if (handlers.done) handlers.done(d); } return; }
-        if (handlers[type]) handlers[type](d);
+      if (!resp.body) throw new Error("Missing assistant stream");
+      reader = resp.body.getReader();
+      var dec = new TextDecoder();
+      while (!finished) {
+        var r = await reader.read();
+        if (r.done) {
+          consume(dec.decode(), true);
+          if (!finished) fail("Forbindelsen blev afbrudt, før svaret var færdigt. Det modtagne svar er bevaret.");
+          break;
+        }
+        armIdle();
+        consume(dec.decode(r.value, { stream: true }), false);
       }
-      function pump() {
-        return reader.read().then(function (r) {
-          if (r.done) {
-            if (buf) dispatch(buf);
-            if (!finished && handlers.done) { finished = true; handlers.done({ type: "done" }); }
-            return;
-          }
-          buf += dec.decode(r.value, { stream: true });
-          var lines = buf.split("\n");
-          buf = lines.pop();
-          lines.forEach(dispatch);
-          return pump();
-        });
+    } catch (err) {
+      if (finished) return;
+      if (controller.signal.aborted && !timedOut) { complete({ aborted: true }); return; }
+      fail(timedOut
+        ? "Svaret tog for lang tid. Det modtagne svar er bevaret. Prøv igen om lidt."
+        : "Forbindelsen blev afbrudt. Det modtagne svar er bevaret. Prøv igen om lidt.");
+    } finally {
+      clearTimeout(idleTimer); clearTimeout(totalTimer);
+      if (opts.signal) opts.signal.removeEventListener("abort", abort);
+      if (reader) {
+        // Do not wait for a server to close a response after its terminal event.
+        reader.cancel().catch(function () {});
+        reader.releaseLock();
       }
-      return pump();
-    }).catch(function (err) {
-      if (err && err.name === "AbortError") { if (handlers.done) handlers.done({ type: "done", aborted: true }); return; }
-      if (handlers.error) handlers.error({ type: "error", content: "Netværksfejl – prøv igen." });
-      if (handlers.done) handlers.done({ type: "done", failed: true });
-    });
+    }
   }
 
   /* ---- confirm card ---- */
@@ -189,7 +257,8 @@
     items.forEach(function (label) {
       var b = document.createElement("button");
       b.type = "button"; b.className = "fm-chip"; b.textContent = label;
-      b.addEventListener("click", function () { wrap.remove(); onPick(label); });
+      // A busy composer may decline a click; leave its suggestions available.
+      b.addEventListener("click", function () { if (onPick(label) !== false) wrap.remove(); });
       wrap.appendChild(b);
     });
     container.appendChild(wrap);

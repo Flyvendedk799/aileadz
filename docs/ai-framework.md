@@ -134,6 +134,28 @@ Tool state is passed per turn via module globals: `set_search_context(...)`
 (`tools.py`) injects shown handles, prefs, blocked vendors, supplier agreements.
 
 **Runtime behaviours worth knowing**
+
+- **Interrupted chat recovery:** employee `chat.js` and shared `FMAI.ask` require an
+  explicit `[DONE]` or `type: done` event. An unexpected EOF, malformed event or
+  server error marks the answer incomplete; already-rendered text and cards stay
+  visible. JSON guard responses (including credit limits), expired sessions and
+  rate limits show useful Danish messages. Neither transport automatically replays
+  a failed POST: the server may already have executed a tool. Employee chat offers
+  an explicit **Send igen** action that retains attachments and handoff context.
+- **Bounded waiting:** employee chat keeps its 90-second first-response / 25-second
+  content-idle watchdog; shared `FMAI.ask` has a 90-second idle watchdog. Both have
+  a 180-second total deadline, even if heartbeats continue. Shared callers may set
+  `idleTimeoutMs` and `maxDurationMs`. User cancellation is distinct from failure;
+  timers and stream readers are cleaned up after every terminal outcome.
+- **HR conversation continuity:** the panel and full-page chat append errors to
+  partial answers. Submitting while the panel is busy preserves the unsent draft.
+  Suggestion clicks preserve drafts on both HR surfaces, and a busy click leaves
+  its chips available. A completed HR stream with no text or actionable card shows
+  a recoverable empty-answer message. Reset requests have a 15-second deadline,
+  block concurrent sends, and clear history only after confirmed success; failures
+  preserve the conversation and all outcomes preserve the unsent draft.
+  Offline JavaScript regressions run with `node --test tests/js/chat_stream.test.cjs`
+  and through pytest when Node.js is available.
 - **Tool evidence reaches the final answer.** `run_responses_agent` appends a
   synthetic chat-format assistant message (with `tool_calls`) before the `tool`
   messages, so `_sanitize_tool_sequence` keeps them and the streamed answer sees this

@@ -1116,13 +1116,15 @@ def iter_completion_stream(
             models_to_try.append(candidate)
     for model_name in models_to_try:
         try:
-            resp = client.chat.completions.create(
-                model=model_name,
-                messages=prepared,
-                stream=True,
-                max_tokens=limit,
-                temperature=0.4,
-            )
+            chat_kwargs: Dict[str, Any] = {
+                "model": model_name,
+                "messages": prepared,
+                "stream": True,
+                "max_tokens": limit,
+                "temperature": 0.4,
+            }
+            ai_provider.tune_openai_kwargs(chat_kwargs, model_name, api="chat")
+            resp = client.chat.completions.create(**chat_kwargs)
             for chunk in resp:
                 delta = chunk.choices[0].delta if chunk.choices else None
                 if delta and delta.content:
@@ -1228,24 +1230,29 @@ def run_direct_completion(
                       else ai_provider.openai_main_model())
     limit = max_tokens or max_output_tokens()
     try:
-        resp = client.chat.completions.create(
-            model=model,
-            messages=prepared,
-            stream=False,
-            max_tokens=limit,
-            temperature=0.4,
-        )
+        direct_kwargs: Dict[str, Any] = {
+            "model": model,
+            "messages": prepared,
+            "stream": False,
+            "max_tokens": limit,
+            "temperature": 0.4,
+        }
+        ai_provider.tune_openai_kwargs(direct_kwargs, model, api="chat")
+        resp = client.chat.completions.create(**direct_kwargs)
         return (resp.choices[0].message.content or "").strip()
     except Exception as exc:
         if _is_rate_limit_error(exc):
             _note_rate_limit_hit()
-            resp = client.chat.completions.create(
-                model=ai_provider.openai_fast_model(),
-                messages=prepare_messages_for_turn(messages, aggressive=True),
-                stream=False,
-                max_tokens=limit,
-                temperature=0.4,
-            )
+            fallback_model = ai_provider.openai_fast_model()
+            fallback_kwargs: Dict[str, Any] = {
+                "model": fallback_model,
+                "messages": prepare_messages_for_turn(messages, aggressive=True),
+                "stream": False,
+                "max_tokens": limit,
+                "temperature": 0.4,
+            }
+            ai_provider.tune_openai_kwargs(fallback_kwargs, fallback_model, api="chat")
+            resp = client.chat.completions.create(**fallback_kwargs)
             return (resp.choices[0].message.content or "").strip()
         raise
 
@@ -1367,16 +1374,19 @@ def classify_intent_llm(user_query: str, *, fallback: str = "discovery") -> str:
             # with_options is the SDK's per-request override; guard for resilience.
             with_options = getattr(client, "with_options", None)
             scoped = with_options(timeout=_router_timeout_seconds()) if callable(with_options) else client
-            resp = scoped.chat.completions.create(
-                model=ai_provider.openai_fast_model(),
-                messages=[
+            router_model = ai_provider.openai_fast_model()
+            router_kwargs: Dict[str, Any] = {
+                "model": router_model,
+                "messages": [
                     {"role": "system", "content": _ROUTER_SYSTEM_PROMPT},
                     {"role": "user", "content": query[:2000]},
                 ],
-                stream=False,
-                max_tokens=4,
-                temperature=0.0,
-            )
+                "stream": False,
+                "max_tokens": 4,
+                "temperature": 0.0,
+            }
+            ai_provider.tune_openai_kwargs(router_kwargs, router_model, api="chat")
+            resp = scoped.chat.completions.create(**router_kwargs)
             raw = resp.choices[0].message.content if resp.choices else ""
             label = _parse_router_label(raw, fallback)
         except Exception:
@@ -1647,6 +1657,7 @@ def _chat_completion_with_resilience(
         if tools:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = chat_tool_choice(tool_choice)
+        ai_provider.tune_openai_kwargs(kwargs, attempt_model, api="chat")
         try:
             # Timeout is enforced by the shared client (AI_OPENAI_TIMEOUT_SECONDS).
             return client.chat.completions.create(**kwargs), attempt_model, working
@@ -1734,6 +1745,7 @@ def _responses_create_with_resilience(
             tool_temp = tool_turn_temperature()
             if tool_temp is not None:
                 kwargs["temperature"] = tool_temp
+        ai_provider.tune_openai_kwargs(kwargs, attempt_model, api="responses")
         if prompt_cache_key and not is_continuation:
             kwargs["prompt_cache_key"] = prompt_cache_key
         if prev_id:
@@ -2401,13 +2413,15 @@ def _forced_final_completion(
     """
     final_text = ""
     try:
-        forced = client.chat.completions.create(
-            model=model,
-            messages=prepare_messages_for_turn(source_messages),
-            stream=False,
-            max_tokens=max_output_tokens(),
-            temperature=0.4,
-        )
+        forced_kwargs: Dict[str, Any] = {
+            "model": model,
+            "messages": prepare_messages_for_turn(source_messages),
+            "stream": False,
+            "max_tokens": max_output_tokens(),
+            "temperature": 0.4,
+        }
+        ai_provider.tune_openai_kwargs(forced_kwargs, model, api="chat")
+        forced = client.chat.completions.create(**forced_kwargs)
         final_text = (forced.choices[0].message.content or "").strip()
     except Exception as exc:
         print(f"[Agent forced-final error] {exc}")
@@ -2434,6 +2448,11 @@ def run_chat_agent(
     # OpenAI runtime: pin the default to the OpenAI model so a Claude->OpenAI
     # fallback never sends a Claude model id to the OpenAI client.
     model = model or ai_provider.openai_main_model()
+    # Terra / Astra / 6.1 Sol reject function calling on Chat Completions.
+    # Drop to the fast model (Luna accepts tools when effort is none) rather
+    # than 400 the turn. The Responses path is unaffected.
+    if tools and not ai_provider.chat_tools_supported(model):
+        model = ai_provider.openai_fast_model()
     start = time.time()
     client = _openai_client()
     source_messages = list(messages)

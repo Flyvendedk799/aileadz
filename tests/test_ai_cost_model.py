@@ -13,6 +13,23 @@ def test_cached_input_discount():
     full = C.estimate_cost('gpt-4o', 100000, 0, cached_tokens=0)
     cached = C.estimate_cost('gpt-4o', 100000, 0, cached_tokens=100000)
     assert cached['usd'] < full['usd']
+    # gpt-4o cache is half of input: 100k tokens * $2.50/1M * 0.5
+    assert abs(cached['usd'] - 0.125) < 1e-9
+
+
+def test_gpt6_prices_and_cache_rates():
+    terra = C.estimate_cost('gpt-6.1-terra', 1_000_000, 1_000_000)
+    luna = C.estimate_cost('gpt-6-luna', 1_000_000, 1_000_000)
+    old = C.estimate_cost('gpt-4o', 1_000_000, 1_000_000)
+    assert terra['known'] and luna['known']
+    assert abs(terra['usd'] - 6.0) < 1e-9
+    assert abs(luna['usd'] - 0.60) < 1e-9
+    assert terra['usd'] < old['usd']
+    # Terra cache reads are 5% of input, not the legacy 50%.
+    terra_cached = C.estimate_cost('gpt-6.1-terra', 1_000_000, 0, cached_tokens=1_000_000)
+    assert abs(terra_cached['usd'] - 0.05) < 1e-9
+    luna_cached = C.estimate_cost('gpt-6-luna', 1_000_000, 0, cached_tokens=1_000_000)
+    assert abs(luna_cached['usd'] - 0.01) < 1e-9
 
 def test_unknown_model_safe():
     r = C.estimate_cost('some-unknown-model', 1000, 1000)

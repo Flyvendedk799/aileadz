@@ -677,7 +677,7 @@ vendor name is fenced; figures pass grounding.
 
 | Flag | Default | Effect |
 |---|---|---|
-| `AI_PROVIDER`, `AI_MAIN_MODEL`, `AI_FAST_MODEL`, `ANTHROPIC_MAIN_MODEL`, `ANTHROPIC_FAST_MODEL`, `AI_MODEL_ROUTING`, `AI_SHADOW_SAMPLE_RATE` | `openai`, `gpt-4o`, `gpt-4o-mini`, `claude-opus-5`, `claude-haiku-4-5`, `balanced`, `0.1` | admin-editable (`ai_settings` -> env -> default); see AI_PROVIDER_TOGGLE.md |
+| `AI_PROVIDER`, `AI_MAIN_MODEL`, `AI_FAST_MODEL`, `ANTHROPIC_MAIN_MODEL`, `ANTHROPIC_FAST_MODEL`, `AI_MODEL_ROUTING`, `AI_SHADOW_SAMPLE_RATE` | `openai`, `gpt-6.1-terra`, `gpt-6-luna`, `claude-opus-5`, `claude-haiku-4-5`, `balanced`, `0.1` | admin-editable (`ai_settings` -> env -> default); see AI_PROVIDER_TOGGLE.md |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `AI_SECRET_KEY` | - | keys (DB -> env); `AI_SECRET_KEY` = Fernet key; OpenAI key always required (embeddings) |
 | `ANTHROPIC_MIN_MAX_TOKENS` / `ANTHROPIC_ANSWER_MAX_TOKENS` / `ANTHROPIC_EFFORT` | 4096 / 16000 / auto | Claude `max_tokens` floors (tool / answer turns); effort override |
 | `AI_ANTHROPIC_TIMEOUT_SECONDS` / `AI_OPENAI_TIMEOUT_SECONDS` / `AI_ANTHROPIC_MAX_RETRIES` | 45 / 45 / 1 | client timeouts / retries |

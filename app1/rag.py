@@ -979,11 +979,11 @@ def _crossencoder_rerank(query, candidates, products, limit=5):
         # Pinned to OpenAI: this call uses the openai SDK directly, and the
         # RAG index it reranks is built with OpenAI embeddings, so it must not
         # follow the conversational provider toggle.
-        from ai_provider import openai_fast_model
+        from ai_provider import openai_fast_model, tune_openai_kwargs
         ce_model = openai_fast_model()
-        response = openai.chat.completions.create(
-            model=ce_model,
-            messages=[
+        rerank_kwargs = {
+            "model": ce_model,
+            "messages": [
                 {"role": "system", "content": """Du er en relevansvurderer. En bruger søger efter kurser.
 For hvert kursus, vurdér hvor relevant det er for brugerens søgning.
 Svar KUN som en JSON-liste med tal fra 1-10 for hvert kursus.
@@ -994,10 +994,12 @@ Svar KUN som en JSON-liste med tal fra 1-10 for hvert kursus.
 Eksempel svar: [9, 3, 7, 5]"""},
                 {"role": "user", "content": f"Søgning: \"{query}\"\n\nKurser:\n" + "\n".join(course_lines)}
             ],
-            temperature=0.0,
-            max_tokens=50,
-            timeout=5.0
-        )
+            "temperature": 0.0,
+            "max_tokens": 50,
+            "timeout": 5.0,
+        }
+        tune_openai_kwargs(rerank_kwargs, ce_model, api="chat")
+        response = openai.chat.completions.create(**rerank_kwargs)
         raw = (response.choices[0].message.content or "").strip()
         # Parse the scores — handle GPT sometimes wrapping in markdown or adding text
         if not raw:

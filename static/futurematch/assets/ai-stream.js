@@ -64,8 +64,18 @@
     return String(text || "").replace(/\s*<suggestions>[\s\S]*?(?:<\/suggestions>|$)\s*/g, "");
   }
 
+  function fixInternalLinks(text) {
+    return String(text || "").replace(/\[([^\]]+)\]\(\s*([^)\s]+)\s*\)/g, function (_, label, url) {
+      url = String(url).replace(/^https?:\/\/(?:www\.)?futurematch\.dk/i, "");
+      if (url.indexOf("/product/") === 0 && url.indexOf("/products/") !== 0) {
+        url = "/products/" + url.slice("/product/".length);
+      }
+      return "[" + label.trim() + "](" + url + ")";
+    });
+  }
+
   function md(text) {
-    var t = stripSuggestions(text);
+    var t = fixInternalLinks(stripSuggestions(text));
     if (!t) return "";
     if (window.marked && typeof window.marked.parse === "function") {
       try { return sanitize(window.marked.parse(t)); } catch (e) { /* fall through */ }

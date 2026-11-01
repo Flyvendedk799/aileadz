@@ -149,7 +149,16 @@
 
   // Assistant prose never carries pictures: course cards own the imagery, and a pasted
 // logo renders full width and pushes the real UI down.
-const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).replace(/\n/g, "<br>")).replace(/<img\b[^>]*>/gi, "");
+function fixInternalLinks(t) {
+  return String(t || "").replace(/\[([^\]]+)\]\(\s*([^)\s]+)\s*\)/g, function (_, label, url) {
+    url = String(url).replace(/^https?:\/\/(?:www\.)?futurematch\.dk/i, "");
+    if (url.indexOf("/product/") === 0 && url.indexOf("/products/") !== 0) {
+      url = "/products/" + url.slice("/product/".length);
+    }
+    return "[" + label.trim() + "](" + url + ")";
+  });
+}
+const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLinks(t)) : esc(fixInternalLinks(t)).replace(/\n/g, "<br>")).replace(/<img\b[^>]*>/gi, "");
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   const thread = $("#thread");

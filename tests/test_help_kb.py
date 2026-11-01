@@ -349,6 +349,8 @@ class TestTrigger(unittest.TestCase):
             "Hvordan skifter jeg adgangskode",
             "How do I change my password?",
             "Where is my order approval?",
+            "Hvad sker der med mine data hvis jeg sletter min konto?",
+            "Jeg vil slette min konto",
         ):
             with self.subTest(q=q):
                 self.assertTrue(help_kb.looks_like_platform_help(q))
@@ -364,6 +366,8 @@ class TestTrigger(unittest.TestCase):
             "",
             None,
             "I would like a course somewhere in Aarhus",
+            "hvad sker der hvis jeg bliver projektleder",
+            "hvad sker der på kontoret i morgen",
         ):
             with self.subTest(q=q):
                 self.assertFalse(help_kb.looks_like_platform_help(q))

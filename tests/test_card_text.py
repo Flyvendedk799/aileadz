@@ -1,7 +1,7 @@
 """The answer text must not restate the course cards (offline, pure text)."""
 import unittest
 
-from app1.card_text import CARDS_MARK, strip_images, tidy_answer
+from app1.card_text import CARDS_MARK, fix_markdown_links, strip_images, tidy_answer
 
 CARDS = [
     {"title": "Distanceledelse"},
@@ -26,6 +26,14 @@ LISTING = (
 
 
 class TidyAnswerTests(unittest.TestCase):
+    def test_spaced_product_links_are_closed(self):
+        raw = "Se [Vild med dansk 2]( /products/vild-med-dansk-2) og [andet]( https://futurematch.dk/products/excel )."
+        out = fix_markdown_links(raw)
+        self.assertIn("[Vild med dansk 2](/products/vild-med-dansk-2)", out)
+        self.assertIn("[andet](/products/excel)", out)
+        self.assertNotIn("( /", out)
+        self.assertEqual(tidy_answer(raw, []), out)
+
     def test_images_are_removed(self):
         self.assertNotIn("![", strip_images(LISTING))
         self.assertEqual(strip_images("a\n\n\n\n![x](y)\n\nb"), "a\n\nb")

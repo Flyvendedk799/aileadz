@@ -659,6 +659,11 @@ class ReachabilityTests(unittest.TestCase):
         _tools, meta = get_employee_tool_selection(**kwargs)
         return meta["tool_names"]
 
+    def test_own_order_status_is_reachable(self):
+        names = self._names("Ligger der en ordre på mig nu? Hvis ja, så skal den ikke sendes.")
+        self.assertIn("get_my_course_status", names)
+        self.assertIn("manage_my_order", names)
+
     def test_agenda_reachable_on_danish_phrasing(self):
         self.assertIn("get_my_agenda", self._names("hvad har jeg på tavlen lige nu?"))
 

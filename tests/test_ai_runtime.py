@@ -319,6 +319,29 @@ class AIRuntimeTests(unittest.TestCase):
         self.assertIn("SESSION KONTEKST", merged[1]["content"])
         self.assertIn("profil info", merged[1]["content"])
 
+    def test_strip_heavy_tool_payload_keeps_course_facts_when_oversized(self):
+        results = [
+            {
+                "title": f"Kursus {i}",
+                "handle": f"kursus-{i}",
+                "price": f"{1000 + i} kr",
+                "product_url": f"/products/kursus-{i}",
+                "summary": "x" * 2000,
+                "body_html": "y" * 4000,
+            }
+            for i in range(6)
+        ]
+        stripped = json.loads(_strip_heavy_tool_payload(
+            json.dumps({"status": "success", "count": 6, "results": results}),
+            max_chars=2500,
+        ))
+        self.assertNotEqual(stripped.get("status"), "truncated")
+        self.assertNotIn("shortened", json.dumps(stripped).lower())
+        titles = [row["title"] for row in stripped["results"]]
+        self.assertIn("Kursus 0", titles)
+        self.assertTrue(all(row.get("product_url") for row in stripped["results"]))
+        self.assertLessEqual(len(json.dumps(stripped)), 2500)
+
     def test_strip_heavy_tool_payload_removes_search_debug(self):
         payload = json.dumps({"status": "success", "search_debug": {"tokens": list(range(100))}, "results": []})
         stripped = json.loads(_strip_heavy_tool_payload(payload))

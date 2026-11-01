@@ -1155,10 +1155,12 @@ OPENAI_TOOLS.extend([
         "function": {
             "name": "get_my_course_status",
             "description": (
-                "Vis status på den indloggede brugers egne kurser: status, gennemførelse, startdato, "
-                "frist (completion_deadline), pris og titel - med dage tilbage og et 'forsinket'-flag. "
-                "Brug når brugeren spørger 'hvor er mit kursus', 'er jeg forsinket', 'hvad mangler jeg', "
-                "'hvornår starter mit kursus', eller om deadlines/frister. Kun brugerens egne ordrer."
+                "Vis status på den indloggede brugers egne kurser og ordrer: status, gennemførelse, "
+                "startdato, frist (completion_deadline), pris og titel - med dage tilbage og et "
+                "'forsinket'-flag. Brug når brugeren spørger 'hvor er mit kursus', 'er jeg forsinket', "
+                "'hvornår starter mit kursus', 'ligger der en ordre på mig', 'er jeg tilmeldt' eller "
+                "om deadlines/frister. Kun brugerens egne ordrer. Er listen tom, sig at der ikke "
+                "ligger en ordre — henvis ikke til at kontakte en anden."
             ),
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
@@ -4001,28 +4003,51 @@ def _autosave_profile_add(username, action, data):
     return None
 
 
+# Spoken back to the model on every confirm-card proposal. Without it the model
+# treats "Skift ønsket retning …?" as a write that already happened.
+_PROPOSAL_NOTE = (
+    "IKKE gemt endnu. Brugeren skal bekræfte kortet under svaret, før det ligger på profilen. "
+    "Sig at det venter på bekræftelse. Sig aldrig at det allerede er gemt, noteret, rettet eller slettet."
+)
+
+
+def _with_proposal_note(raw):
+    """Attach the not-saved instruction to a proposed profile write. Other statuses pass through."""
+    try:
+        res = json.loads(raw)
+    except Exception:
+        return raw
+    if not isinstance(res, dict) or res.get("status") != "proposed":
+        return raw
+    res["saved"] = False
+    res["note_for_assistant"] = _PROPOSAL_NOTE
+    return json.dumps(res, ensure_ascii=False)
+
+
 def _execute_update_user_profile(args, username):
     """Profile writes from the AI (N-5.1: say it, and do it).
 
     ADDITIONS are saved at once and come back as ``status: "saved"`` with an
     ``undo`` payload (the chat shows "Noteret ... Fortryd"). Removals, edits and
-    level upgrades stay proposals the user confirms. Incomplete data still yields
-    a ``ui_card`` and errors are passed through unchanged.
+    level upgrades stay proposals the user confirms. A proposal carries
+    ``note_for_assistant`` so the model does not claim the change is already
+    saved. Incomplete data still yields a ``ui_card`` and errors are passed
+    through unchanged.
     """
     raw = _propose_user_profile_update(args, username)
     if not _autosave_enabled():
-        return raw
+        return _with_proposal_note(raw)
     try:
         res = json.loads(raw)
     except Exception:
-        return raw
+        return _with_proposal_note(raw)
     if res.get("status") != "proposed":
         return raw
     conf = res.get("confirm") or {}
     action, data = conf.get("action", ""), conf.get("data") or {}
     # Level upgrades ("Opgradér ...") are edits, not additions: keep the confirm card.
     if action not in _AUTOSAVE_ADDS or str(res.get("message", "")).startswith("Opgradér"):
-        return raw
+        return _with_proposal_note(raw)
     try:
         saved = _autosave_profile_add(username, action, data)
     except Exception as e:
@@ -4032,9 +4057,9 @@ def _execute_update_user_profile(args, username):
             _app.mysql.connection.rollback()
         except Exception:
             pass
-        return raw
+        return _with_proposal_note(raw)
     if not saved:
-        return raw
+        return _with_proposal_note(raw)
     label, undo = saved
     return json.dumps({
         "status": "saved", "section": res.get("section", ""), "label": label,

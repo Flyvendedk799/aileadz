@@ -43,6 +43,14 @@ class GroundingDisclaimerTests(unittest.TestCase):
         types = {u["type"] for u in verdict["unsupported"]}
         self.assertIn("price", types)
 
+    def test_withdrawn_price_does_not_trigger(self):
+        answer = (
+            "Startprisen er 13.900 kr. Det var forkert — prisen står som pris på forespørgsel."
+        )
+        verdict = grounding.grounding_disclaimer(answer, _TOOL_RESULTS)
+        self.assertFalse(verdict["violation"])
+        self.assertEqual(verdict["disclaimer"], "")
+
     def test_grounded_price_does_not_trigger(self):
         # The answer states the SAME price that is present in the tool results.
         answer = "Det her forløb ligger på 9.995 kr — solid værdi."

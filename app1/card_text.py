@@ -21,6 +21,8 @@ CARDS_MARK = "<!--kort-->"
 
 _IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 _SUGGESTIONS = re.compile(r"\s*<suggestions>.*$", re.S)
+_MD_LINK = re.compile(r"\[([^\]]+)\]\(\s*([^)\s]+)\s*\)")
+_FM_HOST = re.compile(r"^https?://(?:www\.)?futurematch\.dk", re.I)
 _ITEM = re.compile(r"^(\s*)(?:\d+[.)]|[-*•])\s+")
 _MARKUP = re.compile(r"[*_`#>\[\]()]+")
 _WORDS = re.compile(r"[^0-9a-zæøåé]+")
@@ -28,6 +30,23 @@ _WORDS = re.compile(r"[^0-9a-zæøåé]+")
 
 def _norm(text):
     return _WORDS.sub(" ", _MARKUP.sub(" ", (text or "").casefold())).strip()
+
+
+def fix_markdown_links(text):
+    """Close the gap the model leaves in product links.
+
+    ``[Titel]( /products/handle)`` and a ``futurematch.dk`` absolute URL both
+    become a root-relative link the chat can open. Other URLs only lose the
+    stray space after the opening parenthesis.
+    """
+    def repl(match):
+        label = match.group(1).strip()
+        url = _FM_HOST.sub("", match.group(2).strip())
+        if url.startswith("/product/") and not url.startswith("/products/"):
+            url = "/products/" + url[len("/product/"):]
+        return f"[{label}]({url})"
+
+    return _MD_LINK.sub(repl, text or "")
 
 
 def strip_images(text):
@@ -81,7 +100,7 @@ def _starts_with_title(first_line, titles):
 
 def tidy_answer(text, cards):
     """Return ``text`` ready to stream next to ``cards`` (a list of dicts with ``title``)."""
-    text = text or ""
+    text = fix_markdown_links(text or "")
     tail_match = _SUGGESTIONS.search(text)
     tail = tail_match.group(0) if tail_match else ""
     body = strip_images(text[:tail_match.start()] if tail_match else text)

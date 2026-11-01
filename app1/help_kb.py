@@ -672,7 +672,7 @@ def execute_search_platform_help(args: Dict[str, Any]) -> str:
 
 TRIGGER_HOW_TOKENS: Tuple[str, ...] = (
     "hvordan", "hvor finder jeg", "hvor kan jeg", "hvor ser jeg", "hvor er", "kan jeg",
-    "skal jeg", "hvad gør jeg", "hvad betyder",
+    "skal jeg", "hvad gør jeg", "hvad betyder", "hvad sker",
     "how do i", "how can i", "how to", "where",
 )
 
@@ -690,6 +690,7 @@ TRIGGER_PLATFORM_NOUNS: Tuple[str, ...] = (
     # account / privacy / support
     "notifikation", "login", "log ind", "adgangskode", "kodeord", "indstillinger",
     "gdpr", "mine data", "persondata", "support", "platformen", "futurematch",
+    "min konto", "kontosletning",
     # English
     "approval", "approve", "order", "memory", "memories", "delete", "password",
     "notification", "learning path", "settings",
@@ -704,12 +705,20 @@ _HOW_RES.append(re.compile(rf"(?<![{_LETTER}])hvor [{_LETTER}]+ (?:jeg|man|vi)(?
 _NOUN_RES = [re.compile(rf"(?<![{_LETTER}]){re.escape(t)}") for t in TRIGGER_PLATFORM_NOUNS]
 
 
+# "jeg vil slette min konto" has no hvordan/kan-jeg, but it is still a help question.
+_ACCOUNT_ERASE = re.compile(
+    rf"(?<![{_LETTER}])slet\w{{0,8}}(?:\s+\w+){{0,5}}\s+(?:min |hele |alle )?(?:konto|bruger|data|profil)(?![{_LETTER}])"
+)
+
+
 def looks_like_platform_help(query: str) -> bool:
     """True when the text asks how/where AND names a platform concept."""
     try:
         text = re.sub(r"\s+", " ", str(query or "").lower()).strip()
         if not text:
             return False
+        if _ACCOUNT_ERASE.search(text):
+            return True
         return any(r.search(text) for r in _HOW_RES) and any(r.search(text) for r in _NOUN_RES)
     except Exception:
         return False

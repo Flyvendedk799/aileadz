@@ -525,6 +525,43 @@ def claims_supported(answer, tool_results, known_titles_fn=None):
         return {"supported": [], "unsupported": [], "ok": True, "checked": 0}
 
 
+# Phrases that withdraw a price or date in the same breath ("13.900 kr …
+# prisen er på forespørgsel"). The number is still in the text, but it is no
+# longer a claim the user should be warned to verify on the course page.
+_WITHDRAW_RE = _re.compile(
+    r"på forespørgsel|ikke oplyst|kan ikke bekræfte|vil ikke gætte|"
+    r"står ikke|ikke i katalog|ikke en fast pris|var forkert|det var ikke",
+    _re.IGNORECASE,
+)
+
+
+def _claim_withdrawn(value, answer) -> bool:
+    """True when the answer itself takes the claim back within the next sentence."""
+    try:
+        text = _coerce_text(answer)
+        needle = _coerce_text(value).strip()
+        if not text or len(needle) < 2:
+            return False
+        idx = text.lower().find(needle.lower())
+        if idx < 0:
+            return False
+        starts = [
+            text.rfind(mark, 0, idx) for mark in (".", "!", "?", "\n")
+        ]
+        start = max(starts)
+        end = len(text)
+        cuts = 0
+        for i, ch in enumerate(text[idx + len(needle):], start=idx + len(needle)):
+            if ch in ".!?\n":
+                cuts += 1
+                end = i + 1
+                if cuts >= 2:
+                    break
+        return bool(_WITHDRAW_RE.search(text[start + 1:end]))
+    except Exception:
+        return False
+
+
 def grounding_disclaimer(answer, tool_results, known_titles_fn=None):
     """Runtime circuit-breaker decision for the live agent loop.
 
@@ -561,7 +598,10 @@ def grounding_disclaimer(answer, tool_results, known_titles_fn=None):
         unsupported = report.get("unsupported") or []
         # Only volatile, user-relevant facts should trip the breaker.
         flagged = [u for u in unsupported if u.get("type") in ("price", "date", "title")]
-        hard = [u for u in flagged if u.get("type") in ("price", "date")]
+        hard = [
+            u for u in flagged
+            if u.get("type") in ("price", "date") and not _claim_withdrawn(u.get("value"), answer)
+        ]
         soft_titles = [u for u in flagged if u.get("type") == "title"]
         violation = bool(hard) or len(soft_titles) >= 2
         return {

@@ -20,6 +20,7 @@ Read in this order when new to the repo: [../CLAUDE.md](../CLAUDE.md) -> [ARCHIT
 | [AI_PROVIDER_TOGGLE.md](AI_PROVIDER_TOGGLE.md) | switching OpenAI <-> Claude, fallback rules, secrets, cost |
 | [MIND_MAP_V2.md](MIND_MAP_V2.md) | the profile mind map (data model, API, UI behaviour) |
 | [../ai_eval/README.md](../ai_eval/README.md) | golden-set quality eval harness and nightly gate |
+| [reviews/2026-11-chat-probe/README.md](reviews/2026-11-chat-probe/README.md) | live Danish chat probe (1 Nov 2026) used to review the chat fixes: transcript, JSONL, grep flags |
 | `../app1/help_kb/*.md` | Danish in-app help articles that feed the AI help knowledge base (`app1/help_kb.py`); they are product content, keep them true to the UI |
 
 ## Integrations

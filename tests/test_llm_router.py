@@ -95,9 +95,11 @@ class LLMRouterCoreTests(unittest.TestCase):
         with patch("ai_runtime._openai_client", return_value=client):
             out = classify_intent_llm("hvad passer bedst til mig?", fallback="discovery")
         self.assertEqual(out, "comparison")
-        # Cheap + bounded: gpt-4o-mini, tiny max_tokens.
-        self.assertEqual(completions.calls[0]["model"], fast_model())
-        self.assertLessEqual(completions.calls[0]["max_tokens"], 8)
+        # Cheap + bounded: the fast model, tiny completion cap.
+        call = completions.calls[0]
+        self.assertEqual(call["model"], fast_model())
+        cap = call.get("max_completion_tokens", call.get("max_tokens"))
+        self.assertLessEqual(cap, 8)
 
     def test_label_with_extra_prose_is_parsed(self):
         client, _ = _install_fake(["Intent: skill_gap\n"])

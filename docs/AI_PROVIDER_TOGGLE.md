@@ -52,15 +52,23 @@ sammenligner derfor svarkvalitet, latens og pris — ikke værktøjsvalg.
 
 | Niveau | OpenAI | Claude | USD / 1M ind → ud |
 |---|---|---|---|
-| Hoved | `gpt-4o` | `claude-opus-5` | 2,50 → 10,00 vs. 5,00 → 25,00 |
-| Hurtig | `gpt-4o-mini` | `claude-haiku-4-5` | 0,15 → 0,60 vs. 1,00 → 5,00 |
+| Hoved | `gpt-6.1-terra` | `claude-opus-5` | 1,00 → 5,00 vs. 5,00 → 25,00 |
+| Hurtig | `gpt-6-luna` | `claude-haiku-4-5` | 0,10 → 0,50 vs. 1,00 → 5,00 |
 
 Bemærk det hurtige niveau: `AI_MODEL_ROUTING=balanced` sender de fleste ture
-dertil, og Haiku er ~7× dyrere end `gpt-4o-mini`. Prompt-caching (se nedenfor)
+dertil, og Haiku er ~10× dyrere end `gpt-6-luna`. Prompt-caching (se nedenfor)
 trækker inputsiden ned igen. `claude-sonnet-5` er et billigere hovedvalg.
 Priserne står i `ai_cost_model.PRICE_TABLE_USD_PER_1M` og skal opdateres der.
-Cache-læsninger afregnes til 10 % af inputprisen for `claude-*` (50 % for OpenAI;
-`AI_CACHED_INPUT_DISCOUNT` overstyrer begge).
+Cache-læsninger afregnes til 10 % for `claude-*`, 5 % for `gpt-6.1-terra`,
+10 % for `gpt-6-luna` og 50 % for ældre OpenAI-modeller (`gpt-4o`,
+`gpt-4o-mini`). `AI_CACHED_INPUT_DISCOUNT` overstyrer alle.
+
+GPT-6 bruger som standard reasoning effort `medium`, og så afviser API'et
+`temperature`. Runtime sætter derfor `reasoning.effort=none` (Responses) eller
+`reasoning_effort=none` (Chat Completions) for Luna, GPT-6 Sol og Terra, så
+den eksisterende temperatur og funktionskald bliver ved med at virke, og så
+hvert svar ikke betaler for skjulte reasoning-tokens. Astra og GPT-6.1 Sol
+kan ikke køre på `none`; de bruges ikke som standard.
 
 Modelstrenge og routing (`AI_MAIN_MODEL`, `AI_FAST_MODEL`, `ANTHROPIC_MAIN_MODEL`,
 `ANTHROPIC_FAST_MODEL`, `AI_MODEL_ROUTING` = `quality|balanced|cost`) kan sættes

@@ -165,8 +165,8 @@ class DefaultsAreLegacyTests(_ProviderTestCase):
         with patch.dict(os.environ, {}, clear=False):
             for key in ("AI_PROVIDER", "AI_MAIN_MODEL", "AI_FAST_MODEL"):
                 os.environ.pop(key, None)
-            self.assertEqual(ai_runtime.main_model(), "gpt-4o")
-            self.assertEqual(ai_runtime.fast_model(), "gpt-4o-mini")
+            self.assertEqual(ai_runtime.main_model(), "gpt-6.1-terra")
+            self.assertEqual(ai_runtime.fast_model(), "gpt-6-luna")
 
     def test_unknown_provider_falls_back_to_openai(self):
         with patch.dict(os.environ, {"AI_PROVIDER": "bogus"}):
@@ -192,8 +192,8 @@ class PinnedSubsystemTests(_ProviderTestCase):
         """RAG rerank / CV extraction call the OpenAI SDK directly and must not
         be handed a Claude model id when the conversational toggle flips."""
         with _as_anthropic():
-            self.assertEqual(ai_provider.openai_main_model(), "gpt-4o")
-            self.assertEqual(ai_provider.openai_fast_model(), "gpt-4o-mini")
+            self.assertEqual(ai_provider.openai_main_model(), "gpt-6.1-terra")
+            self.assertEqual(ai_provider.openai_fast_model(), "gpt-6-luna")
 
     def test_openai_key_is_required_in_every_configuration(self):
         with _as_anthropic({"OPENAI_API_KEY": ""}):
@@ -772,7 +772,7 @@ class DispatchTests(_ProviderTestCase):
         self.assertEqual(result.runtime_path, "anthropic-openai-fallback")
         self.assertTrue(result.fallback_reason)
         # The OpenAI client must never be handed a Claude model id.
-        self.assertEqual(captured["model"], "gpt-4o")
+        self.assertEqual(captured["model"], "gpt-6.1-terra")
 
     def test_direct_completion_and_stream_route_to_claude(self):
         fake = _FakeAnthropic([_response([_text_block("kort svar")])])
@@ -855,7 +855,7 @@ class DispatchTests(_ProviderTestCase):
             self.assertFalse(ai_provider.uses_anthropic())
             self.assertTrue(ai_provider.shadow_enabled())
             # Shadow keeps the request path on OpenAI models.
-            self.assertEqual(ai_runtime.main_model(), "gpt-4o")
+            self.assertEqual(ai_runtime.main_model(), "gpt-6.1-terra")
 
 
 # --- cost model ----------------------------------------------------------------
@@ -883,6 +883,37 @@ class ClaudeCostTests(unittest.TestCase):
         total, cost = ai_runtime._usage_run_cost(usage, model="claude-opus-5")
         self.assertEqual(total, 1_000_000)
         self.assertAlmostEqual(cost, 5.0, places=3)
+
+
+class Gpt6SamplingTests(unittest.TestCase):
+    def test_luna_and_terra_pin_effort_none_and_keep_temperature(self):
+        chat = {"temperature": 0.2, "max_tokens": 16}
+        ai_provider.tune_openai_kwargs(chat, "gpt-6-luna", api="chat")
+        self.assertEqual(chat["reasoning_effort"], "none")
+        self.assertEqual(chat["temperature"], 0.2)
+        self.assertEqual(chat["max_completion_tokens"], 16)
+        self.assertNotIn("max_tokens", chat)
+
+        responses = {"temperature": 0.2}
+        ai_provider.tune_openai_kwargs(responses, "gpt-6.1-terra", api="responses")
+        self.assertEqual(responses["reasoning"], {"effort": "none"})
+        self.assertEqual(responses["temperature"], 0.2)
+
+    def test_astra_drops_temperature_and_gpt4o_is_untouched(self):
+        astra = {"temperature": 0.4, "top_p": 1}
+        ai_provider.tune_openai_kwargs(astra, "gpt-6-astra", api="chat")
+        self.assertNotIn("temperature", astra)
+        self.assertNotIn("top_p", astra)
+        self.assertNotIn("reasoning_effort", astra)
+
+        classic = {"temperature": 0.2}
+        ai_provider.tune_openai_kwargs(classic, "gpt-4o", api="responses")
+        self.assertEqual(classic, {"temperature": 0.2})
+
+    def test_terra_cannot_call_tools_on_chat_completions(self):
+        self.assertFalse(ai_provider.chat_tools_supported("gpt-6.1-terra"))
+        self.assertTrue(ai_provider.chat_tools_supported("gpt-6-luna"))
+        self.assertTrue(ai_provider.chat_tools_supported("gpt-4o"))
 
 
 if __name__ == "__main__":

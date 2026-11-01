@@ -256,6 +256,16 @@ def _get_openai_client():
         return None
 
 
+def _tuned_chat_kwargs(model: str, **kwargs):
+    """Chat Completions body with GPT-6 sampling pins applied."""
+    try:
+        from ai_provider import tune_openai_kwargs
+        tune_openai_kwargs(kwargs, model, api="chat")
+    except Exception:
+        pass
+    return kwargs
+
+
 def _model_name() -> str:
     """Pick a model, reusing the shared helpers when importable.
 
@@ -510,7 +520,8 @@ def parse_profile_from_text(text: str, progress_callback=None) -> dict:
             "Svar kun med JSON efter det aftalte skema.\n\n" + fenced
         )
         try:
-            resp = client.chat.completions.create(
+            resp = client.chat.completions.create(**_tuned_chat_kwargs(
+                model,
                 model=model,
                 messages=[
                     {"role": "system", "content": _EXTRACTION_SYSTEM_PROMPT},
@@ -520,7 +531,7 @@ def parse_profile_from_text(text: str, progress_callback=None) -> dict:
                 response_format={"type": "json_object"},
                 max_tokens=1500,
                 timeout=30,
-            )
+            ))
             raw = ""
             try:
                 raw = resp.choices[0].message.content or ""
@@ -530,7 +541,8 @@ def parse_profile_from_text(text: str, progress_callback=None) -> dict:
             # Retry once without response_format in case the model/endpoint
             # does not support JSON mode.
             try:
-                resp = client.chat.completions.create(
+                resp = client.chat.completions.create(**_tuned_chat_kwargs(
+                    model,
                     model=model,
                     messages=[
                         {"role": "system", "content": _EXTRACTION_SYSTEM_PROMPT},
@@ -539,7 +551,7 @@ def parse_profile_from_text(text: str, progress_callback=None) -> dict:
                     temperature=0.1,
                     max_tokens=1500,
                     timeout=30,
-                )
+                ))
                 raw = (resp.choices[0].message.content or "") if resp else ""
             except Exception:
                 return {}
@@ -588,8 +600,10 @@ def improve_cv_section(section: str, content, *, target_role: str = "", gaps=Non
             "tydeligt markerer en sproglig inferens).\n"
             f"Sektion: {section}\nKontekst: {json.dumps(context, ensure_ascii=False)}\n{fenced}"
         )
-        resp = client.chat.completions.create(
-            model=_model_name(),
+        improve_model = _model_name()
+        resp = client.chat.completions.create(**_tuned_chat_kwargs(
+            improve_model,
+            model=improve_model,
             messages=[
                 {"role": "system", "content": "Du er en faktatro CV-redaktør. Opfind aldrig evidens."},
                 {"role": "user", "content": prompt},
@@ -598,7 +612,7 @@ def improve_cv_section(section: str, content, *, target_role: str = "", gaps=Non
             response_format={"type": "json_object"},
             max_tokens=700,
             timeout=30,
-        )
+        ))
         raw = (resp.choices[0].message.content or "") if resp else ""
         parsed = _safe_load_json(raw) or {}
         suggestion = _clean_str(parsed.get("suggestion"), 1800)

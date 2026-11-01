@@ -36,15 +36,24 @@ from typing import Any, Dict, Iterable, Mapping, Optional
 #
 #   >>> UPDATE ME when OpenAI changes prices. <<<
 #   Source: OpenAI API pricing page (https://openai.com/api/pricing/).
-#   Last reviewed: 2026-06 — figures below are the standard (non-batch) tier.
+#   Last reviewed: 2026-11-01 — figures below are the standard (non-batch) tier.
+#   Source: https://developers.openai.com/api/docs/pricing
 #
 # Keep keys as the exact model strings used in ai_runtime.py / app1/rag.py:
-#   main_model()      -> "gpt-4o"
-#   fast_model()      -> "gpt-4o-mini"
+#   main_model()      -> "gpt-6.1-terra"
+#   fast_model()      -> "gpt-6-luna"
 #   embedding_model() -> "text-embedding-3-small"
 # Embedding models have no output tokens, so output is 0.0.
+# Optional ``cached_discount`` is the fraction of the input rate charged for
+# cached prompt tokens (OpenAI's older models are ~50%, which is the module
+# default). Newer GPT-6 models publish a steeper cache rate, so they set it
+# explicitly. An AI_CACHED_INPUT_DISCOUNT env var still overrides every model.
 # ---------------------------------------------------------------------------
 PRICE_TABLE_USD_PER_1M: Dict[str, Dict[str, float]] = {
+    "gpt-6.1-terra": {"input": 1.00, "output": 5.00, "cached_discount": 0.05},
+    "gpt-6-luna": {"input": 0.10, "output": 0.50, "cached_discount": 0.10},
+    # Previous defaults. Kept so historical ai_agent_runs still price, and so
+    # an operator who pins the old ids in ai_settings is not shown as unknown.
     "gpt-4o": {"input": 2.50, "output": 10.00},
     "gpt-4o-mini": {"input": 0.15, "output": 0.60},
     "text-embedding-3-small": {"input": 0.02, "output": 0.0},
@@ -200,7 +209,19 @@ def estimate_cost(
     try:
         in_rate = float(rates.get("input", 0.0))
         out_rate = float(rates.get("output", 0.0))
-        discount = cached_input_discount(model)
+        # A per-model cache fraction wins over the OpenAI-wide 50% default.
+        # An explicit AI_CACHED_INPUT_DISCOUNT still overrides both.
+        env_discount = os.getenv("AI_CACHED_INPUT_DISCOUNT")
+        if env_discount is not None and str(env_discount).strip() != "":
+            discount = cached_input_discount(model)
+        elif rates.get("cached_discount") is not None:
+            discount = float(rates["cached_discount"])
+            if discount < 0.0:
+                discount = 0.0
+            elif discount > 1.0:
+                discount = 1.0
+        else:
+            discount = cached_input_discount(model)
 
         non_cached_in = max(0, in_tok - cached)
         input_usd = (non_cached_in / _TOKENS_PER_UNIT) * in_rate

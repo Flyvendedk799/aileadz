@@ -9,9 +9,9 @@ OpenAI SDK. This module introduces ONE place that answers two questions:
     * which model strings does that provider use?               -> ``main_model()`` / ``fast_model()``
 
 Both resolve from an admin-editable DB setting that FALLS BACK to the existing
-environment variables. With no ``ai_settings`` row present and no new env vars
-set, every function here returns exactly the legacy value, so importing this
-module changes nothing until an admin flips the switch.
+environment variables, then to the built-in defaults (GPT-6.1 Terra for the
+main tier, GPT-6 Luna for the fast tier). A row in ``ai_settings`` or an env
+var still wins, so an operator can pin an older model without a deploy.
 
 Scope of the toggle (important)
 -------------------------------
@@ -75,8 +75,15 @@ PROVIDER_LABELS: Dict[str, str] = {
 
 # Defaults per provider. OpenAI defaults mirror the historical env defaults in
 # ai_runtime exactly, so nothing moves when the toggle is untouched.
-DEFAULT_OPENAI_MAIN = "gpt-4o"
-DEFAULT_OPENAI_FAST = "gpt-4o-mini"
+# GPT-6.1 Terra is the main tier: about half the price of gpt-4o ($1 / $5 per 1M
+# vs $2.50 / $10) and a newer model aimed at clear writing plus tool use.
+# GPT-6 Luna is the fast tier: cheaper than gpt-4o-mini ($0.10 / $0.50 vs
+# $0.15 / $0.60) and the current high-volume model. Both accept reasoning
+# effort "none", which this codebase pins so temperature and Chat Completions
+# tool calls keep working (GPT-6 defaults effort to medium and then rejects
+# temperature). See tune_openai_kwargs.
+DEFAULT_OPENAI_MAIN = "gpt-6.1-terra"
+DEFAULT_OPENAI_FAST = "gpt-6-luna"
 # Claude defaults: Opus 5 for the main tier, Haiku 4.5 for the cheap tier.
 # Haiku is used for the 4-token intent router and short tool-deciding turns; it
 # does not support output_config.effort, which the adapter accounts for.
@@ -314,6 +321,92 @@ def openai_fast_model() -> str:
     the conversational agent is switched to Claude.
     """
     return get_setting("AI_FAST_MODEL", DEFAULT_OPENAI_FAST)
+
+
+# Prefixes that accept reasoning effort "none". Checked before the broader
+# "gpt-6" / "gpt-5" sampling rejection so Luna and Terra keep temperature.
+# gpt-6-sol must not be written so that it also matches gpt-6.1-sol.
+_EFFORT_NONE_PREFIXES = ("gpt-6-luna", "gpt-6-sol", "gpt-6.1-terra")
+# These reject effort "none" (and therefore temperature) at every effort.
+_NO_EFFORT_NONE_PREFIXES = ("gpt-6-astra", "gpt-6.1-sol")
+# Newer reasoning families whose default effort rejects sampling params.
+_SAMPLING_REJECT_PREFIXES = ("gpt-6", "gpt-5", "o1", "o3", "o4")
+
+
+def _model_key(model: Optional[str]) -> str:
+    try:
+        return str(model or "").strip().lower()
+    except Exception:
+        return ""
+
+
+def chat_tools_supported(model: Optional[str]) -> bool:
+    """False when function calling on Chat Completions is rejected for ``model``.
+
+    GPT-6.1 Terra, GPT-6.1 Sol and GPT-6 Astra only call tools through the
+    Responses API. The chat-completions agent (AI_RUNTIME=chat, and the
+    Claude-to-OpenAI fallback) must not send them those tool payloads.
+    """
+    name = _model_key(model)
+    return not name.startswith(("gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-astra"))
+
+
+def supports_reasoning_none(model: Optional[str]) -> bool:
+    """True when the model accepts reasoning effort ``none``.
+
+    At ``none``, temperature is still valid and (for Luna / GPT-6 Sol) Chat
+    Completions can call functions. GPT-6 Astra and GPT-6.1 Sol cannot.
+    """
+    name = _model_key(model)
+    if not name or name.startswith(_NO_EFFORT_NONE_PREFIXES):
+        return False
+    return name.startswith(_EFFORT_NONE_PREFIXES)
+
+
+def rejects_sampling_params(model: Optional[str]) -> bool:
+    """True when temperature / top_p must be omitted or the API returns 400.
+
+    GPT-6 defaults reasoning effort to medium, and sampling params are only
+    legal at effort ``none``. Models that cannot run at ``none`` never accept
+    them. gpt-4o / gpt-4o-mini / gpt-4.1 are unchanged.
+    """
+    name = _model_key(model)
+    if not name or supports_reasoning_none(name):
+        return False
+    return name.startswith(_SAMPLING_REJECT_PREFIXES)
+
+
+def _uses_completion_token_cap(model: Optional[str]) -> bool:
+    """GPT-5 / GPT-6 Chat Completions reject ``max_tokens``."""
+    return _model_key(model).startswith(("gpt-5", "gpt-6", "o1", "o3", "o4"))
+
+
+def tune_openai_kwargs(kwargs: Dict[str, Any], model: Optional[str], *, api: str = "chat") -> Dict[str, Any]:
+    """Make one OpenAI request body safe for the model that will serve it.
+
+    ``api`` is ``"chat"`` (Chat Completions: ``reasoning_effort``) or
+    ``"responses"`` (Responses: ``reasoning={"effort": ...}``). Mutates and
+    returns ``kwargs``. Never raises.
+
+    GPT-6 Chat Completions also reject ``max_tokens``; the cap moves to
+    ``max_completion_tokens``. The Responses API keeps ``max_output_tokens``,
+    which the caller already sets.
+    """
+    try:
+        if api == "chat" and _uses_completion_token_cap(model) and "max_tokens" in kwargs:
+            kwargs["max_completion_tokens"] = kwargs.pop("max_tokens")
+        if supports_reasoning_none(model):
+            if api == "responses":
+                kwargs["reasoning"] = {"effort": "none"}
+            else:
+                kwargs["reasoning_effort"] = "none"
+            return kwargs
+        if rejects_sampling_params(model):
+            for banned in ("temperature", "top_p", "logprobs", "top_logprobs"):
+                kwargs.pop(banned, None)
+    except Exception:
+        return kwargs
+    return kwargs
 
 
 def anthropic_main_model() -> str:

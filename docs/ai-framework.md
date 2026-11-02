@@ -71,7 +71,8 @@ advice** and answers a concrete request first; profile questions come after and 
 help. Everything else about the engine (one endpoint `POST /app1/ask`, one frontend
 `chat.js`, one toolset) is unchanged. Per-mode policy lives in `MODE_PROFILES`
 (`app1/agent.py`): core playbook, flow playbooks, few-shot set, stage hints, memory limit,
-`prefer_quality`, handoff thresholds.
+`prefer_quality`, handoff thresholds. The assistant answers in Danish even when the
+user writes in English or asks it to switch language.
 
 **One surface.** `conversation_state.surface_for_mode` maps every mode to `chat`, so there is
 one open conversation, one digest and one session id. Conversations that began in the old
@@ -160,7 +161,11 @@ Tool state is passed per turn via module globals: `set_search_context(...)`
 - **Tool evidence reaches the final answer.** `run_responses_agent` appends a
   synthetic chat-format assistant message (with `tool_calls`) before the `tool`
   messages, so `_sanitize_tool_sequence` keeps them and the streamed answer sees this
-  turn's results.
+  turn's results. Oversized catalog JSON is compacted to titles, prices, handles and
+  links (`_strip_heavy_tool_payload`) rather than replaced with a stub the model
+  cannot read. The "ingen kurser" note is appended only when a search payload had
+  no rows and the answer did not already say so.
+
 - **One completion per tool turn** (`AI_CAPTURE_FINAL`, default on): the answer the
   model already wrote on the no-tool-calls iteration is captured and streamed
   (`iter_buffered_text_chunks`, 3 words/chunk). It is regenerated only if empty or
@@ -531,7 +536,10 @@ AI entry points between surfaces are listed in 1b.
   turn's tool results. Threshold: >=1 unsupported price/date, or >=2 unsupported titles
   (TitleCase runs count only if they fuzzy-match a known catalog title, injected as
   `known_titles_fn` so the module stays dependency-free). Tool **arguments never count
-  as evidence** (user-echoed prices can't "support" a claim). Price matching is
+  as evidence** (user-echoed prices can't "support" a claim). A price or date the
+  answer itself withdraws in the next sentence ("på forespørgsel", "kan ikke
+  bekræfte") does not trip it, and the live disclaimer only runs when the turn
+  used a catalog/order tool or showed course cards. Price matching is
   token-boundary + cents-aware (`_canon_amount`/`_evidence_amounts`).
   `AI_GROUNDING_RECALL` (default off) = one bounded corrective re-generation on the
   buffered path; `AI_GROUNDING_DECOMPOUND` (default off) = Danish decompounding. HR and

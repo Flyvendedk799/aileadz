@@ -914,13 +914,162 @@ def estimate_messages_tokens(messages: List[Dict[str, Any]]) -> int:
     return total
 
 
+_RESULT_LIST_KEYS = ("results", "products", "courses", "comparison", "items")
+_RESULT_KEEP = (
+    "title", "handle", "vendor", "vendor_slug", "product_url", "url",
+    "price", "price_min", "price_label", "format", "locations", "dates",
+    "duration_days", "difficulty", "language", "certification",
+    "prerequisites", "has_prerequisites", "target_audience",
+    "availability_sessions", "status", "no_upcoming_dates",
+    "match_reason", "recommendation_reason",
+    "summary", "previously_shown", "completed",
+)
+
+
+def _compact_result_item(item: Any, keep_summary: bool) -> Any:
+    if not isinstance(item, dict):
+        return item
+    out: Dict[str, Any] = {}
+    for key in _RESULT_KEEP:
+        if key == "summary" and not keep_summary:
+            continue
+        if key not in item or item[key] in (None, "", [], {}):
+            continue
+        value = item[key]
+        if key in ("locations", "dates") and isinstance(value, list):
+            value = [v for v in value if v][:2]
+        elif key == "availability_sessions" and isinstance(value, list):
+            value = [v for v in value if v][:4]
+        elif key == "summary" and isinstance(value, str) and len(value) > 160:
+            value = value[:157].rstrip() + "…"
+        out[key] = value
+    return out or {"title": item.get("title"), "handle": item.get("handle")}
+
+
+def _compact_fact_bundle(bundle: Dict[str, Any], keep_summary: bool) -> Dict[str, Any]:
+    out = dict(bundle)
+    sessions = out.get("sessions")
+    matching = out.get("matching_sessions")
+    if isinstance(sessions, list):
+        out["sessions"] = sessions[:4]
+    if isinstance(matching, list):
+        if matching == sessions:
+            out.pop("matching_sessions", None)
+        else:
+            out["matching_sessions"] = matching[:4]
+    nearby = out.get("nearby_sessions")
+    if isinstance(nearby, list):
+        out["nearby_sessions"] = nearby[:3]
+    if not keep_summary:
+        out.pop("variants", None)
+    return out
+
+
+def _shrink_result_lists(data: Dict[str, Any], keep_summary: bool) -> Dict[str, Any]:
+    shrunk = dict(data)
+    for key in _RESULT_LIST_KEYS:
+        rows = shrunk.get(key)
+        if isinstance(rows, list):
+            shrunk[key] = [_compact_result_item(row, keep_summary) for row in rows]
+    product = shrunk.get("product")
+    if isinstance(product, dict):
+        # Single-product lookup is called for details; always keep its summary.
+        shrunk["product"] = _compact_result_item(product, keep_summary=True)
+    bundle = shrunk.get("fact_bundle")
+    if isinstance(bundle, dict):
+        shrunk["fact_bundle"] = _compact_fact_bundle(bundle, keep_summary)
+    variants = shrunk.get("variants")
+    if isinstance(variants, list):
+        shrunk["variants"] = variants[:2] if keep_summary else []
+        if not shrunk["variants"]:
+            shrunk.pop("variants", None)
+    path_steps = shrunk.get("path")
+    if isinstance(path_steps, list):
+        compacted_steps = []
+        for step in path_steps:
+            if isinstance(step, dict) and isinstance(step.get("courses"), list):
+                step_copy = dict(step)
+                step_copy["courses"] = [
+                    _compact_result_item(c, keep_summary) for c in step["courses"][:2]
+                ]
+                compacted_steps.append(step_copy)
+            else:
+                compacted_steps.append(step)
+        shrunk["path"] = compacted_steps
+    return shrunk
+
+
+def _drop_result_tail(data: Dict[str, Any], max_chars: int) -> Dict[str, Any]:
+    fitted = dict(data)
+    for key in _RESULT_LIST_KEYS:
+        rows = fitted.get(key)
+        if not isinstance(rows, list) or len(rows) <= 1:
+            continue
+        total = len(rows)
+        kept = list(rows)
+        while len(kept) > 1 and len(_safe_json(fitted)) > max_chars:
+            kept = kept[:-1]
+            fitted[key] = kept
+        if len(kept) < total:
+            fitted["omitted_count"] = total - len(kept)
+            fitted["note_for_assistant"] = (
+                f"Viser {len(kept)} af {total} resultater, med navn, pris, handle og link. "
+                "Opfind ikke de udeladte."
+            )
+    if len(_safe_json(fitted)) > max_chars and isinstance(fitted.get("fact_bundle"), dict):
+        fitted.pop("fact_bundle", None)
+    return fitted
+
+
+def _fit_tool_payload(data: Dict[str, Any], max_chars: int) -> Dict[str, Any]:
+    """Keep catalog facts inside the model budget. Never replace them with a stub."""
+    for keep_summary in (True, False):
+        candidate = _drop_result_tail(_shrink_result_lists(data, keep_summary), max_chars)
+        if len(_safe_json(candidate)) <= max_chars:
+            return candidate
+    titles = []
+    for key in _RESULT_LIST_KEYS:
+        for row in data.get(key) or []:
+            if isinstance(row, dict) and row.get("title"):
+                titles.append({
+                    "title": row.get("title"),
+                    "handle": row.get("handle"),
+                    "price": row.get("price") or row.get("price_label") or row.get("price_min"),
+                    "product_url": row.get("product_url") or row.get("url"),
+                })
+    minimal: Dict[str, Any] = {
+        "status": data.get("status") or "success",
+        "count": data.get("count", len(titles)),
+        "results": titles[:8],
+        "note_for_assistant": "Kompakt uddrag. Brug kun disse navne, priser og links.",
+    }
+    product = data.get("product")
+    if isinstance(product, dict) and (product.get("title") or product.get("handle")):
+        minimal["product"] = _compact_result_item(product, keep_summary=True)
+        if not titles:
+            minimal["count"] = 1
+    if data.get("message"):
+        minimal["message"] = str(data.get("message"))[:400]
+    if len(_safe_json(minimal)) > max_chars:
+        minimal["results"] = titles[:3]
+        minimal.pop("message", None)
+    return minimal
+
+
 def _strip_heavy_tool_payload(output: str, max_chars: int = 6000) -> str:
-    """Remove UI-only blobs from tool JSON before sending it back to the model."""
+    """Remove UI-only blobs from tool JSON before sending it back to the model.
+
+    Oversized catalog payloads are compacted down to titles, prices, handles and
+    links. Replacing the whole JSON with a "shortened" stub made the model say
+    it could not see the courses the user was already looking at.
+    """
     if not output:
         return output
+    data = None
     try:
-        data = json.loads(output)
-        if isinstance(data, dict):
+        parsed = json.loads(output)
+        if isinstance(parsed, dict):
+            data = parsed
             for heavy_key in (
                 "raw_products", "raw_product", "search_debug", "debug",
                 "description", "body_html", "variants_full",
@@ -933,7 +1082,7 @@ def _strip_heavy_tool_payload(output: str, max_chars: int = 6000) -> str:
             if isinstance(variants, list) and len(variants) > 4:
                 data["variants"] = variants[:4]
             comparison = data.get("comparison")
-            if isinstance(comparison, list):
+            if isinstance(comparison, list) and len(comparison) > 4:
                 data["comparison"] = comparison[:4]
             vendor = data.get("vendor")
             if isinstance(vendor, dict) and len(_safe_json(vendor)) > 1500:
@@ -944,10 +1093,12 @@ def _strip_heavy_tool_payload(output: str, max_chars: int = 6000) -> str:
                 }
             output = _safe_json(data)
     except Exception:
-        pass
-    if len(output) > max_chars:
-        return _safe_json({"status": "truncated", "message": "Tool output shortened for model context."})
-    return output
+        data = None
+    if len(output) <= max_chars:
+        return output
+    if isinstance(data, dict):
+        return _safe_json(_fit_tool_payload(data, max_chars))
+    return output[:max_chars]
 
 
 def consolidate_system_layers(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

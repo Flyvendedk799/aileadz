@@ -472,21 +472,35 @@ def _token_match(q: str, t: str) -> float:
     return 0.0
 
 
+def _field_match_strength(q: str, toks: frozenset) -> float:
+    if q in toks:
+        return 1.0
+    m = 0.0
+    for t in toks:
+        m = max(m, _token_match(q, t))
+        if m >= 0.8:
+            break
+    return m
+
+
 def _best_field_match(q: str, fields: List[Tuple[float, frozenset]]) -> float:
     best = 0.0
-    for weight, toks in fields:
-        if weight <= best:
+    section_bonus = 0.0
+    for idx, (weight, toks) in enumerate(fields):
+        m = _field_match_strength(q, toks)
+        if m <= 0.0:
             continue
-        if q in toks:
-            best = weight
-            continue
-        m = 0.0
-        for t in toks:
-            m = max(m, _token_match(q, t))
-            if m >= 0.8:
-                break
         best = max(best, weight * m)
-    return best
+        # All chunks of an article share fields[0] (title + keywords). When a
+        # query token also hits the chunk's own section heading or body text,
+        # add a small specificity bonus so the right section wins within the article.
+        if idx == 1:
+            section_bonus += 0.12 * m
+        elif idx == 2:
+            section_bonus += 0.05 * m
+    if best <= 0.0:
+        return 0.0
+    return min(1.0, best + section_bonus)
 
 
 def _keyword_scores(q_tokens: List[str], chunks: List[Dict[str, Any]]) -> List[float]:
@@ -672,7 +686,7 @@ def execute_search_platform_help(args: Dict[str, Any]) -> str:
 
 TRIGGER_HOW_TOKENS: Tuple[str, ...] = (
     "hvordan", "hvor finder jeg", "hvor kan jeg", "hvor ser jeg", "hvor er", "kan jeg",
-    "skal jeg", "hvad gør jeg", "hvad betyder",
+    "skal jeg", "hvad gør jeg", "hvad betyder", "hvad sker",
     "how do i", "how can i", "how to", "where",
 )
 
@@ -690,6 +704,7 @@ TRIGGER_PLATFORM_NOUNS: Tuple[str, ...] = (
     # account / privacy / support
     "notifikation", "login", "log ind", "adgangskode", "kodeord", "indstillinger",
     "gdpr", "mine data", "persondata", "support", "platformen", "futurematch",
+    "min konto", "kontosletning",
     # English
     "approval", "approve", "order", "memory", "memories", "delete", "password",
     "notification", "learning path", "settings",
@@ -704,12 +719,20 @@ _HOW_RES.append(re.compile(rf"(?<![{_LETTER}])hvor [{_LETTER}]+ (?:jeg|man|vi)(?
 _NOUN_RES = [re.compile(rf"(?<![{_LETTER}]){re.escape(t)}") for t in TRIGGER_PLATFORM_NOUNS]
 
 
+# "jeg vil slette min konto" has no hvordan/kan-jeg, but it is still a help question.
+_ACCOUNT_ERASE = re.compile(
+    rf"(?<![{_LETTER}])slet\w{{0,8}}(?:\s+\w+){{0,5}}\s+(?:min |hele |alle )?(?:konto|bruger|data|profil)(?![{_LETTER}])"
+)
+
+
 def looks_like_platform_help(query: str) -> bool:
     """True when the text asks how/where AND names a platform concept."""
     try:
         text = re.sub(r"\s+", " ", str(query or "").lower()).strip()
         if not text:
             return False
+        if _ACCOUNT_ERASE.search(text):
+            return True
         return any(r.search(text) for r in _HOW_RES) and any(r.search(text) for r in _NOUN_RES)
     except Exception:
         return False

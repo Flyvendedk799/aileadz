@@ -319,6 +319,29 @@ class AIRuntimeTests(unittest.TestCase):
         self.assertIn("SESSION KONTEKST", merged[1]["content"])
         self.assertIn("profil info", merged[1]["content"])
 
+    def test_strip_heavy_tool_payload_keeps_course_facts_when_oversized(self):
+        results = [
+            {
+                "title": f"Kursus {i}",
+                "handle": f"kursus-{i}",
+                "price": f"{1000 + i} kr",
+                "product_url": f"/products/kursus-{i}",
+                "summary": "x" * 2000,
+                "body_html": "y" * 4000,
+            }
+            for i in range(6)
+        ]
+        stripped = json.loads(_strip_heavy_tool_payload(
+            json.dumps({"status": "success", "count": 6, "results": results}),
+            max_chars=2500,
+        ))
+        self.assertNotEqual(stripped.get("status"), "truncated")
+        self.assertNotIn("shortened", json.dumps(stripped).lower())
+        titles = [row["title"] for row in stripped["results"]]
+        self.assertIn("Kursus 0", titles)
+        self.assertTrue(all(row.get("product_url") for row in stripped["results"]))
+        self.assertLessEqual(len(json.dumps(stripped)), 2500)
+
     def test_strip_heavy_tool_payload_removes_search_debug(self):
         payload = json.dumps({"status": "success", "search_debug": {"tokens": list(range(100))}, "results": []})
         stripped = json.loads(_strip_heavy_tool_payload(payload))
@@ -924,6 +947,55 @@ class ParallelToolContextTests(unittest.TestCase):
             tools=[], tool_executor=executor, username=None, session_id=None,
         )
         self.assertEqual([r.status for r in results], ["ok", "ok"])
+
+    def test_strip_heavy_tool_payload_preserves_single_product_and_metadata(self):
+        """catalog_get_product returns a single `product` dict plus `fact_bundle`
+        and `variants`. Compaction must keep `product` (including its summary and
+        prerequisite metadata) instead of collapsing it to `results: []`."""
+        sessions = [
+            {"date": f"2027-04-{d:02d}", "city": "København", "location": "Lokale " + ("X" * 120), "availability": "available"}
+            for d in range(1, 25)
+        ]
+        payload = {
+            "status": "success",
+            "product": {
+                "title": "PRINCE2 Foundation",
+                "handle": "prince2-foundation",
+                "vendor": "Mannaz",
+                "price": "12.950 kr",
+                "price_min": 12950.0,
+                "summary": "Intensivt kursus i projektledelse med certificering.",
+                "duration_days": 3,
+                "difficulty": "beginner",
+                "language": "dansk",
+                "certification": "PRINCE2 Foundation",
+                "prerequisites": ["Grundlæggende projekterfaring"],
+                "has_prerequisites": True,
+                "availability_sessions": sessions[:6],
+            },
+            "variants": [{"id": i, "option1": "København", "option2": "2027-04-01", "blob": "Y" * 400} for i in range(4)],
+            "fact_bundle": {
+                "sessions": sessions,
+                "matching_sessions": list(sessions),
+            },
+        }
+        raw = json.dumps(payload, ensure_ascii=False)
+        self.assertGreater(len(raw), 6000)
+
+        compacted = json.loads(ai_runtime._strip_heavy_tool_payload(raw, max_chars=6000))
+        self.assertIn("product", compacted)
+        self.assertEqual(compacted["product"]["title"], "PRINCE2 Foundation")
+        self.assertIn("Intensivt kursus", compacted["product"]["summary"])
+        self.assertEqual(compacted["product"]["duration_days"], 3)
+        self.assertEqual(compacted["product"]["prerequisites"], ["Grundlæggende projekterfaring"])
+        self.assertTrue(compacted["product"]["has_prerequisites"])
+
+        # Even under an ultra-tight budget that forces the minimal fallback, `product` survives.
+        tight = json.loads(ai_runtime._strip_heavy_tool_payload(raw, max_chars=450))
+        self.assertIn("product", tight)
+        self.assertEqual(tight["product"]["handle"], "prince2-foundation")
+        self.assertEqual(tight["count"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -112,7 +112,7 @@ class ReadinessContactTests(unittest.TestCase):
 
     def test_preparation_uses_the_only_variant_and_still_needs_confirmation(self):
         product = {"handle": "distanceledelse", "title": "Distanceledelse",
-                   "variants": [{"date": "2026-11-01", "location": "Online", "price": 9000}]}
+                   "variants": [{"date": "2027-03-01", "location": "Online", "price": 9000}]}
         with _patched_contact({"full_name": "Tobias P", "email": "t@firma.dk"}), \
                 mock.patch.object(tools.catalog, "get_product", return_value=product), \
                 mock.patch.object(tools, "_catalog_compact_fields", return_value=product), \

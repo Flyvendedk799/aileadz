@@ -210,6 +210,38 @@ class PriceConsistencyNoAgreementTests(unittest.TestCase):
         self.assertEqual(payload["price"], ORIGINAL_LABEL)
         self.assertNotIn("discount", payload)
 
+    def test_kontakt_for_pris_tag_with_positive_price_keeps_numeric_label(self):
+        import catalog_service as catalog
+        raw = _raw_product(price="4999.00")
+        raw["tags"] = "Ledelse, Kontakt for pris, no-index"
+        norm = catalog.normalize_product(raw, overrides={})
+        self.assertEqual(norm["price_label"], "4.999 kr")
+        self.assertEqual(norm["price_min"], 4999.0)
+        compact = _extract_compact_fields(raw)
+        self.assertNotIn("Kontakt for pris", compact["tags"])
+        self.assertNotIn("no-index", compact["tags"])
+
+    def test_kontakt_for_pris_tag_with_zero_placeholder_is_on_request_everywhere(self):
+        import catalog_service as catalog
+        from app1 import serialize_course_card
+        raw = _raw_product(price="0.00")
+        raw["tags"] = "Ledelse, Kontakt for pris"
+        norm = catalog.normalize_product(raw, overrides={})
+        self.assertEqual(norm["price_label"], "Pris på forespørgsel")
+        self.assertIsNone(norm["price_min"])
+        self.assertEqual(_extract_compact_fields(raw)["price"], "Pris på forespørgsel")
+        self.assertEqual(_catalog_compact_fields(norm)["price"], "Pris på forespørgsel")
+        self.assertEqual(serialize_course_card(raw)["price"], "Pris på forespørgsel")
+
+    def test_default_title_variant_is_stripped_from_locations(self):
+        import catalog_service as catalog
+        raw = _raw_product(price="2500.00")
+        raw["variants"] = [{"price": "2500.00", "option1": "Default Title", "option2": ""}]
+        norm = catalog.normalize_product(raw, overrides={})
+        self.assertEqual(norm["locations"], [])
+        self.assertEqual(_extract_compact_fields(raw)["locations"], [])
+        self.assertEqual(tools._delivery_modes(norm), set())
+
     def test_compare_executors_raw_price(self):
         fakes = [_raw_product(handle="a", title="Kursus A"), _raw_product(handle="b", title="Kursus B")]
         with patch.object(tools, "load_augmented_products", return_value=fakes):

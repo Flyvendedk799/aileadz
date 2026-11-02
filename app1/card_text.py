@@ -21,6 +21,8 @@ CARDS_MARK = "<!--kort-->"
 
 _IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 _SUGGESTIONS = re.compile(r"\s*<suggestions>.*$", re.S)
+_MD_LINK = re.compile(r"\[([^\]]+)\]\(\s*([^)\s]+)\s*\)")
+_FM_HOST = re.compile(r"^https?://(?:www\.)?futurematch\.dk", re.I)
 _ITEM = re.compile(r"^(\s*)(?:\d+[.)]|[-*•])\s+")
 _MARKUP = re.compile(r"[*_`#>\[\]()]+")
 _WORDS = re.compile(r"[^0-9a-zæøåé]+")
@@ -28,6 +30,23 @@ _WORDS = re.compile(r"[^0-9a-zæøåé]+")
 
 def _norm(text):
     return _WORDS.sub(" ", _MARKUP.sub(" ", (text or "").casefold())).strip()
+
+
+def fix_markdown_links(text):
+    """Close the gap the model leaves in product links.
+
+    ``[Titel]( /products/handle)`` and a ``futurematch.dk`` absolute URL both
+    become a root-relative link the chat can open. Other URLs only lose the
+    stray space after the opening parenthesis.
+    """
+    def repl(match):
+        label = match.group(1).strip()
+        url = _FM_HOST.sub("", match.group(2).strip())
+        if url.startswith("/product/") and not url.startswith("/products/"):
+            url = "/products/" + url[len("/product/"):]
+        return f"[{label}]({url})"
+
+    return _MD_LINK.sub(repl, text or "")
 
 
 def strip_images(text):
@@ -74,14 +93,49 @@ def _mentions(block, titles):
     return any(t and t in flat for t in titles)
 
 
+_REJECT_HEADING = re.compile(
+    r"(?:fravælge|springe over|ikke vælge|ikke anbefale|fraråde|undgå)[^:\n]*:\s*$",
+    re.I,
+)
+
+
 def _starts_with_title(first_line, titles):
     head = _norm(_ITEM.sub("", first_line))
     return any(t and head.startswith(t) for t in titles)
 
 
+def _prev_nonempty_line(lines, idx):
+    j = idx - 1
+    while j >= 0:
+        if lines[j].strip():
+            return lines[j].strip()
+        j -= 1
+    return ""
+
+
+def _collect_list_items(lines, start):
+    """Return list of (item_start, item_end) for a contiguous list starting at ``start``."""
+    items = []
+    i = start
+    while i < len(lines):
+        if not _ITEM.match(lines[i]):
+            break
+        end = _item_end(lines, i)
+        items.append((i, end))
+        # Skip blank lines between sibling list items
+        j = end
+        while j < len(lines) and not lines[j].strip():
+            j += 1
+        if j < len(lines) and _ITEM.match(lines[j]):
+            i = j
+        else:
+            break
+    return items
+
+
 def tidy_answer(text, cards):
     """Return ``text`` ready to stream next to ``cards`` (a list of dicts with ``title``)."""
-    text = text or ""
+    text = fix_markdown_links(text or "")
     tail_match = _SUGGESTIONS.search(text)
     tail = tail_match.group(0) if tail_match else ""
     body = strip_images(text[:tail_match.start()] if tail_match else text)
@@ -95,14 +149,27 @@ def tidy_answer(text, cards):
     while i < len(lines):
         line = lines[i]
         if _ITEM.match(line):
-            end = _item_end(lines, i)
-            if _mentions(lines[i:end], titles):
+            prev_line = _prev_nonempty_line(lines, i)
+            list_items = _collect_list_items(lines, i)
+            if (
+                list_items
+                and not _REJECT_HEADING.search(prev_line)
+                and all(_starts_with_title(lines[s], titles) for s, _ in list_items)
+            ):
                 removed_at = len(kept) if removed_at is None else removed_at
-                i = end
+                i = list_items[-1][1]
                 continue
+            # Keep the entire list intact so we never slice individual bullets out of a comparison
+            list_end = list_items[-1][1] if list_items else _item_end(lines, i)
+            kept.extend(lines[i:list_end])
+            i = list_end
+            continue
         elif line.strip() and (i == 0 or not lines[i - 1].strip()) and _starts_with_title(line, titles):
+            prev_line = _prev_nonempty_line(lines, i)
             end = _paragraph_end(lines, i)
-            if end - i > 1 or len(_norm(line)) > min(len(t) for t in titles) + 30:
+            if not _REJECT_HEADING.search(prev_line) and (
+                end - i > 1 or len(_norm(line)) > min(len(t) for t in titles) + 30
+            ):
                 removed_at = len(kept) if removed_at is None else removed_at
                 i = end
                 continue

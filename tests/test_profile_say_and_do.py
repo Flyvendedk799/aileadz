@@ -35,6 +35,8 @@ class AutosaveTests(unittest.TestCase):
                 res = json.loads(tools._execute_update_user_profile({}, "ada"))
             save.assert_not_called()
             self.assertEqual(res["status"], "proposed", action)
+            self.assertFalse(res["saved"])
+            self.assertIn("IKKE gemt", res["note_for_assistant"])
 
     def test_level_upgrade_is_an_edit_and_stays_a_proposal(self):
         raw = _proposal("add_skill", {"skill_name": "Excel", "skill_level": "avanceret"},
@@ -44,6 +46,7 @@ class AutosaveTests(unittest.TestCase):
             res = json.loads(tools._execute_update_user_profile({}, "ada"))
         save.assert_not_called()
         self.assertEqual(res["status"], "proposed")
+        self.assertIn("IKKE gemt", res["note_for_assistant"])
 
     def test_incomplete_data_and_duplicates_pass_through(self):
         for raw in (json.dumps({"status": "ui_card", "ui_type": "form"}),
@@ -58,18 +61,63 @@ class AutosaveTests(unittest.TestCase):
                 mock.patch.object(tools, "_autosave_profile_add", side_effect=RuntimeError("db")):
             res = json.loads(tools._execute_update_user_profile({}, "ada"))
         self.assertEqual(res["status"], "proposed")
+        self.assertIn("IKKE gemt", res["note_for_assistant"])
 
     def test_switch_off_restores_the_old_behaviour(self):
         raw = _proposal("add_skill", {"skill_name": "Excel"})
         with mock.patch.dict(os.environ, {"AI_PROFILE_AUTOSAVE": "0"}), \
                 mock.patch.object(tools, "_propose_user_profile_update", return_value=raw), \
                 mock.patch.object(tools, "_autosave_profile_add") as save:
-            self.assertEqual(tools._execute_update_user_profile({}, "ada"), raw)
+            res = json.loads(tools._execute_update_user_profile({}, "ada"))
         save.assert_not_called()
+        self.assertEqual(res["status"], "proposed")
+        self.assertFalse(res["saved"])
+        self.assertIn("bekræfte kortet", res["note_for_assistant"])
 
     def test_anonymous_user_cannot_save(self):
         res = json.loads(tools._execute_update_user_profile({"action": "add_skill"}, None))
         self.assertEqual(res["status"], "error")
+
+
+class SearchMissNoteTests(unittest.TestCase):
+    def test_empty_search_gets_the_note_even_without_the_word_ingen(self):
+        tool = mock.Mock(name="catalog_search", output=json.dumps({"status": "no_results", "count": 0, "results": []}))
+        tool.name = "catalog_search"
+        note = agent.search_miss_note([tool], "Her er et kursus jeg ville anbefale.", had_cards=False)
+        self.assertIn("ingen kurser", note)
+
+    def test_real_results_do_not_get_the_note_when_cards_were_cleared(self):
+        tool = mock.Mock(output=json.dumps({
+            "status": "success", "count": 1,
+            "results": [{"title": "Excel grund", "handle": "excel"}],
+        }))
+        tool.name = "catalog_search"
+        note = agent.search_miss_note(
+            [tool], "Excel grund er det jeg ville starte med.", had_cards=False,
+        )
+        self.assertEqual(note, "")
+
+    def test_comparison_results_do_not_trigger_false_empty_search_note(self):
+        tool = mock.Mock(output=json.dumps({
+            "status": "success", "count": 2,
+            "comparison": [
+                {"title": "Kursus A", "handle": "a", "price": "4.995 kr"},
+                {"title": "Kursus B", "handle": "b", "price": "6.500 kr"},
+            ],
+        }))
+        tool.name = "catalog_compare_products"
+        note = agent.search_miss_note(
+            [tool], "Jeg ville vælge Kursus A hvis du vil i gang hurtigt.", had_cards=False,
+        )
+        self.assertEqual(note, "")
+
+    def test_profile_turn_is_not_a_catalog_turn(self):
+        tool = mock.Mock(output="{}")
+        tool.name = "update_user_profile"
+        self.assertFalse(agent.turn_has_catalog_facts([tool], had_cards=False))
+        search = mock.Mock(output="{}")
+        search.name = "catalog_search"
+        self.assertTrue(agent.turn_has_catalog_facts([search], had_cards=False))
 
 
 class BatchingTests(unittest.TestCase):

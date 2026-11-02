@@ -195,6 +195,10 @@ er noget du gør undervejs.
 - En hilsen eller et "hvad kan du hjælpe med?" kræver ingen opslag — der er endnu
   ikke noget at slå op. Svar kort, og spørg hvad de går og tumler med.
 
+SPROG:
+Du svarer på dansk, også når brugeren skriver på engelsk eller beder dig skifte sprog.
+Sig i så fald kort, at du hjælper på dansk, og fortsæt med det, de spørger om.
+
 SVARLÆNGDE:
 Skriv den længde spørgsmålet fortjener. Efter en søgning bærer kortene detaljerne, så
 teksten skal give retning og en anbefaling frem for at gentage dem. Når nogen er i tvivl
@@ -279,8 +283,8 @@ KONTAKTOPLYSNINGER:
 SYSTEM_PLAYBOOK_PROFILE_SAVE = """NÅR BRUGEREN FORTÆLLER OM SIG SELV:
 Du er en hjælper med en værktøjskasse, ikke en formular. Lyt, svar naturligt, og gem det, brugeren fortæller, som en del af samtalen.
 
-TILFØJELSER gemmes med det samme (update_user_profile). Sig det kort og naturligt ("Noteret, så kan jeg ...") og gå videre, brugeren kan fortryde direkte under svaret. Spørg ikke om lov til at gemme det, brugeren selv har sagt.
-RETTELSER OG SLETNING foreslås først: værktøjet viser et kort, brugeren bekræfter. Ret eller fjern et eksisterende element med id'et, der står i profilen som [#id].
+TILFØJELSER gemmes med det samme (update_user_profile). Sig det kort og naturligt ("Noteret, så kan jeg ...") og gå videre, brugeren kan fortryde direkte under svaret. Spørg ikke om lov til at gemme det, brugeren selv har sagt. Sig det først, når værktøjet svarer saved eller success.
+RETTELSER OG SLETNING foreslås først: værktøjet viser et kort, brugeren bekræfter. Ret eller fjern et eksisterende element med id'et, der står i profilen som [#id]. Står svaret som proposed, er intet gemt endnu — sig at kortet venter på et tryk.
 Flere ting i én besked: gem dem alle i samme tur (ét kald pr. element), så samles de på ét kort.
 
 Værktøjer, brug dem efter behov:
@@ -354,7 +358,8 @@ GEM UNDERVEJS:
   med update_user_profile eller request_user_input; det løsere (præferencer, livssituation,
   hvad der driver dem) med remember_about_user.
 - Ret eller fjern noget eksisterende med id'et fra profilen ([#id]).
-- Kvittér kort for det, du gemmer, og lad brugeren mærke, at det bliver brugt til noget.
+- Kvittér kun for det, værktøjet siger er gemt (status saved eller success). Står der
+  proposed, venter ændringen på kortet: sig det sådan, og sig aldrig at den allerede er gemt.
   Du behøver ikke opremse, hvad der mangler."""
 
 
@@ -405,7 +410,9 @@ GEM UNDERVEJS:
   update_user_profile eller request_user_input; det løsere (præferencer, livssituation, hvad der
   driver dem) med remember_about_user.
 - Ret eller fjern noget eksisterende med id'et fra profilen ([#id]).
-- Kvittér kort for det, du gemmer, og lad brugeren mærke, at det bliver brugt til noget.
+- Kvittér kun for det, værktøjet siger er gemt (status saved eller success). Står der
+  proposed, venter ændringen på kortet under svaret: sig det sådan, og sig aldrig at den
+  allerede er gemt, noteret, rettet eller slettet.
   Du behøver ikke opremse, hvad der mangler."""
 
 
@@ -490,6 +497,32 @@ PROFILING_MODES = ("assistant", "profiler")
 # Tools that only run while a specific course is being booked. A turn that used one
 # shows the confirm card instead of course cards.
 _ORDER_TOOLS = frozenset({"check_course_readiness", "prepare_course_order", "create_course_order"})
+
+# Course-search tools. The empty-search note keys off their payloads, not off
+# whether card HTML happened to be buffered.
+_SEARCH_TOOLS = frozenset({
+    "catalog_search", "search_courses", "filter_courses",
+    "recommend_for_profile", "catalog_compare_products",
+})
+
+# A price/date disclaimer points at the course page. It only runs when this
+# turn actually looked at the catalog or showed cards.
+_CATALOG_FACT_TOOLS = _SEARCH_TOOLS | frozenset({
+    "catalog_get_product", "get_course_details", "catalog_get_category",
+    "catalog_get_vendor", "compare_courses", "get_negotiated_discount",
+    "check_course_readiness", "prepare_course_order", "create_course_order",
+})
+
+_ALREADY_EMPTY_PHRASES = (
+    "ingen kurser", "ingen resultater", "fandt ikke", "ikke finde",
+    "kan ikke finde", "har ikke et grundlag", "findes ikke",
+    "matchede ikke", "ikke noget der matchede",
+)
+
+_SEARCH_MISS_NOTE = (
+    "\n\n*Jeg fandt desværre ingen kurser der matchede. "
+    "Prøv eventuelt at omformulere din søgning.*"
+)
 
 
 def _order_course_card(handle):
@@ -1372,6 +1405,67 @@ def _known_course_titles():
         return [p.get("title") for p in (load_augmented_products() or []) if p.get("title")]
     except Exception:
         return []
+
+
+def _tool_name(item):
+    if isinstance(item, dict):
+        return item.get("name") or ""
+    return getattr(item, "name", "") or ""
+
+
+def _tool_output_data(item):
+    raw = item.get("output") if isinstance(item, dict) else getattr(item, "output", None)
+    if isinstance(raw, dict):
+        return raw
+    if not isinstance(raw, str) or not raw.strip():
+        return {}
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _payload_has_hits(data):
+    if not isinstance(data, dict):
+        return False
+    for key in ("results", "products", "courses", "comparison", "items"):
+        rows = data.get(key)
+        if isinstance(rows, list) and rows:
+            return True
+    product = data.get("product")
+    return isinstance(product, dict) and bool(product.get("handle") or product.get("title"))
+
+
+def turn_has_catalog_facts(tool_results, had_cards):
+    """True when this turn has catalog evidence a price disclaimer can check against."""
+    if had_cards:
+        return True
+    return any(_tool_name(item) in _CATALOG_FACT_TOOLS for item in (tool_results or []))
+
+
+def search_miss_note(tool_results, answer, had_cards):
+    """The empty-search line, or "" when it would contradict a real result.
+
+    Appended only when a search tool ran, every tool payload from the turn is
+    empty, no course cards were shown, and the answer has not already said so.
+    A search that returned rows never grows this note, even if the card HTML
+    was cleared afterwards.
+    """
+    if had_cards:
+        return ""
+    saw_search = False
+    for item in tool_results or []:
+        if _tool_name(item) in _SEARCH_TOOLS:
+            saw_search = True
+        if _payload_has_hits(_tool_output_data(item)):
+            return ""
+    if not saw_search:
+        return ""
+    low = (answer or "").lower()
+    if any(phrase in low for phrase in _ALREADY_EMPTY_PHRASES):
+        return ""
+    return _SEARCH_MISS_NOTE
 
 
 def _collect_turn_evidence(tool_results, buffered_course_cards, sid=None):
@@ -3420,6 +3514,7 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                 and (runtime_result.text or "").strip()
                 and _grounding is not None
                 and _grounding_recall_enabled()
+                and turn_has_catalog_facts(runtime_result.tool_results, bool(buffered_ui_html))
             ):
                 try:
                     _pre = _grounding.grounding_disclaimer(
@@ -3643,6 +3738,9 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                     and had_tool_calls
                     and visible_text.strip()
                     and not _grounding_handled
+                    and turn_has_catalog_facts(
+                        runtime_result.tool_results, bool(buffered_ui_html)
+                    )
                 ):
                     _verdict = _grounding.grounding_disclaimer(
                         visible_text, _turn_evidence,
@@ -3740,16 +3838,14 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
             if verbose:
                 print(f"[Agent Warning] Verbose response ({response_len} chars) after tool calls in session {sid}")
 
-            # Smart failure recovery: only when a course-search/recommendation tool
-            # returned 0 cards. Skip for category/vendor-list/profile/learning-path
-            # tools that legitimately don't emit course cards (so we don't append a
-            # misleading "no courses found" to those answers).
-            _SEARCH_TOOLS = {"catalog_search", "search_courses", "filter_courses",
-                             "recommend_for_profile", "catalog_compare_products"}
-            if had_tool_calls and not buffered_ui_html and any(t in _SEARCH_TOOLS for t in _tools_used):
-                if "ingen" not in full_text.lower():
-                    no_results_msg = "\n\n*Jeg fandt desværre ingen kurser der matchede. Prøv eventuelt at omformulere din søgning.*"
-                    yield f"data: {json.dumps({'type': 'chunk', 'content': no_results_msg})}\n\n"
+            # Empty-search note only when the search payload itself had no rows.
+            # Missing card HTML is not the same thing: an order turn clears the
+            # cards, and a truncated model view can still have found courses.
+            no_results_msg = search_miss_note(
+                runtime_result.tool_results, full_text, bool(buffered_ui_html),
+            )
+            if no_results_msg:
+                yield f"data: {json.dumps({'type': 'chunk', 'content': no_results_msg})}\n\n"
 
             # Extract suggestions from the AI response (inline via <suggestions> tag)
             suggestions = _extract_inline_suggestions(full_text)

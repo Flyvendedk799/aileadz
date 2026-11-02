@@ -376,7 +376,17 @@ def serialize_course_card(product):
     except Exception:
         pass  # discount/agreement lookup unavailable — render at list price
     variants = p.get("variants") or []
-    price_raw = variants[0].get("price") if variants else "0"
+    price_raw = variants[0].get("price") if variants else None
+    raw_tags = p.get("tags") or []
+    if isinstance(raw_tags, str):
+        raw_tags = [t.strip() for t in raw_tags.split(",")]
+    tags_lower = {str(t).strip().lower() for t in raw_tags if t}
+    if "kontakt for pris" in tags_lower:
+        try:
+            if price_raw is None or float(str(price_raw).replace(",", ".").strip() or "0") == 0:
+                price_raw = "-1"
+        except (ValueError, TypeError):
+            price_raw = "-1"
 
     summary = ""
     try:

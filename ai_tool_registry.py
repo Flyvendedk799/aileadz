@@ -889,6 +889,7 @@ _TOOL_TRIGGERS = {
     "get_my_course_status": (
         "course status", "my course", "mit kursus", "kursusstatus", "deadline",
         "frist", "forsinket", "behind schedule", "am i behind", "course progress",
+        "min ordre", "ordrestatus", "my order", "order status", "er jeg tilmeldt",
     ),
     "get_negotiated_discount": (
         "discount", "rabat", "aftalepris", "negotiated price", "company discount",
@@ -1281,7 +1282,10 @@ def get_employee_tool_selection(
         if _has_any(query, (
                 "status på mit kursus", "status paa mit kursus", "hvornår starter", "hvornaar starter",
                 "frist", "deadline", "forfald", "mit kursus", "hvor er mit",
-                "er jeg forsinket", "hvad mangler")):
+                "er jeg forsinket", "hvad mangler",
+                "ordre på mig", "en ordre", "min ordre", "mine ordrer", "ordrestatus",
+                "min bestilling", "mine bestillinger", "er jeg tilmeldt", "har jeg bestilt",
+                "status på min ordre", "status på min bestilling", "ligger der en ordre")):
             names.add("get_my_course_status")
             # The same question is often really "…and what else is waiting?" — offer
             # the cross-silo roll-up alongside; the model picks the right grain.
@@ -1324,7 +1328,8 @@ def get_employee_tool_selection(
             names.add("set_course_reminder")
         if _has_any(query, (
                 "annullér min", "annuller min", "annullér bestilling", "annuller bestilling",
-                "fortryder kurset", "fortryd bestilling", "slet min ordre", "afbestil", "håndtér bestilling")):
+                "fortryder kurset", "fortryd bestilling", "slet min ordre", "afbestil", "håndtér bestilling",
+                "ikke sendes", "skal ikke sendes", "stop ordren")):
             names.add("manage_my_order")
         if _has_any(query, (
                 "bed min leder", "bed om godkendelse", "rykke for godkendelse", "ryk for godkendelse",

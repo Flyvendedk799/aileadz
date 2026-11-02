@@ -188,10 +188,13 @@ def _evidence_amounts(text: str) -> set:
     """Set of canonical amounts found as whole number tokens in the evidence."""
     out = set()
     try:
-        for m in _NUMBER_TOKEN_RE.findall(text or ""):
+        raw = text or ""
+        for m in _NUMBER_TOKEN_RE.findall(raw):
             c = _canon_amount(m)
             if c:
                 out.add(c)
+        if "gratis" in raw.lower():
+            out.add("0")
     except Exception:
         pass
     return out
@@ -368,6 +371,8 @@ def extract_factual_claims(text, known_titles_fn=None):
         # AG-03: catalog-validated when a title lookup is injected — a run that
         # matches no known course title is just capitalised prose, not a claim.
         for m in _TITLECASE_RE.finditer(s):
+            if s[m.end():m.end() + 3].lstrip("*").startswith(":"):
+                continue
             cand = m.group(0).strip(" .,:;!?-")
             words = [w for w in cand.split() if w]
             if len(words) < 2:
@@ -602,7 +607,7 @@ def _is_derived_or_budget_price(price_raw, canon_amount: str, answer, evidence_a
         # backed by arithmetic from evidence, it is NOT a pure budget reference.
         found_occurrence = False
         all_budget_framed = True
-        for m in _re.finditer(_re.escape(needle), text, _re.IGNORECASE):
+        for m in _re.finditer(r"(?<![\d.,])" + _re.escape(needle), text, _re.IGNORECASE):
             found_occurrence = True
             # Slice preceding/following text within the same sentence/clause
             sent_start = max(text.rfind(ch, 0, m.start()) for ch in (".", "!", "?", "\n", ";"))

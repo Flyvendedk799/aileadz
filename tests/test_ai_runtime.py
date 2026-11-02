@@ -948,5 +948,54 @@ class ParallelToolContextTests(unittest.TestCase):
         )
         self.assertEqual([r.status for r in results], ["ok", "ok"])
 
+    def test_strip_heavy_tool_payload_preserves_single_product_and_metadata(self):
+        """catalog_get_product returns a single `product` dict plus `fact_bundle`
+        and `variants`. Compaction must keep `product` (including its summary and
+        prerequisite metadata) instead of collapsing it to `results: []`."""
+        sessions = [
+            {"date": f"2027-04-{d:02d}", "city": "København", "location": "Lokale " + ("X" * 120), "availability": "available"}
+            for d in range(1, 25)
+        ]
+        payload = {
+            "status": "success",
+            "product": {
+                "title": "PRINCE2 Foundation",
+                "handle": "prince2-foundation",
+                "vendor": "Mannaz",
+                "price": "12.950 kr",
+                "price_min": 12950.0,
+                "summary": "Intensivt kursus i projektledelse med certificering.",
+                "duration_days": 3,
+                "difficulty": "beginner",
+                "language": "dansk",
+                "certification": "PRINCE2 Foundation",
+                "prerequisites": ["Grundlæggende projekterfaring"],
+                "has_prerequisites": True,
+                "availability_sessions": sessions[:6],
+            },
+            "variants": [{"id": i, "option1": "København", "option2": "2027-04-01", "blob": "Y" * 400} for i in range(4)],
+            "fact_bundle": {
+                "sessions": sessions,
+                "matching_sessions": list(sessions),
+            },
+        }
+        raw = json.dumps(payload, ensure_ascii=False)
+        self.assertGreater(len(raw), 6000)
+
+        compacted = json.loads(ai_runtime._strip_heavy_tool_payload(raw, max_chars=6000))
+        self.assertIn("product", compacted)
+        self.assertEqual(compacted["product"]["title"], "PRINCE2 Foundation")
+        self.assertIn("Intensivt kursus", compacted["product"]["summary"])
+        self.assertEqual(compacted["product"]["duration_days"], 3)
+        self.assertEqual(compacted["product"]["prerequisites"], ["Grundlæggende projekterfaring"])
+        self.assertTrue(compacted["product"]["has_prerequisites"])
+
+        # Even under an ultra-tight budget that forces the minimal fallback, `product` survives.
+        tight = json.loads(ai_runtime._strip_heavy_tool_payload(raw, max_chars=450))
+        self.assertIn("product", tight)
+        self.assertEqual(tight["product"]["handle"], "prince2-foundation")
+        self.assertEqual(tight["count"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()

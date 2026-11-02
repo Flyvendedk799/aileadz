@@ -76,6 +76,18 @@ class TidyAnswerTests(unittest.TestCase):
         self.assertNotIn("Et kursus om ledelse", out)
         self.assertIn("Hvilket vil du høre mere om?", out.split(CARDS_MARK)[1])
 
+    def test_comparison_bullets_and_rejection_lists_are_not_cut(self):
+        comparison = (
+            "Mit valg afhænger af dit mål:\n\n"
+            "- **Hurtigst i gang:** Vælg **Distanceledelse**, hvis du vil have værktøjer nu.\n"
+            "- **E-learning i eget tempo:** Vælg **Bliv klar til Distanceledelse – Få succes som leder på afstand**.\n\n"
+            "Jeg ville fravælge:\n"
+            "- **Distanceledelse**, hvis du kun ønsker ren selvstudie."
+        )
+        out = tidy_answer(comparison, CARDS)
+        self.assertNotIn(CARDS_MARK, out)
+        self.assertEqual(out, comparison)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -515,7 +515,8 @@ _CATALOG_FACT_TOOLS = _SEARCH_TOOLS | frozenset({
 
 _ALREADY_EMPTY_PHRASES = (
     "ingen kurser", "ingen resultater", "fandt ikke", "ikke finde",
-    "findes ikke", "matchede ikke", "ikke noget der matchede",
+    "kan ikke finde", "har ikke et grundlag", "findes ikke",
+    "matchede ikke", "ikke noget der matchede",
 )
 
 _SEARCH_MISS_NOTE = (
@@ -1428,7 +1429,7 @@ def _tool_output_data(item):
 def _payload_has_hits(data):
     if not isinstance(data, dict):
         return False
-    for key in ("results", "products", "courses"):
+    for key in ("results", "products", "courses", "comparison", "items"):
         rows = data.get(key)
         if isinstance(rows, list) and rows:
             return True

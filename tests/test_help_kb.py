@@ -155,6 +155,7 @@ class TestKeywordSearch(_IsolatedIndex):
         ("Hvordan opretter jeg et udviklingsmål?", "udviklingsmaal"),
         ("Hvor meget har min afdeling tilbage på budgettet?", "afdelingsbudget"),
         ("Hvordan henter jeg en kopi af mine data efter GDPR?", "privatliv-og-gdpr"),
+        ("Hvad sker der med mine data hvis jeg sletter min konto?", "privatliv-og-gdpr"),
         ("Hvordan skifter jeg min adgangskode?", "konto-og-notifikationer"),
         ("Hvilke obligatoriske kurser mangler jeg?", "obligatoriske-kurser"),
         ("Hvad er AI Profiler?", "ai-profiler"),
@@ -169,6 +170,11 @@ class TestKeywordSearch(_IsolatedIndex):
                 self.assertTrue(results, f"no results for {query!r}")
                 self.assertEqual(results[0]["slug"], slug,
                                  [(r["slug"], r["section"], r["score"]) for r in results])
+
+    def test_account_deletion_query_includes_delete_all_data_section(self):
+        results = help_kb.search_help("Hvad sker der med mine data hvis jeg sletter min konto?", k=3)
+        sections = [r["section"] for r in results]
+        self.assertIn("Slet alle dine data", sections)
 
     def test_result_shape_and_k(self):
         results = help_kb.search_help("Hvordan bestiller jeg et kursus?", k=2)

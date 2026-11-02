@@ -472,21 +472,35 @@ def _token_match(q: str, t: str) -> float:
     return 0.0
 
 
+def _field_match_strength(q: str, toks: frozenset) -> float:
+    if q in toks:
+        return 1.0
+    m = 0.0
+    for t in toks:
+        m = max(m, _token_match(q, t))
+        if m >= 0.8:
+            break
+    return m
+
+
 def _best_field_match(q: str, fields: List[Tuple[float, frozenset]]) -> float:
     best = 0.0
-    for weight, toks in fields:
-        if weight <= best:
+    section_bonus = 0.0
+    for idx, (weight, toks) in enumerate(fields):
+        m = _field_match_strength(q, toks)
+        if m <= 0.0:
             continue
-        if q in toks:
-            best = weight
-            continue
-        m = 0.0
-        for t in toks:
-            m = max(m, _token_match(q, t))
-            if m >= 0.8:
-                break
         best = max(best, weight * m)
-    return best
+        # All chunks of an article share fields[0] (title + keywords). When a
+        # query token also hits the chunk's own section heading or body text,
+        # add a small specificity bonus so the right section wins within the article.
+        if idx == 1:
+            section_bonus += 0.12 * m
+        elif idx == 2:
+            section_bonus += 0.05 * m
+    if best <= 0.0:
+        return 0.0
+    return min(1.0, best + section_bonus)
 
 
 def _keyword_scores(q_tokens: List[str], chunks: List[Dict[str, Any]]) -> List[float]:

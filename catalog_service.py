@@ -298,7 +298,7 @@ def parse_price(value):
 def format_price(value):
     price = parse_price(value)
     if price is None:
-        return "Pris pa foresporgsel"
+        return "Pris på forespørgsel"
     if price == 0:
         return "Gratis"
     if price == int(price):
@@ -309,10 +309,12 @@ def format_price(value):
 
 def price_label_for_product(raw_product, prices):
     tags_lower = {tag.lower() for tag in split_tags(raw_product.get("tags"))}
-    if "kontakt for pris" in tags_lower or not prices:
-        return "Pris pa foresporgsel"
-    minimum = min(prices)
-    maximum = max(prices)
+    positive_prices = [p for p in (prices or []) if p is not None and p > 0]
+    if not prices or (not positive_prices and "kontakt for pris" in tags_lower):
+        return "Pris på forespørgsel"
+    active_prices = positive_prices or prices
+    minimum = min(active_prices)
+    maximum = max(active_prices)
     if minimum == 0 and maximum == 0:
         return "Gratis"
     if minimum == maximum:
@@ -320,10 +322,17 @@ def price_label_for_product(raw_product, prices):
     return f"{format_price(minimum)} - {format_price(maximum)}"
 
 
+def _clean_variant_text(value):
+    text = str(value).strip() if value is not None else ""
+    if text.lower() in ("default title", "default", "title"):
+        return ""
+    return text
+
+
 def extract_city_name(address):
+    address = _clean_variant_text(address)
     if not address:
         return ""
-    address = str(address).strip()
     match = re.search(r"\b\d{4}\s+([A-ZÆØÅa-zæøå]+)", address)
     if match:
         return match.group(1)
@@ -338,9 +347,9 @@ def normalize_variant(variant, fallback_price=None):
     price = parse_price(variant.get("price") if isinstance(variant, dict) else None)
     if price is None:
         price = parse_price(fallback_price)
-    location = (variant.get("option1") or variant.get("location") or "").strip()
-    date = (variant.get("option2") or variant.get("date") or "").strip()
-    title = (variant.get("title") or "").strip()
+    location = _clean_variant_text(variant.get("option1") or variant.get("location") or "")
+    date = _clean_variant_text(variant.get("option2") or variant.get("date") or "")
+    title = _clean_variant_text(variant.get("title") or "")
     # Seat availability. inventory_quantity only means anything when the vendor
     # actually tracks stock (inventory_management set) — most of the catalog ships
     # untracked rows with a hardcoded 0, which must NOT read as sold out. Unknown
@@ -564,6 +573,12 @@ def normalize_product(raw_product, overrides=None):
     if not raw_variants:
         raw_variants = [{"price": raw_product.get("price")}]
     variants = [normalize_variant(v, fallback_price=raw_product.get("price")) for v in raw_variants if isinstance(v, dict)]
+    tags_lower = {t.lower() for t in tags}
+    if "kontakt for pris" in tags_lower and not any((v.get("price") or 0) > 0 for v in variants):
+        for v in variants:
+            if v.get("price") == 0:
+                v["price"] = None
+                v["price_label"] = format_price(None)
     prices = [v["price"] for v in variants if v.get("price") is not None]
     locations = list(dict.fromkeys(v["city"] for v in variants if v.get("city")))
     dates = list(dict.fromkeys(v["date"] for v in variants if v.get("date")))
@@ -810,7 +825,7 @@ def get_vendors(products=None):
             "course_count": len(items),
             "categories": [name for name, _ in categories.most_common(5)],
             "price_from": min(prices) if prices else None,
-            "price_label": format_price(min(prices)) if prices else "Pris pa foresporgsel",
+            "price_label": format_price(min(prices)) if prices else "Pris på forespørgsel",
             "profile": profile,
             "image_url": next((item["image_url"] for item in items if item["image_url"]), ""),
         })

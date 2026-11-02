@@ -51,6 +51,40 @@ class GroundingDisclaimerTests(unittest.TestCase):
         self.assertFalse(verdict["violation"])
         self.assertEqual(verdict["disclaimer"], "")
 
+    def test_unknown_date_in_next_sentence_does_not_withdraw_unverified_price(self):
+        # Greptile P1: a caveat about the date ("Datoen er ikke oplyst") must NEVER
+        # excuse an unverified price in the preceding sentence.
+        answer = "Kurset koster 12.500 kr. Datoen er ikke oplyst."
+        verdict = grounding.grounding_disclaimer(answer, _TOOL_RESULTS)
+        self.assertTrue(verdict["violation"])
+        self.assertEqual(verdict["disclaimer"], grounding.GROUNDING_DISCLAIMER_DA)
+
+    def test_other_course_on_request_in_next_sentence_does_not_withdraw_price(self):
+        answer = "Kurset koster 12.500 kr. Det andet kursus har pris på forespørgsel."
+        verdict = grounding.grounding_disclaimer(answer, _TOOL_RESULTS)
+        self.assertTrue(verdict["violation"])
+
+    def test_user_budget_and_delta_do_not_trigger_false_disclaimer(self):
+        # 9.995 kr is in _TOOL_RESULTS; 10.000 kr is the user's budget ceiling and
+        # 5 kr is the exact arithmetic difference (10000 - 9995 = 5).
+        answer = (
+            "Katalogprisen er 9.995 kr., altså 5 kr. under dit budget på 10.000 kr."
+        )
+        verdict = grounding.grounding_disclaimer(answer, _TOOL_RESULTS)
+        self.assertFalse(verdict["violation"])
+        self.assertEqual(verdict["disclaimer"], "")
+
+    def test_markdown_bold_headings_and_lowercase_emphasis_do_not_trigger_title_disclaimer(self):
+        answer = (
+            "**Vigtigste forudsætning:** Du behøver **ingen formelle krav**, "
+            "og **det ville jeg springe over:** kurser med “pris på forespørgsel”."
+        )
+        verdict = grounding.grounding_disclaimer(
+            answer, _TOOL_RESULTS, known_titles_fn=_known_titles_fn
+        )
+        self.assertFalse(verdict["violation"])
+        self.assertEqual(verdict["disclaimer"], "")
+
     def test_grounded_price_does_not_trigger(self):
         # The answer states the SAME price that is present in the tool results.
         answer = "Det her forløb ligger på 9.995 kr — solid værdi."

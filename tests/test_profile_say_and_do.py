@@ -97,6 +97,20 @@ class SearchMissNoteTests(unittest.TestCase):
         )
         self.assertEqual(note, "")
 
+    def test_comparison_results_do_not_trigger_false_empty_search_note(self):
+        tool = mock.Mock(output=json.dumps({
+            "status": "success", "count": 2,
+            "comparison": [
+                {"title": "Kursus A", "handle": "a", "price": "4.995 kr"},
+                {"title": "Kursus B", "handle": "b", "price": "6.500 kr"},
+            ],
+        }))
+        tool.name = "catalog_compare_products"
+        note = agent.search_miss_note(
+            [tool], "Jeg ville vælge Kursus A hvis du vil i gang hurtigt.", had_cards=False,
+        )
+        self.assertEqual(note, "")
+
     def test_profile_turn_is_not_a_catalog_turn(self):
         tool = mock.Mock(output="{}")
         tool.name = "update_user_profile"

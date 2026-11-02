@@ -96,11 +96,12 @@ _QUOTED_RE = _re.compile(
     _re.VERBOSE,
 )
 # A "title-ish" run: 2+ capitalised words (Danish letters allowed), optionally
-# joined by short connectors. Caps include Æ Ø Å.
+# joined by short connectors. Caps include Æ Ø Å. Never crosses newlines or
+# sentence-ending periods.
 _TITLECASE_RE = _re.compile(
-    r"\b(?:[A-ZÆØÅ][\wÆØÅæøå0-9&+/.-]{1,}"
-    r"(?:\s+(?:og|i|til|for|med|på|af|de|den|det|en|et)\s+)?"
-    r"\s+){1,5}[A-ZÆØÅ][\wÆØÅæøå0-9&+/.-]{1,}\b"
+    r"\b(?:[A-ZÆØÅ][\wÆØÅæøå0-9&+/-]{1,}"
+    r"(?:[ \t]+(?:og|i|til|for|med|på|af|de|den|det|en|et)[ \t]+)?"
+    r"[ \t]+){1,5}[A-ZÆØÅ][\wÆØÅæøå0-9&+/-]{1,}\b"
 )
 
 # AG-03: keys/attributes that carry the model's tool-call INPUT (often echoing
@@ -337,15 +338,35 @@ def extract_factual_claims(text, known_titles_fn=None):
                 seen_d.add(key)
                 out["dates"].append(raw)
 
-        # Titles — quoted/bold first (high precision)
+        title_keys = _known_title_keys(known_titles_fn)
+
+        # Titles — quoted/bold first (high precision, but skip markdown headings,
+        # price callouts, and lowercase/sentence-case prose emphasis).
         for m in _QUOTED_RE.finditer(s):
-            cand = (m.group("bold") or m.group("quote") or "").strip(" .,:;!?-")
+            raw_span = (m.group("bold") or m.group("quote") or "").strip()
+            if not raw_span or raw_span.endswith(":"):
+                continue
+            if _PRICE_RE.search(raw_span) or _DATE_RE.search(raw_span):
+                continue
+            cand = raw_span.strip(" .,:;!?-")
+            if not cand or not cand[0].isupper():
+                continue
+            qwords = [w.strip(".,:;!?()[]") for w in cand.split() if w.strip(".,:;!?()[]")]
+            if len(qwords) < 2:
+                continue
+            qlower = [w.lower() for w in qwords]
+            if all(w in _TITLE_STOPWORDS for w in qlower):
+                continue
+            if len(qwords) == 2 and qlower[0] in _TITLE_STOPWORDS:
+                continue
+            cap_count = sum(1 for w in qwords if w[0].isupper() or w[0].isdigit())
+            if cap_count < 2 and not (title_keys and _matches_known_title(cand, title_keys)):
+                continue
             _add_title(cand, out["titles"], seen_t)
 
         # Titles — TitleCase runs (lower precision, filtered by stopwords).
         # AG-03: catalog-validated when a title lookup is injected — a run that
         # matches no known course title is just capitalised prose, not a claim.
-        title_keys = _known_title_keys(known_titles_fn)
         for m in _TITLECASE_RE.finditer(s):
             cand = m.group(0).strip(" .,:;!?-")
             words = [w for w in cand.split() if w]
@@ -510,7 +531,10 @@ def claims_supported(answer, tool_results, known_titles_fn=None):
             # amount in the evidence, not merely be a digit substring of a larger
             # one (the old concatenated-blob check let "5000" pass on a "15000").
             amount = _canon_amount(price)
-            supported = bool(amount) and amount in evidence_amounts
+            supported = bool(amount) and (
+                amount in evidence_amounts
+                or _is_derived_or_budget_price(price, amount, answer, evidence_amounts)
+            )
             _record("price", price, supported)
 
         for date in claims.get("dates", []):
@@ -525,21 +549,136 @@ def claims_supported(answer, tool_results, known_titles_fn=None):
         return {"supported": [], "unsupported": [], "ok": True, "checked": 0}
 
 
+# Phrases that frame a number in the answer as the user's budget ceiling or an
+# over/under delta rather than a course's catalog price ("dit budget på 30.000 kr.",
+# "499 kr. over dit budget på 5.000 kr.", "under grænsen på 10.000 kr.").
+# Note: never matches "Kurset koster X kr og passer til dit budget".
+_BUDGET_PREFIX_RE = _re.compile(
+    r"(?:"
+    r"\b(?:budget(?:tet|rammen|loft(?:et)?)?|prisgrænse(?:n)?|grænse(?:n)?|ramme(?:n)?|loft(?:et)?)"
+    r"\s+(?:på|er|var|ligger\s+på)\s*(?:ca\.?\s+|omkring\s+|op\s+til\s+|maks(?:imalt)?\.?\s+|højst\s+)?"
+    r"|"
+    r"\b(?:inden\s+for|op\s+til|højst|maks(?:imalt)?\.?)\s+"
+    r"(?:dit\s+|jeres\s+|vores\s+|et\s+|en\s+|de\s+)?"
+    r"(?:budget(?:\s+på)?\s+|grænse(?:\s+på)?\s+|ramme(?:\s+på)?\s+)?"
+    r"|"
+    r"\bunder\s+(?:dit\s+|jeres\s+|vores\s+|de\s+)?"
+    r"(?:budget(?:\s+på)?\s+|grænse(?:n)?(?:\s+på)?\s+|prisgrænse(?:n)?(?:\s+på)?\s+)?$"
+    r")\s*$",
+    _re.IGNORECASE,
+)
+
+_BUDGET_SUFFIX_RE = _re.compile(
+    r"^\s*(?:"
+    r"(?:over|under)\s+(?:dit\s+|jeres\s+|vores\s+|det\s+|den\s+|et\s+|en\s+|de\s+)?"
+    r"(?:budget(?:tet|rammen|loft(?:et)?)?|prisgrænse(?:n)?|grænse(?:n)?|loft(?:et)?|ramme(?:n)?|maks(?:imum)?)"
+    r"|"
+    r"(?:i\s+budget|til\s+rådighed|som\s+budget|som\s+prisgrænse|som\s+loft)"
+    r"|"
+    r"(?:pr\.?\s+deltager|per\s+deltager)\s+i\s+budget"
+    r")",
+    _re.IGNORECASE,
+)
+
+_COURSE_PRICE_CLAIM_PREFIX_RE = _re.compile(
+    r"\b(?:koster|pris(?:en)?\s+er|startpris(?:en)?\s+er|katalogpris(?:en)?\s+er|ligger\s+på|står\s+til)\s*$",
+    _re.IGNORECASE,
+)
+
+
+def _is_derived_or_budget_price(price_raw, canon_amount: str, answer, evidence_amounts: set) -> bool:
+    """True when `price_raw` in `answer` is a user-budget reference or arithmetic
+    (delta / group total / 25% Danish VAT) derived from a grounded evidence price."""
+    try:
+        text = _coerce_text(answer)
+        needle = _coerce_text(price_raw).strip()
+        if not text or not needle or not canon_amount:
+            return False
+        val = int(canon_amount)
+        ev_ints = {int(x) for x in (evidence_amounts or set()) if x.isdigit() and int(x) > 0}
+
+        # Check every occurrence of this price in the answer; if ANY occurrence
+        # is a direct course-price claim ("koster X", "ligger på X") that is not
+        # backed by arithmetic from evidence, it is NOT a pure budget reference.
+        found_occurrence = False
+        all_budget_framed = True
+        for m in _re.finditer(_re.escape(needle), text, _re.IGNORECASE):
+            found_occurrence = True
+            # Slice preceding/following text within the same sentence/clause
+            sent_start = max(text.rfind(ch, 0, m.start()) for ch in (".", "!", "?", "\n", ";"))
+            before = text[max(sent_start + 1, m.start() - 60):m.start()]
+            after = text[m.end():min(len(text), m.end() + 60)]
+            if _COURSE_PRICE_CLAIM_PREFIX_RE.search(before):
+                all_budget_framed = False
+                break
+            if not (_BUDGET_PREFIX_RE.search(before) or _BUDGET_SUFFIX_RE.search(after)):
+                all_budget_framed = False
+                break
+        if found_occurrence and all_budget_framed:
+            return True
+
+        # Grounded arithmetic from a real evidence price in the same turn:
+        # 1) Exact difference |ev - other| where `other` is also mentioned in the answer
+        #    (e.g. "5.499 kr. — altså 499 kr. over dit budget på 5.000 kr.").
+        # 2) Group total `ev * n` for small participant counts (2..25).
+        # 3) Danish 25% moms conversion (`ev * 1.25` or `ev * 0.8`) when answer mentions moms.
+        if ev_ints and val > 0:
+            ans_ints = {
+                int(_canon_amount(m.group(0)))
+                for m in _PRICE_RE.finditer(text)
+                if _canon_amount(m.group(0)).isdigit()
+            }
+            for ev in ev_ints:
+                for other in ans_ints:
+                    if other != val and other != ev and abs(ev - other) == val:
+                        return True
+                for n in range(2, 26):
+                    if ev * n == val:
+                        return True
+                if "moms" in text.lower():
+                    if abs(round(ev * 1.25) - val) <= 1 or abs(round(ev * 0.8) - val) <= 1:
+                        return True
+        return False
+    except Exception:
+        return False
+
+
 # Phrases that withdraw a price or date in the same breath ("13.900 kr …
 # prisen er på forespørgsel"). The number is still in the text, but it is no
 # longer a claim the user should be warned to verify on the course page.
 _WITHDRAW_RE = _re.compile(
     r"på forespørgsel|ikke oplyst|kan ikke bekræfte|vil ikke gætte|"
-    r"står ikke|ikke i katalog|ikke en fast pris|var forkert|det var ikke",
+    r"står ikke|ikke i katalog|ikke en fast pris|var forkert|det var ikke|"
+    r"ikke verificer|kan ikke se prisen|fremgår ikke",
+    _re.IGNORECASE,
+)
+
+# Explicit retraction phrases in the immediately following sentence.
+_EXPLICIT_RETRACT_RE = _re.compile(
+    r"var forkert|det var ikke|retter jeg|tidligere pris|tidligere tal|"
+    r"ovenstående pris|nævnte pris",
+    _re.IGNORECASE,
+)
+
+_PRICE_TOPIC_RE = _re.compile(r"\b(?:pris(?:en|er)?|beløb(?:et)?|startpris(?:en)?|katalogpris(?:en)?|kr\.?|dkk)\b", _re.IGNORECASE)
+_DATE_TOPIC_RE = _re.compile(r"\b(?:dato(?:en|er)?|start(?:dato|er)?|tidspunkt(?:et)?|hold(?:et)?)\b", _re.IGNORECASE)
+_OTHER_FACT_TOPIC_RE = _re.compile(
+    r"\b(?:dato(?:en|er)?|adresse(?:n)?|lokation(?:en)?|sted(?:et)?|tidspunkt(?:et)?|forudsætning(?:er|erne)?|varighed(?:en)?)\b",
+    _re.IGNORECASE,
+)
+_OTHER_COURSE_SUBJECT_RE = _re.compile(
+    r"\b(?:det andet|den anden|de andre|det øvrige|de øvrige|andet kursus|øvrige kurser|næste kursus)\b",
     _re.IGNORECASE,
 )
 
 
-def _claim_withdrawn(value, answer) -> bool:
-    """True when the answer itself takes the claim back within the next sentence."""
+def _claim_withdrawn(value, answer, claim_type=None) -> bool:
+    """True when the answer itself takes the claim back in the same sentence,
+    or in the immediately following sentence when that sentence explicitly
+    retracts or refers to the same fact type."""
     try:
         text = _coerce_text(answer)
-        needle = _coerce_text(value).strip()
+        needle = _coerce_text(value).strip().rstrip(".")
         if not text or len(needle) < 2:
             return False
         idx = text.lower().find(needle.lower())
@@ -549,15 +688,50 @@ def _claim_withdrawn(value, answer) -> bool:
             text.rfind(mark, 0, idx) for mark in (".", "!", "?", "\n")
         ]
         start = max(starts)
-        end = len(text)
+        after_needle = idx + len(needle)
+        first_end = len(text)
+        second_end = len(text)
         cuts = 0
-        for i, ch in enumerate(text[idx + len(needle):], start=idx + len(needle)):
+        for i, ch in enumerate(text[after_needle:], start=after_needle):
             if ch in ".!?\n":
                 cuts += 1
-                end = i + 1
-                if cuts >= 2:
+                if cuts == 1:
+                    first_end = i + 1
+                elif cuts >= 2:
+                    second_end = i + 1
                     break
-        return bool(_WITHDRAW_RE.search(text[start + 1:end]))
+        same_sent = text[start + 1:first_end]
+        next_sent = text[first_end:second_end].strip() if first_end < second_end else ""
+
+        # Direct negation of the specific value in the same sentence ("ikke 11.499 kr").
+        if _re.search(r"\bikke\s+(?:på\s+|kr\.?\s*)?" + _re.escape(needle), same_sent, _re.IGNORECASE):
+            return True
+
+        if _WITHDRAW_RE.search(same_sent):
+            tail_after_value = text[after_needle:first_end]
+            if _OTHER_COURSE_SUBJECT_RE.search(tail_after_value):
+                return False
+            # Guard against "Kurset koster 12.500 kr, men datoen er ikke oplyst"
+            if claim_type == "price":
+                if (
+                    _OTHER_FACT_TOPIC_RE.search(tail_after_value)
+                    and not _PRICE_TOPIC_RE.search(tail_after_value)
+                    and not _EXPLICIT_RETRACT_RE.search(tail_after_value)
+                ):
+                    return False
+            return True
+
+        if next_sent and _WITHDRAW_RE.search(next_sent):
+            if _OTHER_COURSE_SUBJECT_RE.search(next_sent):
+                return False
+            if _EXPLICIT_RETRACT_RE.search(next_sent):
+                return True
+            if claim_type == "date":
+                return bool(_DATE_TOPIC_RE.search(next_sent))
+            # Default / price claim: next sentence must actually talk about price
+            # and not merely say that date/location/etc. is unknown.
+            return bool(_PRICE_TOPIC_RE.search(next_sent))
+        return False
     except Exception:
         return False
 
@@ -600,7 +774,8 @@ def grounding_disclaimer(answer, tool_results, known_titles_fn=None):
         flagged = [u for u in unsupported if u.get("type") in ("price", "date", "title")]
         hard = [
             u for u in flagged
-            if u.get("type") in ("price", "date") and not _claim_withdrawn(u.get("value"), answer)
+            if u.get("type") in ("price", "date")
+            and not _claim_withdrawn(u.get("value"), answer, claim_type=u.get("type"))
         ]
         soft_titles = [u for u in flagged if u.get("type") == "title"]
         violation = bool(hard) or len(soft_titles) >= 2

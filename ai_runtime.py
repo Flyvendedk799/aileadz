@@ -918,7 +918,10 @@ _RESULT_LIST_KEYS = ("results", "products", "courses", "comparison", "items")
 _RESULT_KEEP = (
     "title", "handle", "vendor", "vendor_slug", "product_url", "url",
     "price", "price_min", "price_label", "format", "locations", "dates",
-    "status", "no_upcoming_dates", "match_reason", "recommendation_reason",
+    "duration_days", "difficulty", "language", "certification",
+    "prerequisites", "has_prerequisites", "target_audience",
+    "availability_sessions", "status", "no_upcoming_dates",
+    "match_reason", "recommendation_reason",
     "summary", "previously_shown", "completed",
 )
 
@@ -935,10 +938,31 @@ def _compact_result_item(item: Any, keep_summary: bool) -> Any:
         value = item[key]
         if key in ("locations", "dates") and isinstance(value, list):
             value = [v for v in value if v][:2]
+        elif key == "availability_sessions" and isinstance(value, list):
+            value = [v for v in value if v][:4]
         elif key == "summary" and isinstance(value, str) and len(value) > 160:
             value = value[:157].rstrip() + "…"
         out[key] = value
     return out or {"title": item.get("title"), "handle": item.get("handle")}
+
+
+def _compact_fact_bundle(bundle: Dict[str, Any], keep_summary: bool) -> Dict[str, Any]:
+    out = dict(bundle)
+    sessions = out.get("sessions")
+    matching = out.get("matching_sessions")
+    if isinstance(sessions, list):
+        out["sessions"] = sessions[:4]
+    if isinstance(matching, list):
+        if matching == sessions:
+            out.pop("matching_sessions", None)
+        else:
+            out["matching_sessions"] = matching[:4]
+    nearby = out.get("nearby_sessions")
+    if isinstance(nearby, list):
+        out["nearby_sessions"] = nearby[:3]
+    if not keep_summary:
+        out.pop("variants", None)
+    return out
 
 
 def _shrink_result_lists(data: Dict[str, Any], keep_summary: bool) -> Dict[str, Any]:
@@ -949,7 +973,29 @@ def _shrink_result_lists(data: Dict[str, Any], keep_summary: bool) -> Dict[str, 
             shrunk[key] = [_compact_result_item(row, keep_summary) for row in rows]
     product = shrunk.get("product")
     if isinstance(product, dict):
-        shrunk["product"] = _compact_result_item(product, keep_summary)
+        # Single-product lookup is called for details; always keep its summary.
+        shrunk["product"] = _compact_result_item(product, keep_summary=True)
+    bundle = shrunk.get("fact_bundle")
+    if isinstance(bundle, dict):
+        shrunk["fact_bundle"] = _compact_fact_bundle(bundle, keep_summary)
+    variants = shrunk.get("variants")
+    if isinstance(variants, list):
+        shrunk["variants"] = variants[:2] if keep_summary else []
+        if not shrunk["variants"]:
+            shrunk.pop("variants", None)
+    path_steps = shrunk.get("path")
+    if isinstance(path_steps, list):
+        compacted_steps = []
+        for step in path_steps:
+            if isinstance(step, dict) and isinstance(step.get("courses"), list):
+                step_copy = dict(step)
+                step_copy["courses"] = [
+                    _compact_result_item(c, keep_summary) for c in step["courses"][:2]
+                ]
+                compacted_steps.append(step_copy)
+            else:
+                compacted_steps.append(step)
+        shrunk["path"] = compacted_steps
     return shrunk
 
 
@@ -970,6 +1016,8 @@ def _drop_result_tail(data: Dict[str, Any], max_chars: int) -> Dict[str, Any]:
                 f"Viser {len(kept)} af {total} resultater, med navn, pris, handle og link. "
                 "Opfind ikke de udeladte."
             )
+    if len(_safe_json(fitted)) > max_chars and isinstance(fitted.get("fact_bundle"), dict):
+        fitted.pop("fact_bundle", None)
     return fitted
 
 
@@ -995,6 +1043,11 @@ def _fit_tool_payload(data: Dict[str, Any], max_chars: int) -> Dict[str, Any]:
         "results": titles[:8],
         "note_for_assistant": "Kompakt uddrag. Brug kun disse navne, priser og links.",
     }
+    product = data.get("product")
+    if isinstance(product, dict) and (product.get("title") or product.get("handle")):
+        minimal["product"] = _compact_result_item(product, keep_summary=True)
+        if not titles:
+            minimal["count"] = 1
     if data.get("message"):
         minimal["message"] = str(data.get("message"))[:400]
     if len(_safe_json(minimal)) > max_chars:

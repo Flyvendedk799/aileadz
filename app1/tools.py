@@ -153,7 +153,9 @@ _DIFFICULTY_ALIASES = {
 
 
 def _product_meta(product):
-    raw = product.get("structured_metadata")
+    raw = product.get("structured_metadata") or product.get("metadata")
+    if not isinstance(raw, dict) and isinstance(product.get("raw"), dict):
+        raw = product["raw"].get("structured_metadata")
     return raw if isinstance(raw, dict) else {}
 
 
@@ -182,9 +184,12 @@ def _matches_difficulty(product, difficulty):
     return want == have
 
 
-# Tags to exclude from compact results (too generic or region-based)
+# Tags to exclude from compact results (too generic, operational, or region-based)
 _EXCLUDED_TAG_PREFIXES = {"region:", "by:", "land:"}
-_EXCLUDED_TAGS = {"kursus", "kurser", "uddannelse", "training", "course", "denmark", "danmark"}
+_EXCLUDED_TAGS = {
+    "kursus", "kurser", "uddannelse", "training", "course", "denmark", "danmark",
+    "kontakt for pris", "efter aftale", "no-index",
+}
 
 # 4.3: Vendor profiles
 _VENDOR_PROFILES = None
@@ -244,6 +249,13 @@ def _is_online_location(text):
     return any(m in t for m in _ONLINE_MARKERS)
 
 
+def _clean_opt_text(value):
+    s = str(value).strip() if value is not None else ""
+    if s.lower() in ("default title", "default", "title"):
+        return ""
+    return s
+
+
 def _delivery_modes(product):
     """{"fysisk", "online"} subset: how a product's sessions are held.
 
@@ -255,8 +267,21 @@ def _delivery_modes(product):
     for v in product.get("variants") or []:
         if isinstance(v, dict):
             locs.extend(x for x in (v.get("option1"), v.get("location"), v.get("city")) if x)
-    modes = {"online" if _is_online_location(loc) else "fysisk" for loc in locs if str(loc).strip()}
-    if _is_online_location(product.get("format") or product.get("product_type") or ""):
+    cleaned_locs = [_clean_opt_text(loc) for loc in locs]
+    modes = {"online" if _is_online_location(loc) else "fysisk" for loc in cleaned_locs if loc}
+    raw_tags = product.get("tags") or []
+    if isinstance(raw_tags, str):
+        raw_tags = [raw_tags]
+    meta_text = " ".join(
+        str(x or "")
+        for x in (
+            product.get("format"),
+            product.get("product_type"),
+            product.get("title"),
+            " ".join(str(t) for t in raw_tags if t),
+        )
+    )
+    if _is_online_location(meta_text):
         modes.add("online")
     return modes
 
@@ -324,6 +349,7 @@ def _location_matches(query_loc, variant_loc_raw, *, exact_city=False):
 
 def extract_city_name(address):
     """Turn addresses like 'Kongsvang Alle 29, 8000 Aarhus C' into 'Aarhus'."""
+    address = _clean_opt_text(address)
     if not address:
         return None
     m = re.search(r'\b\d{4}\s+([A-ZÆØÅa-zæøå]+)', address)
@@ -460,6 +486,17 @@ def _extract_compact_fields(product):
     variants = product.get("variants", [])
     raw_price = variants[0].get("price") if variants else None
 
+    all_tags = product.get("tags", [])
+    if isinstance(all_tags, str):
+        all_tags = [t.strip() for t in all_tags.split(",")]
+    tags_lower = {str(t).lower().strip() for t in all_tags if t}
+    if "kontakt for pris" in tags_lower:
+        try:
+            if raw_price is None or float(str(raw_price).replace(",", ".").strip() or "0") == 0:
+                raw_price = None
+        except (ValueError, TypeError):
+            raw_price = None
+
     # Apply supplier agreement discount if available (shared helper: price_view)
     vendor = product.get("vendor", "")
     pv = price_view(raw_price, vendor)
@@ -474,9 +511,6 @@ def _extract_compact_fields(product):
     dates = dates[:4]
     product_type = product.get("product_type", "")
 
-    all_tags = product.get("tags", [])
-    if isinstance(all_tags, str):
-        all_tags = [t.strip() for t in all_tags.split(",")]
     filtered_tags = []
     for tag in all_tags:
         tag_lower = tag.lower().strip()
@@ -1824,6 +1858,22 @@ def _catalog_compact_fields(product):
         fields["discount"] = pv["discount"]
     if no_upcoming_dates:
         fields["no_upcoming_dates"] = True
+    meta = _product_meta(product)
+    if meta:
+        if meta.get("duration_days"):
+            fields["duration_days"] = meta["duration_days"]
+        if meta.get("difficulty"):
+            fields["difficulty"] = meta["difficulty"]
+        if meta.get("language"):
+            fields["language"] = meta["language"]
+        if meta.get("certification"):
+            fields["certification"] = meta["certification"]
+        if meta.get("prerequisites"):
+            fields["prerequisites"] = meta["prerequisites"][:4]
+        if "has_prerequisites" in meta:
+            fields["has_prerequisites"] = bool(meta["has_prerequisites"])
+        if meta.get("target_audience"):
+            fields["target_audience"] = meta["target_audience"][:2]
     return fields
 
 
@@ -2335,11 +2385,18 @@ def _execute_catalog_get_product(args):
         }, ensure_ascii=False)
     vendor_state = _supplier_state_for_vendor(product.get("vendor"))
     from app1.course_facts import course_fact_bundle
-    bundle = course_fact_bundle(product)
+    bundle = dict(course_fact_bundle(product) or {})
+    sessions = list(bundle.get("sessions") or [])
+    matching = list(bundle.get("matching_sessions") or [])
+    bundle["sessions"] = sessions[:6]
+    if matching == sessions:
+        bundle.pop("matching_sessions", None)
+    else:
+        bundle["matching_sessions"] = matching[:6]
     compact = _catalog_compact_fields(product)
     compact["availability_sessions"] = [
         {"date": s.get("date"), "city": s.get("city"), "availability": s.get("availability")}
-        for s in (bundle.get("sessions") or [])[:6]
+        for s in sessions[:6]
     ]
     return _model_tool_json(
         status="success",
@@ -2469,9 +2526,19 @@ def _execute_catalog_compare_products(args):
         pv = price_view(product.get("price_min"), product.get("vendor"))
         if pv["discount"]:
             entry["price"] = pv["price"]
+            entry["price_min"] = pv["amount"]
             entry["discount"] = pv["discount"]
+        elif product.get("price_min") is not None:
+            entry["price_min"] = product.get("price_min")
         if no_upcoming_dates:
             entry["no_upcoming_dates"] = True
+        meta = _product_meta(product)
+        if meta:
+            for k in ("duration_days", "difficulty", "language", "certification", "has_prerequisites"):
+                if meta.get(k) not in (None, ""):
+                    entry[k] = meta[k]
+            if meta.get("prerequisites"):
+                entry["prerequisites"] = meta["prerequisites"][:3]
         comparison.append(entry)
 
     # Guardrails: cap-truncation note + single-vendor (no diversity) notice.
@@ -4887,19 +4954,29 @@ def _execute_suggest_learning_path(args, username):
         completed = profile.get("completed_courses", [])
         if completed:
             context_parts.append(f"Gennemførte kurser: {', '.join(c['title'] for c in completed[:8])}")
+        active_goals = [
+            (g.get("title") or "").strip()
+            for g in (profile.get("learning_goals") or [])
+            if isinstance(g, dict) and g.get("status") == "aktiv" and (g.get("title") or "").strip()
+        ]
+        if active_goals:
+            context_parts.append(f"Aktive udviklingsmål (prioritér disse): {', '.join(active_goals[:4])}")
         if profile.get("goals"):
             context_parts.append(f"Mål: {profile['goals']}")
         if goal:
-            context_parts.append(f"Specifikt mål: {goal}")
+            context_parts.append(f"Specifikt mål (prioritér dette): {goal}")
         if focus_area:
-            context_parts.append(f"Fokusområde: {focus_area}")
+            context_parts.append(f"Fokusområde (prioritér dette): {focus_area}")
         exp = profile.get("experience", [])
         if exp:
             context_parts.append(f"Erfaring: {exp[0].get('title', '')} @ {exp[0].get('company', '')}")
 
         # Inject the computed skill gaps (company targets + target role + goals,
         # on the canonical 1-5 scale) so the path is sequenced to close REAL gaps,
-        # not just the user's free-text goal.
+        # not just the user's free-text goal. When an explicit goal/focus_area or
+        # active learning_goal is present, keep target_role/gaps as background so
+        # a newly stated career direction is not overridden by an older target_role.
+        has_explicit_direction = bool(goal or focus_area or active_goals)
         try:
             from competency import compute_skill_gaps
             _gaps = compute_skill_gaps(username, profile=profile)
@@ -4907,9 +4984,14 @@ def _execute_suggest_learning_path(args, username):
             _gaps = []
         if _gaps:
             gap_strs = [f"{g['skill']} ({g['current_label']}→{g['target_label']})" for g in _gaps[:6]]
-            context_parts.append("Vigtigste kompetencegab (prioritér disse): " + ", ".join(gap_strs))
+            gap_label = (
+                "Sekundære kompetencegab fra profil: "
+                if has_explicit_direction
+                else "Vigtigste kompetencegab (prioritér disse): "
+            )
+            context_parts.append(gap_label + ", ".join(gap_strs))
         _target_role = (profile.get("target_role") or "").strip()
-        if _target_role:
+        if _target_role and not (goal or focus_area):
             context_parts.append(f"Ønsket rolle: {_target_role}")
 
         if not context_parts:

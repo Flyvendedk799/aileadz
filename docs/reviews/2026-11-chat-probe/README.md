@@ -55,16 +55,19 @@ Behaviors in the same transcript that should stay as they are: typos and dialect
 | Evidence | Code |
 |---|---|
 | Confirm card described as saved | `app1/tools.py` `_with_proposal_note`; playbooks in `app1/agent.py` |
-| Catalog result the model cannot see | `ai_runtime.py` `_strip_heavy_tool_payload` / `_fit_tool_payload` |
-| Empty-search line on a non-empty search | `app1/agent.py` `search_miss_note` |
-| Disclaimer on a withdrawn price or a profile-only turn | `grounding.py` `_claim_withdrawn`; `app1/agent.py` `turn_has_catalog_facts` |
+| Catalog result the model cannot see (`catalog_search` and single-product `catalog_get_product`) | `ai_runtime.py` `_strip_heavy_tool_payload` / `_fit_tool_payload` / `_shrink_result_lists`; `app1/tools.py` `_execute_catalog_get_product` & `_catalog_compact_fields` |
+| Empty-search line on a non-empty search or comparison (`catalog_compare_products`) | `app1/agent.py` `_payload_has_hits` & `search_miss_note` |
+| Disclaimer on a withdrawn price, user budget/delta reference, markdown bold prose, or profile-only turn | `grounding.py` `_claim_withdrawn`, `_is_derived_or_budget_price`, `extract_factual_claims`; `app1/agent.py` `turn_has_catalog_facts` |
+| Conflicting catalog price labels ("både X kr. og pris på forespørgsel" / "Gratis" on "Kontakt for pris") & `"Default Title"` locations | `catalog_service.py` `price_label_for_product`, `normalize_product`, `extract_city_name`; `app1/tools.py` `_extract_compact_fields`, `_delivery_modes`; `app1/__init__.py` `serialize_course_card` |
+| `<!--kort-->` cutting individual bullets out of comparison lists or rejection lists ("Jeg ville fravælge:") | `app1/card_text.py` `tidy_answer` |
 | English switch | `SYSTEM_CORE` in `app1/agent.py` |
 | Own order not looked up | `get_employee_tool_selection` in `ai_tool_registry.py`; `get_my_course_status` description in `app1/tools.py` |
-| Account deletion skips help | `looks_like_platform_help` in `app1/help_kb.py` |
+| Account deletion skips help or misses `Slet alle dine data` section | `looks_like_platform_help` and `_best_field_match` in `app1/help_kb.py` |
+| Learning path ignoring active `learning_goals` in favor of stale `target_role` | `_execute_suggest_learning_path` in `app1/tools.py` |
 | Space before `/products/` | `fix_markdown_links` in `app1/card_text.py`; the same rewrite in `chat.js` and `ai-stream.js` |
 
 The patch does not rewrite an answer that still contradicts the tool result. A later turn can still say a proposal is saved, still answer in English, and still quote a price that is not in the tool output. The disclaimer still fires when a price is asserted and not withdrawn.
 
 ## Offline suite
 
-`py -m pytest -q` on this worktree: 2,597 passed, 1 failed, 5 skipped. The failure was `tests/test_chatbot_order_contact_flow.py::ReadinessContactTests::test_preparation_uses_the_only_variant_and_still_needs_confirmation`. The fixture session date was `2026-11-01`, which `enrollment_service.quote_course` rejects once that day is past. The fixture date in this branch is `2027-03-01`. Re-running that file afterwards: 20 passed. The full suite was not run again after that one-line fixture change.
+`py -m pytest -q` on this branch (with `CATALOG_SOURCE_FILE` pointing at the full 1,837-product Shopify export): **2,612 passed, 0 failed, 2 skipped (366 subtests passed)**. The fixture date in `tests/test_chatbot_order_contact_flow.py` was updated from `2026-11-01` to `2027-03-01` so `enrollment_service.quote_course` does not reject it as a past date.

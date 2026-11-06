@@ -30,8 +30,8 @@ def _rollback():
         pass
 
 
-def new_sid():
-    return f"hr_{uuid.uuid4()}"
+def new_sid(prefix="hr_"):
+    return f"{prefix}{uuid.uuid4()}"
 
 
 def _clean(messages):
@@ -52,13 +52,13 @@ def _title(messages):
     return "Ny samtale"
 
 
-def active_sid(username):
+def active_sid(username, mode=MODE):
     if not username:
         return None
     try:
         cur = _conn().cursor()
         cur.execute("SELECT session_id FROM user_active_sessions WHERE username = %s AND mode = %s",
-                    (username, MODE))
+                    (username, mode))
         row = cur.fetchone()
         cur.close()
     except Exception:
@@ -69,14 +69,14 @@ def active_sid(username):
     return (row.get("session_id") if isinstance(row, dict) else row[0]) or None
 
 
-def set_active(username, sid):
+def set_active(username, sid, mode=MODE):
     if not username or not sid:
         return False
     try:
         cur = _conn().cursor()
         cur.execute(
             "INSERT INTO user_active_sessions (username, mode, session_id) VALUES (%s, %s, %s) "
-            "ON DUPLICATE KEY UPDATE session_id = VALUES(session_id)", (username, MODE, sid))
+            "ON DUPLICATE KEY UPDATE session_id = VALUES(session_id)", (username, mode, sid))
         _conn().commit()
         cur.close()
         return True
@@ -85,14 +85,14 @@ def set_active(username, sid):
         return False
 
 
-def load(username, sid):
+def load(username, sid, mode=MODE):
     """Stored messages for exactly this user's conversation, [] when none."""
     if not username or not sid:
         return []
     try:
         cur = _conn().cursor()
         cur.execute("SELECT messages FROM conversation_history "
-                    "WHERE username = %s AND session_id = %s AND mode = %s LIMIT 1", (username, sid, MODE))
+                    "WHERE username = %s AND session_id = %s AND mode = %s LIMIT 1", (username, sid, mode))
         row = cur.fetchone()
         cur.close()
     except Exception:
@@ -108,7 +108,7 @@ def load(username, sid):
     return _clean(data if isinstance(data, list) else [])
 
 
-def save(username, sid, messages):
+def save(username, sid, messages, mode=MODE):
     """Upsert the transcript. Returns True when stored."""
     msgs = _clean(messages)
     if not username or not sid or not msgs:
@@ -117,7 +117,7 @@ def save(username, sid, messages):
     try:
         cur = _conn().cursor()
         cur.execute("SELECT id FROM conversation_history WHERE username = %s AND session_id = %s AND mode = %s",
-                    (username, sid, MODE))
+                    (username, sid, mode))
         row = cur.fetchone()
         if row:
             rid = row.get("id") if isinstance(row, dict) else row[0]
@@ -125,17 +125,17 @@ def save(username, sid, messages):
                         (payload, _title(msgs), rid))
         else:
             cur.execute("INSERT INTO conversation_history (username, session_id, title, mode, messages) "
-                        "VALUES (%s, %s, %s, %s, %s)", (username, sid, _title(msgs), MODE, payload))
+                        "VALUES (%s, %s, %s, %s, %s)", (username, sid, _title(msgs), mode, payload))
         _conn().commit()
         cur.close()
     except Exception:
         _rollback()
         return False
-    set_active(username, sid)
+    set_active(username, sid, mode)
     return True
 
 
-def list_sessions(username, limit=30):
+def list_sessions(username, limit=30, mode=MODE):
     """Newest first: [{session_id, title, updated_at}]."""
     if not username:
         return []
@@ -143,7 +143,7 @@ def list_sessions(username, limit=30):
         cur = _conn().cursor()
         cur.execute("SELECT session_id, title, updated_at FROM conversation_history "
                     "WHERE username = %s AND mode = %s ORDER BY updated_at DESC LIMIT %s",
-                    (username, MODE, int(limit)))
+                    (username, mode, int(limit)))
         rows = cur.fetchall() or []
         cur.close()
     except Exception:
@@ -157,35 +157,35 @@ def list_sessions(username, limit=30):
     return out
 
 
-def open_session(username, sid):
+def open_session(username, sid, mode=MODE):
     """Make ``sid`` the active conversation if it is this user's. Returns its messages or None."""
     if not username or not sid:
         return None
-    msgs = load(username, sid)
+    msgs = load(username, sid, mode)
     if not msgs:
         return None
-    set_active(username, sid)
+    set_active(username, sid, mode)
     return msgs
 
 
-def resolve_sid(flask_session, username):
+def resolve_sid(flask_session, username, key="hr_chat_session_id", mode=MODE, prefix="hr_"):
     """The HR conversation this browser continues: the session pointer, else the
     user's last active one (new tab / new device / after a deploy), else a new one."""
-    sid = flask_session.get("hr_chat_session_id")
-    if sid and (load(username, sid) or sid.startswith("hr_")):
+    sid = flask_session.get(key)
+    if sid and sid.startswith(prefix):
         # A pointer we minted ourselves is fine even before its first save.
         return sid
-    sid = active_sid(username)
+    sid = active_sid(username, mode)
     if sid:
-        flask_session["hr_chat_session_id"] = sid
+        flask_session[key] = sid
         return sid
-    sid = new_sid()
-    flask_session["hr_chat_session_id"] = sid
+    sid = new_sid(prefix)
+    flask_session[key] = sid
     return sid
 
 
-def start_new(flask_session, username):
-    sid = new_sid()
-    flask_session["hr_chat_session_id"] = sid
-    set_active(username, sid)
+def start_new(flask_session, username, key="hr_chat_session_id", mode=MODE, prefix="hr_"):
+    sid = new_sid(prefix)
+    flask_session[key] = sid
+    set_active(username, sid, mode)
     return sid

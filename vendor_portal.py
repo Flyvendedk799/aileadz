@@ -583,9 +583,17 @@ def vendor_submit():
 #     fails closed with a Danish error instead of 500-ing.
 # ===========================================================================
 
-# In-memory per-vendor-session conversation memory (mirrors hr_agent's store).
-VENDOR_CHAT_MEMORY = {}
-VENDOR_SESSION_TTL = 3600
+# Conversation memory is durable (MySQL, hr_conversations with mode="vendor") and keyed by the
+# vendor account, so a deploy or a second worker never loses it (N-5.4).
+VENDOR_MODE = "vendor"
+VENDOR_SID_KEY = "vendor_chat_session_id"
+
+VENDOR_FEW_SHOT = """EKSEMPLER PÅ STIL (leverandør):
+Spørgsmål: Hvordan går det med vores kurser?
+Svar i stil: Start med trenden de sidste 30 dage, peg på topkurset og det kursus, der halter, og foreslå én konkret forbedring.
+
+Spørgsmål: Hvorfor bliver vores kursus ikke set?
+Svar i stil: Tjek katalogopslaget med værktøjet, nævn de 2-3 vigtigste mangler og hvad de koster i synlighed."""
 
 VENDOR_SYSTEM_PROMPT = """Du er en leverandør-assistent for en kursusudbyder på Futurematch-platformen.
 
@@ -608,22 +616,38 @@ ABSOLUTTE REGLER:
 
 STIL:
 - Kort, præcist og på dansk. Brug bullet points til tal. Fremhæv den vigtigste indsigt først.
+- Stil ikke spørgsmål, du kan besvare med et værktøj. Gæt fornuftigt og sig det, hvis noget er uklart.
+
+AFSLUT med 2-3 konkrete forslag til næste skridt:
+<suggestions>["forslag 1", "forslag 2", "forslag 3"]</suggestions>
 """
-
-
-def _cleanup_vendor_sessions():
-    now = time.time()
-    stale = [
-        sid for sid, msgs in VENDOR_CHAT_MEMORY.items()
-        if msgs and isinstance(msgs[-1], dict) and msgs[-1].get("_ts", 0) < now - VENDOR_SESSION_TTL
-    ]
-    for sid in stale:
-        VENDOR_CHAT_MEMORY.pop(sid, None)
 
 
 def _vendor_sse(event):
     """Serialize a single SSE 'data:' frame."""
-    return f"data: {json.dumps(event)}\n\n"
+    return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+
+def _vendor_username():
+    return f"vendor:{session.get('vendor_id')}"
+
+
+@vendor_bp.route("/ask/history")
+@_vendor_login_required
+def vendor_ask_history():
+    """The vendor's current assistant conversation (panel restore)."""
+    import hr_conversations as hc
+    user = _vendor_username()
+    sid = hc.resolve_sid(session, user, key=VENDOR_SID_KEY, mode=VENDOR_MODE, prefix="vendor_")
+    return jsonify({"session_id": sid, "messages": hc.load(user, sid, VENDOR_MODE)})
+
+
+@vendor_bp.route("/ask/reset", methods=["POST"])
+@_vendor_login_required
+def vendor_ask_reset():
+    import hr_conversations as hc
+    sid = hc.start_new(session, _vendor_username(), key=VENDOR_SID_KEY, mode=VENDOR_MODE, prefix="vendor_")
+    return jsonify({"success": True, "session_id": sid})
 
 
 @vendor_bp.route("/ask", methods=["POST"])
@@ -653,24 +677,24 @@ def vendor_ask():
         logger.warning("vendor_ask: vendor_tools unavailable: %s", e)
         return jsonify({"error": "Leverandør-assistenten er midlertidigt utilgængelig."}), 503
 
-    # Per-vendor conversation memory, keyed by an isolated session id.
-    _cleanup_vendor_sessions()
-    sid = session.get("vendor_chat_session_id")
-    if not sid:
-        sid = f"vendor_{vendor_id}_{uuid.uuid4()}"
-        session["vendor_chat_session_id"] = sid
-    if sid not in VENDOR_CHAT_MEMORY:
-        VENDOR_CHAT_MEMORY[sid] = [{"role": "system", "content": VENDOR_SYSTEM_PROMPT}]
-
-    messages = VENDOR_CHAT_MEMORY[sid]
-    # Inject/refresh a small vendor-context system line (which vendor we are).
-    context_line = {"role": "system", "content": f"LEVERANDØR: {vendor_name}"}
-    if len(messages) > 1 and messages[1].get("role") == "system" \
-            and (messages[1].get("content") or "").startswith("LEVERANDØR:"):
-        messages[1] = context_line
-    else:
-        messages.insert(1, context_line)
-    messages.append({"role": "user", "content": user_query, "_ts": time.time()})
+    # Durable per-vendor conversation (MySQL), scoped to this vendor account.
+    import ai_context_layers as _ctx
+    import ai_reply
+    import hr_conversations as hc
+    v_user = _vendor_username()
+    sid = hc.resolve_sid(session, v_user, key=VENDOR_SID_KEY, mode=VENDOR_MODE, prefix="vendor_")
+    history = hc.load(v_user, sid, VENDOR_MODE)
+    # The vendor name is vendor-entered free text: fence it as DATA, never as instructions.
+    try:
+        import grounding as _grounding
+        fenced_name = _grounding.delimit_untrusted("LEVERANDØRNAVN", vendor_name) or vendor_name
+    except Exception:
+        fenced_name = vendor_name
+    layers = [_ctx.layer("assistant_context", f"LEVERANDØR: {fenced_name}")]
+    if len(history) <= 14:
+        layers.append(_ctx.layer("few_shot", VENDOR_FEW_SHOT))
+    messages = ([{"role": "system", "content": VENDOR_SYSTEM_PROMPT}] + layers
+                + history[-24:] + [{"role": "user", "content": user_query}])
 
     def stream_generator():
         full_text = ""
@@ -693,10 +717,7 @@ def vendor_ask():
             )
             from ai_tool_registry import tool_name
 
-            # Strip private "_ts" bookkeeping before sending to the model.
-            clean_messages = [
-                {k: v for k, v in m.items() if k != "_ts"} for m in messages
-            ]
+            clean_messages = list(messages)
 
             # Vendor tool executor: ALWAYS bind the SESSION vendor name so the
             # model can never widen scope to another vendor / buyer.
@@ -787,19 +808,40 @@ def vendor_ask():
             final_messages = list(
                 runtime_result.stream_messages or runtime_result.messages or clean_messages
             )
-            full_text = runtime_result.text or ""
-            if runtime_result.needs_final_stream or not full_text.strip():
-                full_text = ""
+            raw_text = runtime_result.text or ""
+            flt = ai_reply.SuggestionFilter()
+            if runtime_result.needs_final_stream or not raw_text.strip():
+                raw_text = ""
                 for token in iter_completion_stream(final_messages):
-                    full_text += token
-                    yield _vendor_sse({"type": "text", "content": token})
+                    raw_text += token
+                    shown = flt.feed(token)
+                    if shown:
+                        yield _vendor_sse({"type": "text", "content": shown})
+                tail = flt.flush()
+                if tail:
+                    yield _vendor_sse({"type": "text", "content": tail})
             else:
-                yield _vendor_sse({"type": "text", "content": full_text})
+                yield _vendor_sse({"type": "text", "content": ai_reply.strip_suggestions(raw_text)})
+            full_text = ai_reply.strip_suggestions(raw_text)
 
-            messages.append({"role": "assistant", "content": full_text, "_ts": time.time()})
-            # Bound memory growth.
-            if len(messages) > 30:
-                VENDOR_CHAT_MEMORY[sid] = [messages[0]] + messages[-16:]
+            # Grounding check: a figure the tools did not return gets one guarded disclaimer.
+            try:
+                import grounding as _g
+                evidence = [getattr(tr, "output", "") for tr in runtime_result.tool_results if getattr(tr, "output", "")]
+                if evidence and full_text.strip():
+                    verdict = _g.grounding_disclaimer(full_text, evidence)
+                    if verdict.get("violation") and verdict.get("disclaimer"):
+                        note = "\n\n" + verdict["disclaimer"]
+                        full_text += note
+                        yield _vendor_sse({"type": "text", "content": note})
+            except Exception:
+                pass
+
+            suggestions = ai_reply.extract_suggestions(raw_text) or [
+                "Hvordan går mine kurser?", "Hvad efterspørger markedet?", "Hvad mangler i mit katalog?"]
+            yield _vendor_sse({"type": "suggestions", "items": suggestions})
+            hc.save(v_user, sid, history + [{"role": "user", "content": user_query},
+                                            {"role": "assistant", "content": full_text}], VENDOR_MODE)
 
             yield _vendor_sse({"type": "done"})
         except Exception as e:

@@ -39,7 +39,8 @@ SURFACES = {
     "profiler": "AI-assistenten",
     "mind_map": "Mind-Map (overblikket over det, AI'en ved om brugeren)",
     "profile": "profilsiden",
-    "cv_upload": "CV-importen på profilsiden",
+    "cv_upload": "CV-importen under Mit CV",
+    "cv": "Mit CV (CV'et bygget af hele deres profil, med forbedringsforslag)",
     "my_learning": "Min læring",
     "goals": "Mine mål",
     "timeline": "tidslinjen med frister",
@@ -71,6 +72,7 @@ _ORIGIN_TOOLS = {
     "mind_map": ("show_mindmap_preview", "recall_about_user"),
     "profile": ("show_cv_summary", "show_skill_gaps"),
     "cv_upload": ("show_cv_summary", "show_skill_gaps", "recommend_for_profile"),
+    "cv": ("show_cv_summary", "show_skill_gaps", "recommend_for_profile"),
     "my_learning": ("get_my_agenda",),
     "goals": ("get_learning_goals", "track_goal_progress"),
     "timeline": ("get_my_agenda",),
@@ -304,6 +306,9 @@ def build_layer(ctx, resolved=None, mode="default"):
         return " ".join(head), "\n".join(resolved.get("lines") or []), True
     if origin == "cv_upload":
         head.append("De har lige arbejdet med deres CV; det, der blev gemt, står på profilen.")
+    elif origin == "cv":
+        head.append("De kommer fra deres CV og vil typisk gøre det stærkere eller målrette det; "
+                    "show_cv_summary viser, hvad der løfter det mest.")
     elif origin == "mind_map":
         head.append("Der ser de alt det, AI'en ved om dem, så rettelser og 'glem det' er naturlige her.")
     return " ".join(head), "", False

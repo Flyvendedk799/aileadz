@@ -23,4 +23,4 @@ Du kan også bede AI-assistenten om det, fx: "Sæt et mål om at blive bedre til
 - Øverst ser du "Mål i alt", "Aktive" og "Fuldførte".
 
 ## Ønsket rolle
-På profilsiden (Profil & CV) kan du angive, hvilken rolle du gerne vil hen imod. AI'en bruger din ønskede rolle og dine mål til at målrette kursusforslag og læringsstier.
+På profilsiden (Profil) kan du angive, hvilken rolle du gerne vil hen imod. AI'en bruger din ønskede rolle og dine mål til at målrette kursusforslag og læringsstier.

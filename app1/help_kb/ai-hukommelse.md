@@ -21,7 +21,7 @@ Skriv fx "glem at jeg bor i Aarhus" i AI-assistenten. AI'en finder hukommelsen o
 - Under et svar kan der stå "Brugte hukommelse om dig". Klik for at se hukommelserne, og klik på × ved den, du vil slette.
 
 ## Ret eller fjern profiloplysninger
-Oplysninger fra din profil (fx kompetencer eller erfaring) har i Mind-Map knappen "Ret på profil" og for mange typer også "Fjern". Du kan også rette dem direkte på profilsiden (Profil & CV).
+Oplysninger fra din profil (fx kompetencer eller erfaring) har i Mind-Map knappen "Ret på profil" og for mange typer også "Fjern". Du kan også rette dem direkte på profilsiden (Profil).
 
 ## Tilføj selv en hukommelse
 Vælg profilen i midten af Mind-Map og klik "Tilføj hukommelse". Skriv, hvad AI'en skal huske, eventuelt med en detalje og en kategori.

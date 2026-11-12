@@ -572,11 +572,22 @@ def parse_profile_from_text(text: str, progress_callback=None) -> dict:
         return {}
 
 
+# Sections the coach can rewrite, and what a good result looks like for each. The CV
+# studio (/profil/cv) and the import review both call through /api/cv/improve.
+COACH_SECTIONS = ("summary", "experience", "headline")
+_COACH_GUIDE = {
+    "summary": "Mål: 3-5 sætninger i første person: hvad personen kan, hvad de har opnået, og retningen.",
+    "experience": ("Mål: beskrivelsen af ét job som 3-5 korte punkter (én linje pr. punkt, start med et "
+                   "udsagnsord), med ansvar og resultater. Returnér punkterne adskilt af linjeskift."),
+    "headline": "Mål: én linje under navnet, maks. 90 tegn, fx rolle + speciale + erfaring. Ingen punktum.",
+}
+
+
 def improve_cv_section(section: str, content, *, target_role: str = "", gaps=None) -> dict:
     """Suggest a grounded rewrite for one CV section without mutating data."""
     try:
         section = (section or "").strip().lower()
-        if section not in {"summary", "experience"}:
+        if section not in COACH_SECTIONS:
             return {}
         if not content:
             return {}
@@ -598,7 +609,8 @@ def improve_cv_section(section: str, content, *, target_role: str = "", gaps=Non
             "forslaget. Svar kun som JSON med: suggestion (tekst), rationale (kort tekst), "
             "missing_evidence (liste af spørgsmål), inferred (altid false medmindre du "
             "tydeligt markerer en sproglig inferens).\n"
-            f"Sektion: {section}\nKontekst: {json.dumps(context, ensure_ascii=False)}\n{fenced}"
+            f"Sektion: {section}\n{_COACH_GUIDE.get(section, '')}\n"
+            f"Kontekst: {json.dumps(context, ensure_ascii=False)}\n{fenced}"
         )
         improve_model = _model_name()
         resp = client.chat.completions.create(**_tuned_chat_kwargs(

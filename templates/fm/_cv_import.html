@@ -1,5 +1,6 @@
-{# CV import, inline on the profile page (the old /profil-upload portal was merged here).
-   Behaviour: static/futurematch/assets/profile-cv.js; looks: profile-cv.css. #}
+{# CV import, inside the CV studio (/profil/cv; the old /profil-upload portal and the
+   profile-page import were merged there). Behaviour: static/futurematch/assets/profile-cv.js;
+   looks: profile-cv.css. #}
 <section id="cvImport" class="cvi" hidden aria-label="Importér dit CV">
   <div class="cvi-head">
     <h4><i class="fa-solid fa-file-arrow-up"></i> Importér dit CV</h4>
@@ -66,7 +67,7 @@
          (cv_just_applied) and builds on it instead of asking again. #}
       <a class="btn btn-primary btn-sm" href="{{ url_for('futurematch.chat') }}?from=cv_upload&amp;intent={{ 'Jeg har lige opdateret min profil fra mit CV. Hvad bygger vi videre på?'|urlencode }}"><i class="fa-solid fa-wand-magic-sparkles"></i> Gennemgå med AI-assistenten</a>
       <a class="btn btn-soft btn-sm" href="{{ url_for('futurematch.chat') }}?from=cv_upload&amp;focus=section:skills&amp;intent={{ 'Vis mine største kompetencegab og anbefal kurser der lukker dem'|urlencode }}">Find kurser til mine gab</a>
-      <a class="btn btn-ghost btn-sm" href="{{ url_for('futurematch.my_cv') }}">Se dit Futurematch-CV</a>
+      <button type="button" class="btn btn-ghost btn-sm" data-cv-close>Se dit opdaterede CV</button>
       <button type="button" class="btn btn-ghost btn-sm" data-cv-again>Importér et andet CV</button>
     </div>
   </div>

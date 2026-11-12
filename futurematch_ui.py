@@ -5,6 +5,7 @@ and a design showcase that can render any converted page under templates/fm/.
 The shared shell lives in templates/fm_base.html; individual pages extend it.
 """
 import os
+import re
 import datetime
 from auth_decorators import require_company
 from flask import (Blueprint, render_template, session, abort, redirect,
@@ -180,7 +181,8 @@ SIDEBAR_BY_ENDPOINT = {
     'futurematch.company_chat': 'company_chat',
     'futurematch.ai_profiler': 'chat',
     'futurematch.mind_map': 'mindmap',
-    'futurematch.my_cv': 'profile',
+    'futurematch.my_cv': 'cv',
+    'futurematch.my_cv_print': 'cv',
     'catalog.catalog_index': 'catalog',
     'catalog.product_detail': 'catalog',
     'catalog.category_index': 'catalog',
@@ -899,40 +901,84 @@ def timeline():
     )
 
 
-# ── CV on the profile page ──
+# ── The CV studio ──
 #
-# The CV portal (/profil-upload, a separate 3D page with a no-JS form fallback) was merged
-# into the profile page: upload/paste, review and apply happen inline there
-# (static/futurematch/assets/profile-cv.js, templates/fm/_cv_import.html) on the same
-# /api/cv/* pipeline. The parsed profile is always a PROPOSAL; nothing is written until the
-# person confirms items. Only the legacy URL and the generated-CV view live here.
+# One CV feature, one home: /profil/cv. Import (upload/paste -> review -> apply, on the
+# /api/cv/* pipeline, static/futurematch/assets/profile-cv.js), the live document, the
+# AI coach, templates, quality checks, platform evidence and exports all live there.
+# The document is assembled by cv_service from the whole platform; the parsed import is
+# always a PROPOSAL and nothing is written until the person confirms items.
+
+def _cv_login_redirect():
+    if session.get('user'):
+        return None
+    flash('Log ind for at se dit CV.', 'danger')
+    return redirect(url_for('auth.login', next=request.path))
+
 
 @futurematch_bp.route('/profil-upload')
 def cv_upload():
-    """Legacy URL (bookmarks, old links, the AI's open_cv_upload action): the CV
-    import now lives on the profile page."""
-    return redirect(url_for('pages.profile') + '#cv', code=301)
+    """Legacy URL (bookmarks, old links): the CV import lives in the CV studio."""
+    return redirect(url_for('futurematch.my_cv') + '#import', code=301)
 
 
 @futurematch_bp.route('/profil/cv')
 def my_cv():
-    """The Futurematch-generated CV: the person's own profile laid out as a
-    printable CV (browser print -> PDF). Read-only, strictly the logged-in user's data."""
-    if not session.get('user'):
-        flash('Log ind for at se dit CV.', 'danger')
-        return redirect(url_for('auth.login'))
-    username = session['user']
-    profile = {}
-    try:
-        from app1.user_profile_db import ensure_tables, get_full_profile
-        ensure_tables()
-        profile = get_full_profile(username) or {}
-    except Exception as e:
-        current_app.logger.warning("my_cv profile: %s", e)
-    has_content = any(profile.get(k) for k in (
-        'bio', 'skills', 'experience', 'education', 'certifications',
-        'completed_courses', 'languages', 'portfolio_links'))
-    return render_template('fm/my_cv.html', p=profile, name=username, has_content=has_content)
+    """The CV studio: the person's CV built from everything the platform knows, with
+    import, AI coach, templates, quality checks and export. Strictly the session user."""
+    guard = _cv_login_redirect()
+    if guard is not None:
+        return guard
+    import cv_service
+    cv, quality = cv_service.build_for_session()
+    return render_template(
+        'fm/my_cv.html', cv=cv, quality=quality,
+        sections=cv_service.visible_sections(cv), labels=cv_service.SECTION_LABELS,
+        section_keys=cv_service.SECTION_KEYS, templates=cv_service.TEMPLATES,
+    )
+
+
+@futurematch_bp.route('/profil/cv/print')
+def my_cv_print():
+    """Print-ready CV (browser print -> PDF). ?template= previews another template
+    without saving it."""
+    guard = _cv_login_redirect()
+    if guard is not None:
+        return guard
+    import cv_service
+    prefs = cv_service.load_prefs(session['user'])
+    if request.args.get('template') in cv_service.TEMPLATES:
+        prefs['template'] = request.args['template']
+    cv, _quality = cv_service.build_for_session(prefs=prefs)
+    return render_template('fm/cv_print.html', cv=cv, sections=cv_service.visible_sections(cv),
+                           labels=cv_service.SECTION_LABELS, autoprint=request.args.get('print') == '1')
+
+
+@futurematch_bp.route('/profil/cv/download.<fmt>')
+def my_cv_download(fmt):
+    """The CV as a file: .md (Markdown), .txt (for job portals) or .json (structured)."""
+    guard = _cv_login_redirect()
+    if guard is not None:
+        return guard
+    if fmt not in ('md', 'txt', 'json'):
+        abort(404)
+    import json as _json
+    import cv_service
+    from flask import Response
+    cv, quality = cv_service.build_for_session()
+    if fmt == 'json':
+        body = _json.dumps({'cv': cv, 'quality': {'score': quality['score'], 'grade': quality['grade']}},
+                           ensure_ascii=False, indent=2, default=str)
+        mime = 'application/json'
+    elif fmt == 'md':
+        body, mime = cv_service.to_markdown(cv), 'text/markdown'
+    else:
+        body, mime = cv_service.to_text(cv), 'text/plain'
+    slug = re.sub(r'[^a-z0-9]+', '-', (cv.get('name') or 'cv').lower()).strip('-') or 'cv'
+    return Response(body, mimetype=mime + '; charset=utf-8', headers={
+        'Content-Disposition': f'attachment; filename="cv-{slug}.{fmt}"',
+        'Cache-Control': 'no-store',
+    })
 
 
 def _require_showcase_admin():

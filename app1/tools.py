@@ -1419,10 +1419,11 @@ OPENAI_TOOLS.extend([
         "function": {
             "name": "show_cv_summary",
             "description": (
-                "Vis et øjebliksbillede af brugerens CV-data direkte i chatten: kompetencer, erfaring, "
-                "uddannelse, certificeringer og sprog — med et 'Opdater CV'-link til CV-importen på "
-                "profilsiden. Brug dette når brugeren spørger om sin profil/CV, vil uploade nyt CV, eller "
-                "du vil opsummere hvad systemet ved om dem fagligt."
+                "Vis brugerens CV som et kort i chatten: CV-styrke, de vigtigste forbedringer, dækning "
+                "mod ønsket rolle, kompetencer (med det, platformen har dokumenteret), erfaring, "
+                "uddannelse, certificeringer og sprog — med links til Mit CV og CV-importen. Brug det, "
+                "når brugeren spørger om sit CV eller sin profil, eller vil vide, hvad der vil gøre "
+                "CV'et stærkere. Resultatet indeholder next_steps, som du kan bygge dit svar på."
             ),
             "parameters": {
                 "type": "object",
@@ -7004,12 +7005,12 @@ def _execute_open_in_app(args, username=None):
         out["label"] = label or "Åbn 3D Mind-Map"
 
     elif action == "open_cv_upload":
-        out["target"] = "/profil#cv"
+        out["target"] = "/profil/cv#import"
         out["label"] = label or "Upload / opdater CV"
 
     elif action == "open_my_cv":
         out["target"] = "/profil/cv"
-        out["label"] = label or "Se dit Futurematch-CV"
+        out["label"] = label or "Åbn dit CV"
 
     elif action == "open_learning_path":
         out["target"] = "/profile#learning-paths"
@@ -7055,38 +7056,23 @@ def _execute_open_in_app(args, username=None):
 
 
 def _execute_show_cv_summary(args, username):
+    """The CV card: the same document the CV studio shows (cv_service), compacted."""
     if not username:
         return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
     focus = (args.get("focus") or "overview").strip()
     try:
-        from app1.user_profile_db import get_full_profile, ensure_tables
-        ensure_tables()
-        profile = get_full_profile(username)
-        skills = profile.get("skills") or []
-        experience = profile.get("experience") or []
-        education = profile.get("education") or []
-        certifications = profile.get("certifications") or []
-        languages = profile.get("languages") or []
-        sections = {
-            "skills": [{"name": s.get("skill_name", ""), "level": s.get("skill_level", "")} for s in skills[:6]],
-            "experience": [{"title": e.get("title", ""), "company": e.get("company", ""), "years": str(e.get("start_year", "") or "")} for e in experience[:4]],
-            "education": [{"degree": e.get("degree", ""), "institution": e.get("institution", ""), "year": str(e.get("year_completed", "") or "")} for e in education[:3]],
-            "certifications": [{"name": c.get("name", ""), "issuer": c.get("issuer", "")} for c in certifications[:4]],
-            "languages": [{"language": l.get("language", ""), "proficiency": l.get("proficiency", "")} for l in languages],
-        }
-        counts = {k: len(v_list) for k, v_list in [
-            ("skills", skills), ("experience", experience), ("education", education),
-            ("certifications", certifications), ("languages", languages),
-        ]}
-        total = sum(counts.values())
-        return json.dumps({
-            "status": "cv_summary",
-            "sections": sections,
-            "counts": counts,
-            "total": total,
-            "has_cv": total > 0,
-            "focus": focus,
-        }, ensure_ascii=False, default=str)
+        import cv_service
+        company_id = user_id = None
+        try:
+            from flask import has_request_context, session
+            if has_request_context() and session.get("user") == username:
+                company_id, user_id = session.get("company_id"), session.get("user_id")
+        except Exception:
+            pass
+        cv, quality = cv_service.build_cv(username, company_id=company_id, user_id=user_id)
+        card = cv_service.chat_card(cv, quality)
+        return json.dumps({"status": "cv_summary", "focus": focus, **card},
+                          ensure_ascii=False, default=str)
     except Exception as e:
         return _internal_tool_error("show_cv_summary", e, "CV-overblikket kunne ikke hentes lige nu.")
 

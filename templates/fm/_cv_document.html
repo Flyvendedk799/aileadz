@@ -1,0 +1,148 @@
+{# The CV document itself. ONE partial for every place the CV is shown: the CV studio
+   preview (editable=true adds edit/coach hooks), /api/cv/document's live refresh and the
+   print view. Data: cv_service.assemble(); sections: cv_service.visible_sections().
+   Styles: static/futurematch/assets/cv-document.css. Links are printed as text unless
+   they are plain http(s) URLs, so a stored javascript: URL can never become an href. #}
+{% set cv = cv or {} %}
+{% set prefs = cv.prefs or {} %}
+{% set ev = prefs.show_evidence %}
+{% macro edit(section, id=none, label='Redigér') -%}
+  {%- if editable -%}
+  <span class="cvd-tools" data-noprint>
+    <button type="button" class="cvd-tool" data-cv-edit="{{ section }}"{% if id is not none %} data-id="{{ id }}"{% endif %} title="{{ label }}" aria-label="{{ label }}"><i class="fa-solid fa-pen"></i></button>
+    {%- if section in ('summary', 'experience', 'headline') %}
+    <button type="button" class="cvd-tool ai" data-cv-coach="{{ section }}"{% if id is not none %} data-id="{{ id }}"{% endif %} title="Gør skarpere med AI" aria-label="Gør skarpere med AI"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
+    {%- endif %}
+  </span>
+  {%- endif -%}
+{%- endmacro %}
+{% macro section(key) %}
+    <section class="cvd-sec cvd-sec--{{ key }}" data-section="{{ key }}">
+      <h2>{{ labels[key] }}{% if key == 'summary' %}{{ edit('summary') }}{% endif %}</h2>
+
+      {% if key == 'summary' %}
+        <p class="cvd-summary">{{ cv.summary }}</p>
+
+      {% elif key == 'experience' %}
+        {% for e in cv.experience %}
+          <div class="cvd-item">
+            <div class="cvd-row">
+              <span class="cvd-what">{{ e.title }}{% if e.company %}<span class="cvd-at">, {{ e.company }}</span>{% endif %}{{ edit('experience', e.id) }}</span>
+              <span class="cvd-when">{{ e.period }}</span>
+            </div>
+            {% if e.bullets|length > 1 %}
+              <ul class="cvd-bullets">{% for b in e.bullets %}<li>{{ b }}</li>{% endfor %}</ul>
+            {% elif e.bullets %}
+              <p>{{ e.bullets[0] }}</p>
+            {% elif editable %}
+              <p class="cvd-missing" data-noprint>Beskriv dit ansvar og dine resultater her.</p>
+            {% endif %}
+          </div>
+        {% endfor %}
+
+      {% elif key == 'education' %}
+        {% for e in cv.education %}
+          <div class="cvd-item">
+            <div class="cvd-row"><span class="cvd-what">{{ e.degree }}</span><span class="cvd-when">{{ e.year or '' }}</span></div>
+            {% if e.institution %}<div class="cvd-where">{{ e.institution }}</div>{% endif %}
+            {% if e.description %}<p>{{ e.description }}</p>{% endif %}
+          </div>
+        {% endfor %}
+
+      {% elif key == 'skills' %}
+        {% for g in cv.skill_groups %}
+          <div class="cvd-skillrow">
+            <div class="cvd-lv">{{ g.label }}</div>
+            <div class="cvd-tags">
+              {% for s in g.skills %}
+                <span class="cvd-tag{% if s.relevant and prefs.targeted %} is-relevant{% endif %}{% if s.evidence and ev %} is-proven{% endif %}"
+                      {% if s.evidence and ev %}title="{{ s.evidence|map(attribute='label')|join(', ') }}"{% endif %}>
+                  {{ s.name }}{% if s.evidence and ev %} <i class="fa-solid fa-circle-check" aria-label="{{ s.evidence|map(attribute='label')|join(', ') }}"></i>{% endif %}
+                </span>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+        {% if ev and cv.stats and cv.stats.evidenced_skills %}<p class="cvd-legend"><i class="fa-solid fa-circle-check"></i> Dokumenteret gennem gennemført kursus eller lederens vurdering</p>{% endif %}
+
+      {% elif key == 'certifications' %}
+        {% for c in cv.certifications %}
+          <div class="cvd-item">
+            <div class="cvd-row">
+              <span class="cvd-what">{{ c.name }}{% if c.state_label %} <em class="cvd-state cvd-state--{{ c.state }}">{{ c.state_label }}</em>{% endif %}</span>
+              <span class="cvd-when">{{ c.issue_date }}{% if c.expiry_date %} &ndash; {{ c.expiry_date }}{% endif %}</span>
+            </div>
+            {% if c.issuer or c.credential_id %}<div class="cvd-where">{{ c.issuer }}{% if c.credential_id %} · ID {{ c.credential_id }}{% endif %}</div>{% endif %}
+          </div>
+        {% endfor %}
+
+      {% elif key == 'courses' %}
+        <div class="cvd-compact">
+        {% for c in cv.courses %}
+          <div class="cvd-item">
+            <div class="cvd-row">
+              <span class="cvd-what">{{ c.title }}{% if c.verified and ev %} <i class="fa-solid fa-circle-check cvd-ok" title="Gennemført via Futurematch" aria-label="Gennemført via Futurematch"></i>{% endif %}</span>
+              <span class="cvd-when">{{ c.date }}</span>
+            </div>
+            {% if c.vendor %}<div class="cvd-where">{{ c.vendor }}</div>{% endif %}
+          </div>
+        {% endfor %}
+        </div>
+
+      {% elif key == 'in_progress' %}
+        {% for i in cv.in_progress %}
+          <div class="cvd-item"><div class="cvd-row"><span class="cvd-what">{{ i.title }}</span><span class="cvd-when">{{ i.detail }}</span></div></div>
+        {% endfor %}
+
+      {% elif key == 'languages' %}
+        <div class="cvd-tags">{% for l in cv.languages %}<span class="cvd-tag">{{ l.language }}, {{ l.label }}</span>{% endfor %}</div>
+
+      {% elif key == 'links' %}
+        {% for l in cv.links %}
+          <div class="cvd-item cvd-link"><span class="cvd-what">{{ l.label }}</span>
+            {% if l.safe and editable %}<a href="{{ l.url }}" rel="noopener noreferrer" target="_blank">{{ l.display }}</a>{% else %}<span class="cvd-where">{{ l.display }}</span>{% endif %}
+          </div>
+        {% endfor %}
+
+      {% elif key == 'direction' %}
+        {% if cv.target_role %}<p><strong>Ønsket rolle:</strong> {{ cv.target_role }}</p>{% endif %}
+        {% if cv.goals %}<ul class="cvd-bullets">{% for g in cv.goals %}<li>{{ g }}</li>{% endfor %}</ul>{% endif %}
+      {% endif %}
+    </section>
+{% endmacro %}
+<article class="cvd cvd--{{ prefs.template or 'klassisk' }}" data-cv-doc>
+  <header class="cvd-head">
+    <div class="cvd-id">
+      <h1 class="cvd-name">{{ cv.name or 'Mit CV' }}</h1>
+      {% if cv.headline %}
+        <div class="cvd-headline">{{ cv.headline }}{{ edit('headline') }}</div>
+      {% elif editable %}
+        <div class="cvd-headline is-empty">Tilføj en overskrift{{ edit('headline', label='Tilføj overskrift') }}</div>
+      {% endif %}
+    </div>
+    <div class="cvd-contact">
+      {% if cv.email %}<span><i class="fa-solid fa-envelope" aria-hidden="true"></i> {{ cv.email }}</span>{% endif %}
+      {% if cv.location %}<span><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{ cv.location }}</span>{% endif %}
+      {% for l in cv.links or [] %}{% if l.safe and loop.index <= 2 %}<span><i class="fa-solid fa-link" aria-hidden="true"></i> {{ l.display }}</span>{% endif %}{% endfor %}
+    </div>
+  </header>
+
+  {% if not cv.has_content %}
+    <div class="cvd-empty">
+      <p><strong>Der er endnu ikke noget CV at vise.</strong></p>
+      <p>Importér dit nuværende CV, eller fortæl AI-assistenten om dit arbejdsliv. Alt, hvad du gennemfører på Futurematch, kommer automatisk med.</p>
+    </div>
+  {% endif %}
+
+  {% set SIDE = ('skills', 'certifications', 'languages', 'links', 'in_progress') %}
+  {% if (prefs.template or 'klassisk') == 'moderne' %}
+  <div class="cvd-body">
+    <div class="cvd-main">{% for key in sections or [] if key not in SIDE %}{{ section(key) }}{% endfor %}</div>
+    <aside class="cvd-side">{% for key in sections or [] if key in SIDE %}{{ section(key) }}{% endfor %}</aside>
+  </div>
+  {% else %}
+  <div class="cvd-body">{% for key in sections or [] %}{{ section(key) }}{% endfor %}</div>
+  {% endif %}
+
+  <footer class="cvd-foot">Opdateret {{ cv.generated or '' }}{% if ev and cv.stats and cv.stats.verified_courses %} · {{ cv.stats.verified_courses }} kursus{{ 'er' if cv.stats.verified_courses != 1 }} dokumenteret via Futurematch{% endif %}</footer>
+</article>

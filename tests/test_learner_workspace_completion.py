@@ -141,12 +141,13 @@ def test_cv_import_is_honest_and_accessible_and_has_no_sample_profile():
     assert "/api/cv/apply" in js and "Intet gemmes, før du har gennemgået forslagene" in markup
 
 
-def test_cv_portal_page_is_gone_and_profile_hosts_the_import():
+def test_cv_portal_page_is_gone_and_the_cv_studio_hosts_the_import():
     import os
     assert not os.path.exists("templates/fm/cv_upload.html")
+    studio = open("templates/fm/my_cv.html", encoding="utf-8").read()
+    assert "fm/_cv_import.html" in studio
+    assert "data-cv-open" in studio
     profile = open("templates/fm/my_profile.html", encoding="utf-8").read()
-    assert "fm/_cv_import.html" in profile
-    assert "data-cv-open" in profile
     assert "futurematch.my_cv" in profile
 
 

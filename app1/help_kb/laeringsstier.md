@@ -16,7 +16,7 @@ En læringssti er en plan med flere kurser i en fornuftig rækkefølge mod et m�
 Jo mere komplet din profil og dine udviklingsmål er, jo bedre passer stien til dig.
 
 ## Følg din sti
-- Dine gemte stier ligger under "Mine læringsstier" på profilsiden (Profil & CV, /profil).
+- Dine gemte stier ligger under "Mine læringsstier" på profilsiden (Profil, /profil).
 - Her kan du markere trin som gennemført, markere hele stien som fuldført eller arkivere den.
 - Har du ingen gemte stier, står der "Ingen gemte læringsstier endnu".
 - Gemte læringsstier vises også i Mind-Map.

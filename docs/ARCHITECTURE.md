@@ -41,7 +41,8 @@ For the AI internals see [ai-framework.md](ai-framework.md). For standing constr
 | `catalog_service.py`, `catalog_routes.py`, `catalog_admin_routes.py`, `catalog_freshness.py`, `shopify_sync.py` | the ONE course catalog (source file `CATALOG_SOURCE_FILE`, vendor submissions, Shopify sync) |
 | `enrollment_service.py`, `order_fulfillment.py`, `fulfillment_routes.py`, `learning_routes.py` | canonical quotes, confirmed booking/change outcomes, attendance evidence and internal-course enrolment; `fulfillment_routes.order_sections()` + `templates/fm/order_sections/` are the one order console embedded in `/min-ordre/<id>`, `/hr/order/<id>/details` and `/vendor/orders/<id>/booking` (`/ordre/<id>/booking` only redirects) |
 | `learner_orders.py`, `learner_context.py`, `completion_service.py`, `competency.py`, `skill_history.py`, `learning_path_service.py`, `goal_sharing.py`, `goal_sharing_ui.py` | learner order detail, learner view of own HR data, completion moment, skills |
-| `cv_ingest.py`, `cv_parse_store.py` | CV / job-ad ingestion behind the profile page's CV import |
+| `cv_service.py` | the one CV: assembled from the whole platform (profile, verified courses, HR-rated skills, certs, work in progress, role fit), quality analysis, exports; serves the CV studio `/profil/cv`, `/api/cv/*` and `show_cv_summary` |
+| `cv_ingest.py`, `cv_parse_store.py` | CV / job-ad ingestion and the section coach behind the CV studio's import |
 | `profile_checkins.py` | weekly heartbeat: queues reasoned follow-ups (recent course, stale goal, unknown direction) the assistant may raise next time; `resolve_checkin` / `record_learning_outcome` tools |
 | `dashboard/`, `pages.py`, `api.py` | learner dashboard, static-ish pages, `/api/...` JSON endpoints for the UI (notifications, profile, credits, CV upload/parse, learner events) |
 

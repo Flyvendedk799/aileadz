@@ -52,7 +52,7 @@ PROFILER_PROGRESS = "profiler_progress"
 CONFIRM_CARD = "confirm_card"
 
 # CV + Mind-map inline cards
-CV_SUMMARY_CARD = "cv_summary_card"    # structured CV snapshot + portal CTA
+CV_SUMMARY_CARD = "cv_summary_card"    # CV snapshot (cv_service.chat_card) + CV studio CTA
 MINDMAP_CARD = "mindmap_card"          # mind-map stats + 3D globe link
 SKILL_GAPS_CARD = "skill_gaps_card"    # per-learner current→target gaps (1-5 scale)
 
@@ -82,8 +82,8 @@ UI_ACTIONS = frozenset({
     "open_compare",     # open the compare view for 2-4 handles
     "open_profile",     # open the user's profile (optionally a section)
     "open_mind_map",    # open the AI memory mind-map (3D globe)
-    "open_cv_upload",   # open the CV import on the profile page (/profil#cv)
-    "open_my_cv",       # open the printable Futurematch-generated CV (/profil/cv)
+    "open_cv_upload",   # open the CV import in the CV studio (/profil/cv#import)
+    "open_my_cv",       # open the CV studio (/profil/cv)
     "open_learning_path",  # open the saved learning-path view
     "open_catalog",     # open the catalog, optionally pre-filtered
     "start_order",      # begin enrolment for a product (does NOT place an order)

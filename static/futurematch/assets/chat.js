@@ -1403,6 +1403,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
 
   /* ---------------- CV summary card ---------------- */
   function renderCvSummaryCard(body, data) {
+    // Same CV as the studio (/profil/cv): cv_service.chat_card.
     const counts = data.counts || {};
     const sections = data.sections || {};
     const total = data.total || 0;
@@ -1415,17 +1416,25 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
       return `<div class="csv-pill ${n > 0 ? "has" : ""}"><i class="fa-solid ${icon(ICONS[k])}"></i><span>${esc(LABELS[k])}</span><b>${n}</b></div>`;
     }).join("");
     const previewItems = [];
-    (sections.skills || []).slice(0, 3).forEach((s) => previewItems.push(`<span class="csv-tag">${esc(s.name)}</span>`));
+    (sections.skills || []).slice(0, 4).forEach((s) => previewItems.push(`<span class="csv-tag">${esc(s.name)}${s.verified ? " ✓" : ""}</span>`));
     (sections.experience || []).slice(0, 2).forEach((e) => previewItems.push(`<span class="csv-tag exp">${esc(e.title || e.company)}</span>`));
     const previewHtml = previewItems.length ? `<div class="csv-preview">${previewItems.join("")}</div>` : "";
-    const emptyNote = !total ? `<div class="csv-empty">Ingen CV-data endnu — upload dit CV for at komme i gang.</div>` : "";
+    const emptyNote = !data.has_cv ? `<div class="csv-empty">Ingen CV-data endnu. Importér dit CV, eller fortæl mig om dit arbejdsliv.</div>` : "";
+    const fit = data.fit || {};
+    const meta = [];
+    if (data.years) meta.push(`${esc(data.years)} års erfaring`);
+    if (data.verified) meta.push(`${esc(data.verified)} dokumenteret via platformen`);
+    if (data.target_role && fit.pct != null) meta.push(`${esc(fit.pct)} % dækning mod ${esc(data.target_role)}`);
+    const metaHtml = meta.length ? `<div class="csv-empty" style="margin-top:6px">${meta.join(" · ")}</div>` : "";
+    const steps = (data.next_steps || []).slice(0, 2);
+    const stepsHtml = steps.length ? `<div class="csv-empty" style="margin-top:6px"><b>Løfter mest:</b> ${steps.map(esc).join(" · ")}</div>` : "";
     card.innerHTML = `
-      <div class="cv-summary-head"><i class="fa-solid ${icon("fa-id-card")}"></i><span>CV-oversigt</span>${total > 0 ? `<span class="csv-total">${total} elementer</span>` : ""}</div>
+      <div class="cv-summary-head"><i class="fa-solid ${icon("fa-id-card")}"></i><span>Mit CV</span>${data.has_cv ? `<span class="csv-total">CV-styrke ${esc(data.score || 0)}%</span>` : ""}</div>
       <div class="csv-pills">${pillsHtml}</div>
-      ${previewHtml}${emptyNote}
+      ${previewHtml}${metaHtml}${stepsHtml}${emptyNote}
       <div class="csv-footer">
-        <button class="csv-btn primary" data-url="/profil#cv"><i class="fa-solid ${icon("fa-file-arrow-up")}"></i> ${total > 0 ? "Opdater CV" : "Upload CV"}</button>
-        ${total > 0 ? `<button class="csv-btn" data-url="/profile"><i class="fa-solid ${icon("fa-user")}"></i> Se profil</button>` : ""}
+        ${data.has_cv ? `<button class="csv-btn primary" data-url="/profil/cv"><i class="fa-solid ${icon("fa-file-lines")}"></i> Åbn Mit CV</button>` : ""}
+        <button class="csv-btn ${data.has_cv ? "" : "primary"}" data-url="/profil/cv#import"><i class="fa-solid ${icon("fa-file-arrow-up")}"></i> ${total > 0 ? "Importér nyt CV" : "Importér CV"}</button>
       </div>`;
     card.querySelectorAll("[data-url]").forEach((b) =>
       b.addEventListener("click", () => window.open(b.getAttribute("data-url"), "_blank")));
@@ -1822,7 +1831,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
             // Sequenced, grounded learning path.
             renderLearningPathCard(body, data);
           } else if (data.type === "cv_summary_card") {
-            // CV snapshot + link to 3D portal.
+            // CV snapshot + link to the CV studio.
             renderCvSummaryCard(body, data);
           } else if (data.type === "mindmap_card") {
             // Mind-map stats + link to 3D globe.

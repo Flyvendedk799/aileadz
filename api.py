@@ -18,6 +18,7 @@ api_bp = Blueprint('api', __name__)
 
 _LEARNER_EVENT_TYPES = frozenset({
     'cv_start', 'cv_parse_failed', 'cv_review', 'cv_apply',
+    'cv_studio_open', 'cv_coach', 'cv_edit', 'cv_prefs', 'cv_export',
     'profiler_start', 'profiler_complete', 'profiler_handoff',
     'mindmap_correct', 'mindmap_gap_cta', 'recommendation_click',
     'learning_path_open', 'order_start',
@@ -832,54 +833,45 @@ def _parse_year(val):
 @api_bp.route('/api/cv/summary', methods=['GET'])
 @login_required
 def api_cv_summary():
-    """Return applied CV summary, top skills, experience, gaps and completeness."""
-    username = session.get('user')
+    """Compact CV status for cards (profile page, home): counts, top skills, gaps,
+    completeness and the CV studio's quality score. Built by cv_service."""
     try:
+        import cv_service
         from app1.user_profile_db import get_full_profile, profile_completeness, ensure_tables
-        from competency import compute_skill_gaps
         ensure_tables()
+        username = session.get('user')
         profile = get_full_profile(username) or {}
         completeness = profile_completeness(username, profile=profile)
-
-        skills = profile.get('skills') or []
-        experience = profile.get('experience') or []
-        education = profile.get('education') or []
-        certifications = profile.get('certifications') or []
-        courses = profile.get('completed_courses') or []
-        languages = profile.get('languages') or []
-        bio = profile.get('bio') or ''
-        target_role = profile.get('target_role') or ''
-
-        has_cv = bool(skills or experience or education or certifications or courses or languages or bio)
-        gaps = compute_skill_gaps(username, profile=profile)
-
-        top_skills = [{'name': s.get('name'), 'level': s.get('level')} for s in skills[:8] if s.get('name')]
-        recent_exp = []
-        for e in experience[:5]:
-            recent_exp.append({
-                'title': e.get('title'),
-                'company': e.get('company'),
-                'start_year': e.get('start_year'),
-                'end_year': e.get('end_year'),
-                'is_current': bool(e.get('is_current')),
-                'description': e.get('description'),
-            })
-
+        cv, quality = cv_service.build_for_session(profile=profile)
+        stats = cv['stats']
+        fit = cv.get('fit') or {}
         return jsonify({
             'success': True,
-            'has_cv': has_cv,
+            'has_cv': cv['has_content'],
             'summary': {
-                'target_role': target_role,
-                'bio': bio,
-                'skills_count': len(skills),
-                'experience_count': len(experience),
-                'education_count': len(education),
-                'certifications_count': len(certifications),
-                'courses_count': len(courses),
-                'languages_count': len(languages),
-                'top_skills': top_skills,
-                'recent_experience': recent_exp,
-                'top_gaps': gaps[:5],
+                'target_role': cv['target_role'],
+                'bio': cv['summary'],
+                'headline': cv['headline'],
+                'skills_count': stats['skills'],
+                'experience_count': stats['roles'],
+                'education_count': len(cv['education']),
+                'certifications_count': stats['certifications'],
+                'courses_count': stats['courses'],
+                'languages_count': stats['languages'],
+                'years': stats['years'],
+                'verified_count': stats['verified_courses'] + stats['evidenced_skills'],
+                'in_progress_count': stats['in_progress'],
+                'top_skills': [{'name': s['name'], 'level': s['level'], 'verified': bool(s['evidence'])}
+                               for s in cv['skills'][:8]],
+                'recent_experience': [{
+                    'title': e['title'], 'company': e['company'], 'start_year': e['start_year'],
+                    'end_year': e['end_year'], 'is_current': e['is_current'], 'description': e['description'],
+                } for e in cv['experience'][:5]],
+                'top_gaps': fit.get('gaps') or [],
+                'fit_pct': fit.get('pct'),
+                'quality': {'score': quality['score'], 'grade': quality['grade'],
+                            'top': [{'key': c['key'], 'label': c['label'], 'advice': c['advice']}
+                                    for c in quality['top']]},
                 'completeness_pct': completeness.get('pct', 0),
                 'completeness_weighted_pct': completeness.get('weighted_pct', 0),
                 'sections': completeness.get('sections', []),
@@ -887,25 +879,76 @@ def api_cv_summary():
         })
     except Exception as exc:
         current_app.logger.error("api_cv_summary error: %s", exc)
-        return jsonify({'success': False, 'error': str(exc)}), 500
+        return jsonify({'success': False, 'error': 'CV-oversigten kunne ikke hentes.'}), 500
+
+
+@api_bp.route('/api/cv/document', methods=['GET'])
+@login_required
+def api_cv_document():
+    """The whole CV for the studio: structured data, quality analysis and the
+    rendered document (same partial as the print view), so edits refresh live.
+    ``?prefs=<json>`` previews layout choices without reading the stored ones."""
+    try:
+        import cv_service
+        from flask import render_template
+        raw = request.args.get('prefs')
+        cv, quality = cv_service.build_for_session(prefs=cv_service.normalise_prefs(raw) if raw else None)
+        html = render_template('fm/_cv_document.html', cv=cv, editable=True,
+                               sections=cv_service.visible_sections(cv), labels=cv_service.SECTION_LABELS)
+        return jsonify({'success': True, 'cv': cv, 'quality': quality, 'html': html})
+    except Exception as exc:
+        current_app.logger.error("api_cv_document error: %s", exc)
+        return jsonify({'success': False, 'error': 'CV\'et kunne ikke hentes.'}), 500
+
+
+@api_bp.route('/api/cv/prefs', methods=['POST'])
+@login_required
+def api_cv_prefs():
+    """Save the studio's layout choices (template, hidden sections, targeting)."""
+    import cv_service
+    prefs, saved = cv_service.save_prefs(session.get('user'), request.get_json(silent=True) or {})
+    return jsonify({'success': saved, 'prefs': prefs}), (200 if saved else 503)
 
 
 @api_bp.route('/api/cv/improve', methods=['POST'])
 @login_required
 def api_cv_improve():
-    """Return a non-destructive, source-grounded CV section suggestion."""
+    """Return a non-destructive, source-grounded CV section suggestion.
+
+    ``content`` is the text/item being worked on (the import review sends it). The CV
+    studio may instead send ``id`` (an experience row) or nothing (summary/headline):
+    the stored row is then read server-side, scoped to the session user."""
     data = request.get_json() or {}
     section = (data.get('section') or '').strip().lower()
     content = data.get('content')
-    if section not in ('summary', 'experience') or not content:
-        return jsonify({'success': False, 'error': 'section og content kræves'}), 400
     try:
+        from cv_ingest import COACH_SECTIONS, improve_cv_section
+        if section not in COACH_SECTIONS:
+            return jsonify({'success': False, 'error': 'Ukendt CV-sektion.'}), 400
         from app1.user_profile_db import get_full_profile, ensure_tables
         from competency import compute_skill_gaps
-        from cv_ingest import improve_cv_section
         ensure_tables()
         username = session.get('user')
-        profile = get_full_profile(username)
+        profile = get_full_profile(username) or {}
+        if not content:
+            if section == 'summary':
+                content = profile.get('bio') or ''
+            elif section == 'experience' and data.get('id') is not None:
+                content = next((dict(e) for e in profile.get('experience') or []
+                                if str(e.get('id')) == str(data.get('id'))), None)
+                if content:
+                    content.pop('id', None)
+            elif section == 'headline':
+                content = {
+                    'headline': profile.get('headline') or '',
+                    'bio': (profile.get('bio') or '')[:800],
+                    'experience': [{'title': e.get('title'), 'company': e.get('company'),
+                                    'start_year': e.get('start_year'), 'is_current': e.get('is_current')}
+                                   for e in (profile.get('experience') or [])[:4]],
+                    'skills': [s.get('name') for s in (profile.get('skills') or [])[:10]],
+                }
+        if not content:
+            return jsonify({'success': False, 'error': 'Der er ikke noget at forbedre endnu. Skriv et udkast først.'}), 400
         suggestion = improve_cv_section(
             section,
             content,

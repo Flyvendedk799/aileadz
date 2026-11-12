@@ -136,7 +136,8 @@
       <div class="fm-nav-label">Konto</div>
       <ul class="fm-nav-list">
         <li><a class="fm-nav-link {{ 'active' if _nav == 'notifications' }}" href="{{ url_for('pages.notifications') }}"><i class="fa-solid fa-bell"></i><span>Notifikationer</span><span class="fm-nav-badge" data-notif-badge hidden></span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if _nav == 'profile' }}" href="{{ url_for('pages.profile') }}"><i class="fa-solid fa-id-card"></i><span>Profil &amp; CV</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if _nav == 'profile' }}" href="{{ url_for('pages.profile') }}"><i class="fa-solid fa-id-card"></i><span>Profil</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if _nav == 'cv' }}" href="{{ url_for('futurematch.my_cv') }}"><i class="fa-solid fa-file-lines"></i><span>Mit CV</span></a></li>
         {% if session.get('user') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'usage' }}" href="{{ url_for('pages.analytics') }}"><i class="fa-solid fa-coins"></i><span>Mit forbrug</span></a></li>{% endif %}
         <li><a class="fm-nav-link {{ 'active' if _nav == 'settings' }}" href="{{ url_for('pages.settings') }}"><i class="fa-solid fa-sliders"></i><span>Indstillinger</span></a></li>
         {# "Mine data" opens the privacy section (explanation + export + deletion), not a raw JSON download. #}

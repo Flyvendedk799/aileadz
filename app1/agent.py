@@ -294,8 +294,8 @@ Værktøjer, brug dem efter behov:
 - Et kursus giver som regel kompetencer: gem kurset, og tilbyd derefter kort at føje de kompetencer til, kurset gav. Gem aldrig selve kursustitlen som kompetence.
 - Kald tingene det samme i chatten som det, du gemmer: siger du "kompetence", så gem en kompetence.
 - Et løsrevet årstal i næste besked hører til det, I lige talte om. Brug det, spørg ikke forfra.
-- show_cv_summary: vis et profilkort, når brugeren spørger om sin profil/CV.
-- open_in_app(open_cv_upload): send brugeren til CV-importen på profilsiden, hvis de vil uploade et dokument.
+- show_cv_summary: vis deres CV som kort (styrke, vigtigste forbedringer, dækning mod ønsket rolle), når de spørger til deres CV eller profil.
+- open_in_app(open_cv_upload): send brugeren til CV-importen under Mit CV, hvis de vil uploade et dokument.
 - show_mindmap_preview / open_in_app(open_mind_map): vis eller åbn det, AI'en husker om dem.
 
 FRAMING: Forklar hvad den nye viden gør muligt ("nu kan jeg finde kurser, der passer til dit mål"), ikke hvor mange felter der mangler. Profilen er kontekst for hjælpen, ikke et mål i sig selv."""
@@ -306,6 +306,7 @@ FRAMING: Forklar hvad den nye viden gør muligt ("nu kan jeg finde kurser, der p
 # resume behaviour and produced the generic "hvad laver du til daglig?" opener.
 SYSTEM_PLAYBOOK_CV_ONBOARDING = """CV-ONBOARDING (når brugeren beder om CV/profil):
 Byg videre på det, profilen allerede rummer, og spørg ind til det, der ville gøre dine anbefalinger bedre.
+Vil de vide, hvor deres CV står, så vis show_cv_summary og tag udgangspunkt i det, der løfter det mest.
 Tilbyd open_in_app(open_cv_upload) når brugeren vil uploade et CV-dokument eller paste CV-tekst."""
 
 
@@ -403,7 +404,7 @@ BRUG PROFILEN, NÅR DEN HJÆLPER:
 - Brug niveau, erfaring, mål og gennemførte kurser, når du anbefaler: sig, hvorfor kurset passer
   til dem, og peg ikke på noget, de allerede har taget.
 - Vil brugeren selv se eller rette noget, så før dem derhen med open_in_app: open_profile (en
-  sektion), open_cv_upload (importér et CV) eller open_my_cv (deres Futurematch-CV).
+  sektion), open_cv_upload (importér et CV) eller open_my_cv (Mit CV: rette, målrette og hente CV'et).
 
 GEM UNDERVEJS:
 - Det strukturerede (kompetencer, erfaring, uddannelse, certificeringer, sprog, mål) gemmes med
@@ -3325,6 +3326,13 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                             "total": tool_result_dict.get("total", 0),
                             "has_cv": tool_result_dict.get("has_cv", False),
                             "focus": tool_result_dict.get("focus", "overview"),
+                            "score": tool_result_dict.get("score", 0),
+                            "grade": tool_result_dict.get("grade", ""),
+                            "years": tool_result_dict.get("years", 0),
+                            "verified": tool_result_dict.get("verified", 0),
+                            "target_role": tool_result_dict.get("target_role", ""),
+                            "fit": tool_result_dict.get("fit", {}),
+                            "next_steps": tool_result_dict.get("next_steps", []),
                         }, ensure_ascii=False, default=str))
 
                 elif fn == "show_mindmap_preview":

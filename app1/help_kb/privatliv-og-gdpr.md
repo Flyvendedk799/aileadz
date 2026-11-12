@@ -12,7 +12,7 @@ Du har ret til indsigt, berigtigelse og sletning af dine data. Du kan selv hente
 Når du er logget ind, kan du klikke "Hent mine data (JSON)" under "Indstillinger" (afsnittet "Dine data og privatliv") eller vælge "Mine data" i menuen under Konto. Du kan også gå direkte til /mine-data. Så downloades en JSON-fil (gdpr-eksport-<brugernavn>.json) med dine personoplysninger.
 
 ## Ret eller slet enkelte oplysninger
-- Profiloplysninger retter du på profilsiden (Profil & CV, /profil).
+- Profiloplysninger retter du på profilsiden (Profil, /profil).
 - Hukommelser, som AI'en har gemt, sletter du i Mind-Map med "Slet hukommelse" eller direkte i chatten med "Forkert".
 - Udviklingsmål kan slettes under "Udviklingsmål".
 

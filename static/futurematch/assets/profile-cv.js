@@ -1,9 +1,9 @@
-/* Futurematch: CV import on the profile page (replaces the old /profil-upload portal).
+/* Futurematch: CV import, part of the CV studio (/profil/cv, templates/fm/my_cv.html).
    Flow: upload or paste -> live progress -> review (editable, per item) -> apply.
    Uses the same endpoints as before: POST /api/cv/parse, GET /api/cv/parse-stream (SSE:
    stage | chunk | result | error), POST /api/cv/apply, POST /api/cv/improve.
-   Mount: #cvImport (hidden until opened by [data-cv-open] or the #cv hash).
-   Emits `fm:cv-applied` on document so the page can reload its own data. */
+   Mount: #cvImport (hidden until opened by [data-cv-open] or the #import / #cv hash).
+   Emits `fm:cv-applied` on document; cv-studio.js reloads the CV on it. */
 (function () {
   "use strict";
   const root = document.getElementById("cvImport");
@@ -61,8 +61,9 @@
     if (t) { e.preventDefault(); open(); }
   });
   $("[data-cv-close]").addEventListener("click", close);
-  if (location.hash === "#cv") open();
-  window.addEventListener("hashchange", () => { if (location.hash === "#cv") open(); });
+  const OPEN_HASHES = ["#import", "#cv"];
+  if (OPEN_HASHES.indexOf(location.hash) >= 0) open();
+  window.addEventListener("hashchange", () => { if (OPEN_HASHES.indexOf(location.hash) >= 0) open(); });
 
   /* ---------------- intake ---------------- */
   const drop = $("[data-cv-drop]");

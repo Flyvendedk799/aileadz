@@ -3,7 +3,7 @@ import unittest
 
 from tests.sqlite_platform import PlatformDB, make_app, client_as, render_patches
 
-ACCOUNT_ONLY = ("Mine bestillinger", "Notifikationer", "Profil &amp; CV", "data-notif-dot", "unread_count")
+ACCOUNT_ONLY = ("Mine bestillinger", "Notifikationer", "Mit CV", "data-notif-dot", "unread_count")
 
 
 class PublicLayoutTests(unittest.TestCase):

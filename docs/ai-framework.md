@@ -44,7 +44,7 @@ offered, the model decides; nothing here may add a mandatory step.
 | CV text/image extraction + LLM parse; CV parse-job store | `cv_ingest.py`; `cv_parse_store.py` |
 | Profile REST API, CV parse/stream/apply/improve, mind-map graph (`mindmap_payload`), workspace summary | `api.py` |
 | Cross-surface handoff context (`{from, focus}` -> `surface_context` layer + read tools) | `app1/surface_context.py` |
-| Page shells (`/chat`, `/mind-map`, `/profil/cv`, `/min-laering`, ...; `/ai-profiler` is a 301 to `/chat`, `/profil-upload` a 301 to `/profil#cv`) | `futurematch_ui.py` |
+| Page shells (`/chat`, `/mind-map`, `/profil/cv`, `/min-laering`, ...; `/ai-profiler` is a 301 to `/chat`, `/profil-upload` a 301 to `/profil/cv#import`) | `futurematch_ui.py` |
 | Orders / policy / credits | `order_lifecycle.py`, `order_service.py`, `team_order_policy.py`, `credit_service.py` |
 | Guest -> user memory migration | `anon_migration.py` |
 | Chat frontend (SSE dispatch, renderers) | `static/futurematch/assets/chat.js`, `chat.css` |
@@ -384,8 +384,8 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
   `save_learning_path` (`user_learning_paths`).
 - **`open_in_app`** (always on, no mutation) -> `ui_action`. Validated against
   `sse_events.UI_ACTIONS` (a test pins the tool enum to it both ways); includes
-  `open_cv_upload` (`/profil#cv`, the import on the profile page), `open_my_cv` (`/profil/cv`, the
-  printable generated CV), `open_mind_map`, `open_my_learning`
+  `open_cv_upload` (`/profil/cv#import`, the import in the CV studio), `open_my_cv` (`/profil/cv`, the
+  CV studio), `open_mind_map`, `open_my_learning`
   (`/min-laering`), `open_goals` (`/mine-maal`), `open_timeline` (`/min-tidslinje`).
   `open_profiler` / `open_advisor` take `section` or `node` + `intent` and build a
   handoff URL (1b); `open_catalog` URL-encodes its query; `open_profile` anchors only to ids that exist
@@ -492,10 +492,23 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
 - **Memories** are ranked per turn by the semantic index (`_select_memories_for_turn`,
   keyword fallback); only matched ones are `_relevant`, so `used_count` means "informed an answer".
 
-**CV import on the profile page** (`#cv` card on `/profile`: `_cv_import.html` + `profile-cv.js`;
-the separate 3D portal and its no-JS fallback are gone, `/profil-upload` 301s to `/profil#cv`;
-own SSE pipeline in `api.py`, event names `stage`/`result`/`error` - NOT the chat vocabulary). The
-script emits `fm:cv-applied` so the profile page reloads what the CV touched; the review list is
+**The CV studio** (`/profil/cv`, `futurematch_ui.my_cv` -> `fm/my_cv.html` + `cv-studio.js`) is the one
+home of the CV: import, live document, AI coach, templates, quality checks, platform evidence and
+export. The document is assembled by **`cv_service`** from the whole platform (profile, courses
+completed through Futurematch orders = *verified*, skills proven by a course or rated in the HR
+matrix = *evidence*, certification validity, active learning paths / HR assignments / booked orders =
+"Under uddannelse", target-role fit from `compute_skill_gaps`) and rendered by ONE partial,
+`fm/_cv_document.html` (studio, `/api/cv/document` live refresh and `/profil/cv/print`).
+`cv_service.analyse` scores it and gives each failing check an action (coach / import / chat /
+catalog / edit / template). Layout prefs live in `user_profile_summary.cv_prefs` (`POST /api/cv/prefs`;
+`/api/cv/document?prefs=` previews unsaved prefs). Exports: `/profil/cv/download.{txt,md,json}`.
+Unsafe link schemes never reach the CV, not even as text. The profile page only shows a compact CV
+card linking here. Chat handoffs from the studio use `from=cv`.
+
+**CV import** (inside the studio: `_cv_import.html` + `profile-cv.js`, opened by `[data-cv-open]` or
+`#import`; the separate 3D portal and its no-JS fallback are gone, `/profil-upload` 301s to
+`/profil/cv#import`; own SSE pipeline in `api.py`, event names `stage`/`result`/`error` - NOT the chat
+vocabulary). The script emits `fm:cv-applied` so the studio reloads the CV; the review list is
 plain, editable and accessible (a checkbox per item, nothing written before "Gem til min profil"):
 - `POST /api/cv/parse` (multipart, <=8 MB, whitelisted exts) -> `cv_ingest.extract_text`
   (PDF/text/image OCR via GPT-4o vision, timeouts, `delimit_untrusted` fence) -> LLM parse
@@ -509,10 +522,11 @@ plain, editable and accessible (a checkbox per item, nothing written before "Gem
   through `_SKILL_LEVEL_MAP` / `_LANG_PROF_MAP`** (case-insensitive; accept the import's labels
   Begynder/Øvet/... and parser lowercase) - a capitalised-only map once inflated every
   skill to `avanceret`. `POST /api/cv/improve` is a non-destructive, section-scoped coach
-  that must not invent evidence. `GET /api/cv/summary` feeds `show_cv_summary`.
-- **Futurematch-generated CV:** `GET /profil/cv` (`futurematch_ui.my_cv`, `my_cv.html`) lays the
-  logged-in user's own profile out as a printable CV (browser print -> PDF); stored links are shown as
-  text, never as hrefs.
+  (`cv_ingest.COACH_SECTIONS`: summary, experience, headline) that must not invent evidence; given
+  only `section` (+ `id` for a job) it reads the stored row itself. The studio saves accepted text
+  through the existing `/api/profile/summary` and `/api/profile/experience` endpoints, never silently.
+  `GET /api/cv/summary` (profile card) and the `show_cv_summary` tool (`cv_service.chat_card`) read
+  the same `cv_service` document.
 
 **Mind-map** (`/mind-map` -> `mind_map.html` + `mind-map-support.js`, graph from
 `GET /api/profile/mindmap` = `get_mindmap_api`): full detail in

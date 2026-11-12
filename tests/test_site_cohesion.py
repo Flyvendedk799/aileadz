@@ -433,6 +433,7 @@ ORPHAN_ALLOWLIST = {
     "enterprise_settings.webhooks_page": "rendered inside the settings hub's Webhooks tab",
     "hr_dashboard.chatbot_settings": "rendered inside the settings hub's Chatbot tab",
     "hr_dashboard.widget_creator": "rendered inside the settings hub's Chatbot > Widget tab",
+    "api.api_cv_document": "JSON for the CV studio's live refresh; renders the document partial, not a page",
 }
 
 

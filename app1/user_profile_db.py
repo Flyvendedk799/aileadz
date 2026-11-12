@@ -77,6 +77,7 @@ _TABLES_SQL = [
         preferred_location VARCHAR(255) DEFAULT '',
         preferred_format VARCHAR(100) DEFAULT '',
         budget_range VARCHAR(100) DEFAULT '',
+        cv_prefs TEXT DEFAULT NULL,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )""",
     # Persisted, AI-built learning paths (suggest_learning_path / save_learning_path).
@@ -417,6 +418,22 @@ def ensure_tables():
                 current_app.mysql.connection.commit()
             except Exception as alter_err:
                 print(f"[UserProfileDB] user_skills.category migration skipped: {alter_err}")
+                try:
+                    current_app.mysql.connection.rollback()
+                except Exception:
+                    pass
+
+        # Idempotent migration: the CV studio's layout choices (cv_service.normalise_prefs
+        # JSON) live on the profile summary row, so GDPR export/erase already cover them.
+        try:
+            cur.execute("SELECT cv_prefs FROM user_profile_summary LIMIT 0")
+        except Exception:
+            current_app.mysql.connection.rollback()
+            try:
+                cur.execute("ALTER TABLE user_profile_summary ADD COLUMN cv_prefs TEXT DEFAULT NULL")
+                current_app.mysql.connection.commit()
+            except Exception as alter_err:
+                print(f"[UserProfileDB] cv_prefs column migration skipped: {alter_err}")
                 try:
                     current_app.mysql.connection.rollback()
                 except Exception:
@@ -1283,6 +1300,29 @@ def update_profile_summary(username, **fields):
         f"INSERT INTO user_profile_summary ({', '.join(columns)}) VALUES ({placeholders}) "
         f"ON DUPLICATE KEY UPDATE {on_dup}",
         tuple(values)
+    )
+    current_app.mysql.connection.commit()
+    cur.close()
+    return True
+
+
+def get_cv_prefs(username):
+    """Raw stored CV-studio prefs (JSON text) or None; cv_service normalises them."""
+    cur = current_app.mysql.connection.cursor()
+    cur.execute("SELECT cv_prefs FROM user_profile_summary WHERE username = %s", (username,))
+    row = cur.fetchone()
+    cur.close()
+    if not row:
+        return None
+    return row.get("cv_prefs") if isinstance(row, dict) else row[0]
+
+
+def set_cv_prefs(username, prefs_json):
+    cur = current_app.mysql.connection.cursor()
+    cur.execute(
+        "INSERT INTO user_profile_summary (username, cv_prefs) VALUES (%s, %s) "
+        "ON DUPLICATE KEY UPDATE cv_prefs = VALUES(cv_prefs)",
+        (username, (prefs_json or "")[:4000]),
     )
     current_app.mysql.connection.commit()
     cur.close()

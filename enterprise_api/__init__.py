@@ -24,11 +24,6 @@ try:
 except Exception:  # pragma: no cover - import-safety guard
     event_bus = None
 
-try:
-    import redis
-except ImportError:
-    redis = None
-
 # Seat / subscription governance (guarded: must never crash boot if missing).
 # seat_governance.can_add_employee FAILS OPEN internally, so a None module here
 # simply means no seat enforcement (legacy behaviour) rather than a hard error.
@@ -252,16 +247,6 @@ def _is_safe_webhook_url(url):
             return False
 
     return True
-
-# Redis client for rate limiting (fallback to in-memory if Redis not available)
-try:
-    if redis:
-        redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
-        redis_client.ping()
-    else:
-        redis_client = None
-except Exception:
-    redis_client = None
 
 class APIManager:
     """Enterprise API Management"""

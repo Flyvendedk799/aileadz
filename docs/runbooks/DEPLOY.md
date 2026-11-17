@@ -5,8 +5,13 @@ which supervises two services from this repo:
 
 | Service | Start command | Role |
 |---|---|---|
-| web | `gunicorn wsgi:application --bind 0.0.0.0:$PORT` | the Flask app (`create_app()` in `run.py`, wrapped by `wsgi.py`) |
+| web | `gunicorn -c deploy/gunicorn.conf.py wsgi:application --bind 0.0.0.0:$PORT` | the Flask app (`create_app()` in `run.py`, wrapped by `wsgi.py`) |
 | worker | `python drain_worker.py --loop` | scheduled jobs: webhooks, digests, retention, Shopify sync (see JOB_RUNNER.md) |
+
+The `-c deploy/gunicorn.conf.py` part matters: without it gunicorn runs one sync
+worker with a 30 s timeout, so one chat stream blocks every other request and long
+answers are cut off. The config uses threaded workers (`WEB_THREADS`, default 16) in
+one process (`WEB_CONCURRENCY`, default 1; read ROADMAP T4-1 before raising it).
 
 Both need the SAME environment (the worker also runs `create_app()`). The canonical
 variable list, with defaults and comments, is `.env.example`: never commit real

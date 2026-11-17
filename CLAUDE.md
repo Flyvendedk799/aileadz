@@ -15,7 +15,7 @@ Run the narrowest test that covers your change while iterating; run the full sui
 
 ## Working cheaply in this repo
 
-- Several files are huge (`app1/tools.py` 6.5k lines, `hr_dashboard/__init__.py` 5.3k, `hr_tools.py` 4.3k, `app1/agent.py` 3.5k, `ai_runtime.py` 3k). Grep for the symbol, then read only that range. Do not read them whole.
+- Several files are huge (`app1/tools.py` 7.6k lines, `hr_dashboard/__init__.py` 5.7k, `hr_tools.py` 4.3k, `app1/agent.py` 4.1k, `ai_runtime.py` 3.2k). Grep for the symbol, then read only that range. Do not read them whole.
 - Every service module opens with a docstring stating its contract; read that first.
 - Ids like `N-1.1` / `S-2.3` / `plan #16` in comments and docstrings refer to a finished roadmap that was removed from the tree (`git log --diff-filter=D -- docs/COMPLETION_PLAN.md`). They are provenance, not links. Open work is in [docs/ROADMAP.md](docs/ROADMAP.md).
 - Dead code is removed rather than commented out; git has the history. Ruff enforces no unused imports/variables.
@@ -31,7 +31,7 @@ Run the narrowest test that covers your change while iterating; run the full sui
 - **Boot safety:** `create_app()` must never crash because an optional subsystem failed; register it in `try/except` and log. It must refuse to start without `SECRET_KEY` outside `SANDBOX=1`.
 - **Catalog:** one source, `catalog_service`. Do not read the Shopify export directly.
 - **Language:** user-facing strings are Danish (templates, flash messages, AI prompts, errors). Code, comments, docs, commit messages: English.
-- **Secrets:** never commit keys; `.env.example` lists variables with empty values. gitleaks runs in CI (`.gitleaks.toml`).
+- **Secrets:** never commit keys; `.env.example` lists variables with empty values. gitleaks runs in CI on new commits (`.gitleaks.toml`).
 
 ## AI changes
 
@@ -39,6 +39,6 @@ The AI (employee advisor, profiler, HR and vendor assistants; OpenAI and Claude 
 
 ## Git and deploy
 
-- Branch from `main`, open a PR; CI = gitleaks + ruff + pytest on MySQL 8. Use conventional prefixes (`fix(scope):`, `feat(scope):`, `chore:`, `docs:`).
+- Branch from `main`, open a PR; CI (`.survhub/ci.yml`, runs on ServerHoster) = gitleaks + ruff + boot smoke + pytest on MySQL 8. Use conventional prefixes (`fix(scope):`, `feat(scope):`, `chore:`, `docs:`).
 - Production is ServerHoster on a VPS behind a Cloudflare tunnel. Deploy, env vars, worker service, e-mail, secret rotation: [docs/runbooks/](docs/runbooks/DEPLOY.md). Manual owner-only steps: [docs/USER_ACTIONS.md](docs/USER_ACTIONS.md).
 - Keep docs true: when a change alters a module's contract, an env var, a route or an invariant, update the matching doc in the same PR. Add a new doc only with an entry in `docs/README.md`.

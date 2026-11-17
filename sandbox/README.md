@@ -74,7 +74,7 @@ seeded company "Sandbox A/S", slug `sandbox`) or `medarbejder` / `test` (employe
 - The unit/regression suite lives in `tests/` and is run from the repo root: `python -m pytest -q`
   (`pytest.ini`: `testpaths = tests`; `tests/conftest.py` sets `SANDBOX=1` and other safe defaults, and
   makes DB connections fail fast when no MySQL is reachable). Install `pytest pytest-timeout` first;
-  they are not in `requirements.txt`. CI (`.github/workflows/ci.yml`) runs it against the same MySQL
+  they are not in `requirements.txt`. CI (`.survhub/ci.yml`) runs it against the same MySQL
   image and credentials as this sandbox, with `MYSQL_HOST=127.0.0.1 MYSQL_PORT=3307 MYSQL_USER=fm
   MYSQL_PASSWORD=fm MYSQL_DB=futurematch_sandbox ENTERPRISE_TABLE_SYNC_FORCE=1`. Export those against
   `./sandbox.sh up` to also run the fresh-database bootstrap test in `tests/test_schema_baseline.py`.

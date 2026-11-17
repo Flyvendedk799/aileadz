@@ -101,7 +101,7 @@ files are gitignored, so the baseline lives in the environment that runs the gat
 - `.github/workflows/ai-eval-nightly.yml`: nightly (02:17 UTC) + manual; matrix `openai` /
   `anthropic` against a MySQL service; runs `python -m ai_eval.run_eval --provider <p>` (no
   gate, `continue-on-error`) and uploads `eval-<provider>.json`. Needs secrets `OPENAI_API_KEY`,
-  `ANTHROPIC_API_KEY`, optionally `EVAL_VENDOR_EMAIL` / `EVAL_VENDOR_PASSWORD`. `ci.yml` does not run the eval.
+  `ANTHROPIC_API_KEY`, optionally `EVAL_VENDOR_EMAIL` / `EVAL_VENDOR_PASSWORD`. The per-push CI (`.survhub/ci.yml`) does not run the eval.
 - `scorers.score_live(answer, tool_results, tools=, cards=, user_query=)` is a reference-free,
   zero-cost per-turn score (grounding 0.6, prompt-leak 0.3, retrieval-presence 0.1) called from
   `app1/agent.py` and stored as `ai_agent_runs.self_eval_score`. Never raises.

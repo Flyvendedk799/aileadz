@@ -78,13 +78,13 @@ recruitment and capability scenarios. Contracts and module rollout: [TALENT.md](
 
 | File | Lines |
 |---|---|
-| `app1/tools.py` | ~6.5k |
-| `hr_dashboard/__init__.py` | ~5.3k |
+| `app1/tools.py` | ~7.6k |
+| `hr_dashboard/__init__.py` | ~5.7k |
 | `hr_tools.py` | ~4.3k |
-| `app1/agent.py` | ~3.5k |
+| `app1/agent.py` | ~4.1k |
 | `enterprise_api/__init__.py` | ~3k |
-| `ai_runtime.py` | ~3k |
-| `app1/__init__.py` | ~2.4k |
+| `ai_runtime.py` | ~3.2k |
+| `app1/__init__.py` | ~2.6k |
 
 Find a symbol with Grep, then read only that range. Module docstrings at the top of every service module state its contract.
 
@@ -98,5 +98,5 @@ Find a symbol with Grep, then read only that range. Module docstrings at the top
 ## Tooling
 
 - Lint: `ruff check .` (gate in CI: syntax, undefined names, redefinitions, unused imports/variables; see `ruff.toml`).
-- CI: `.github/workflows/ci.yml` (gitleaks, ruff, boot smoke + pytest against MySQL 8), `security.yml`, `ai-eval-nightly.yml`.
+- CI: `.survhub/ci.yml` runs on ServerHoster for pushes to `main` and pull requests (gitleaks on new commits, ruff, boot smoke, pytest against MySQL 8, the Node transport tests). Two GitHub Actions workflows remain: `.github/workflows/security.yml` (weekly full-history gitleaks, pip-audit) and `ai-eval-nightly.yml` (not a gate; ROADMAP T0-3).
 - Local MySQL sandbox: [../sandbox/README.md](../sandbox/README.md).

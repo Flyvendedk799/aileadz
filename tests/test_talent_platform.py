@@ -34,7 +34,7 @@ def env():
         return dict(username=username, headline='Udvikler', target_role='Privat ambition', bio='Min profil',
                     skills=[dict(name=r['skill_name'],level=r['skill_level'],numeric_level=r['numeric_level'],source=r['source']) for r in skills],
                     learning_goals=[dict(id=1,title='Privat mål',status='aktiv')])
-    with mock.patch('app1.user_profile_db.get_full_profile', side_effect=full), mock.patch('catalog_service.search_products', return_value={'products':[]}), mock.patch('security_audit.audit', return_value=True):
+    with mock.patch('app1.user_profile_db.get_full_profile', side_effect=full), mock.patch('catalog_service.search_products', return_value={'products':[]}), mock.patch('security_audit.audit', return_value=True), mock.patch('white_label_global_integration.get_template_context', return_value={}):
         yield db,app
 
 
@@ -167,6 +167,50 @@ def test_employee_and_hr_pages_render_and_authorization(env):
     hr=client(app,3,role='hr_manager')
     assert hr.get('/hr/talent').status_code==200
     assert client(app).post('/talent/actions/publish_role',data={'id':rid}).status_code==403
+
+
+def test_acting_platform_admin_can_manage_without_becoming_employee(env):
+    import time
+    db, app = env
+    c = client(app, 4, company=7, role='company_admin')
+    with c.session_transaction() as s:
+        s.update(role='admin', admin_acting_company_id=7, admin_acting_until=time.time()+3600)
+    assert c.get('/hr/talent').status_code == 200
+    assert c.post('/talent/actions/settings', data={'roles_enabled':'on','mobility_enabled':'on','planning_enabled':'on'}).status_code == 302
+    rid = publish_role(db)
+    data = dict(role_version_id=rid, kind='project', title='Admin project', deadline='2030-01-01', team=['3'])
+    assert c.post('/talent/actions/opportunity', data=data).status_code == 302
+    opp = db.one('SELECT * FROM talent_opportunities')
+    assert opp['owner_user_id'] == 4
+    assert c.post('/talent/actions/publish_opportunity', data={'id':opp['id']}).status_code == 302
+    assert db.one('SELECT status FROM talent_opportunities')['status'] == 'published'
+    assert c.get('/muligheder/ansaettelsesteam').status_code == 200
+    # Supporting a company never creates an employee identity or application access.
+    assert c.get('/udvikling').status_code == 403
+    assert c.get('/api/talent/competencies').status_code == 403
+    assert c.get('/muligheder/'+opp['id']+'/ansoeg').status_code == 403
+    assert c.post('/talent/actions/self_assessment', data={}).status_code == 403
+    assert db.one('SELECT COUNT(*) AS n FROM company_users WHERE company_id=7 AND user_id=4')['n'] == 0
+
+
+@pytest.mark.parametrize('role,acting_company,until', [('user',7,4102444800),('admin',8,4102444800),('admin',7,1),('admin',None,4102444800)])
+def test_management_exception_requires_current_admin_company_session(env, role, acting_company, until):
+    _, app = env
+    c = client(app, 4, company=7, role='company_admin')
+    with c.session_transaction() as s:
+        s.update(role=role, admin_acting_company_id=acting_company, admin_acting_until=until)
+    assert c.get('/hr/talent').status_code == 403
+    assert c.post('/talent/actions/settings', data={'roles_enabled':'on'}).status_code == 403
+
+
+def test_external_opportunity_owner_cannot_add_nonmember_colleagues(env):
+    db, _ = env
+    rid = publish_role(db)
+    with pytest.raises(ValueError):
+        svc.save_opportunity(db.connection.cursor(), 7, 4,
+                             dict(role_version_id=rid, kind='project', title='Project', deadline='2030-01-01', team=['99']),
+                             external_owner=True)
+    assert db.query('SELECT * FROM talent_opportunities') == []
 
 
 def test_stale_application_preview_requires_another_review(env):

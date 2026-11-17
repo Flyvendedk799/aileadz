@@ -13,14 +13,23 @@ from competency_model import evaluate
 talent_bp = Blueprint('talent', __name__)
 
 
-def context():
+def acting_admin():
+    """Honor the existing, time-limited platform-admin company workspace."""
+    import time
+    return (can('platform.admin') and session.get('company_id')
+            and session.get('admin_acting_company_id') == session.get('company_id')
+            and (session.get('admin_acting_until') or 0) > time.time())
+
+
+def context(*, management=False):
     cid, user_id = session.get('company_id'), session.get('user_id')
     if not cid or not user_id:
         abort(403)
     import MySQLdb.cursors
     cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     try:
-        service.member(cur, cid, user_id)
+        if not (management and acting_admin()):
+            service.member(cur, cid, user_id)
     except ValueError:
         cur.close()
         abort(403)
@@ -144,7 +153,7 @@ def application(oid):
 @login_required
 def hr():
     hr_access()
-    cur, cid, user_id = context()
+    cur, cid, user_id = context(management=True)
     try:
         settings = service.flags(cur, cid)
         role_list = service.roles(cur, cid, published=False) if settings.get('roles_enabled') else []
@@ -191,9 +200,9 @@ def hr():
 @talent_bp.route('/talent/actions/<action>', methods=['POST'])
 @login_required
 def action(action):
-    cur, cid, user_id = context()
     f = request.form
     hr_actions = {'settings', 'role', 'publish_role', 'assign_role', 'manager_assessment', 'opportunity', 'publish_opportunity', 'close_opportunity', 'placement', 'scenario', 'publish_scenario'}
+    cur, cid, user_id = context(management=action in hr_actions or action == 'transition')
     dest = 'talent.hr' if action in hr_actions or f.get('return_to') == 'hr' and can('company.employees') else 'talent.workspace'
     if action == 'transition' and f.get('return_to') == 'hiring':
         dest = 'talent.hiring'
@@ -235,7 +244,7 @@ def action(action):
         elif action in ('opportunity', 'publish_opportunity', 'close_opportunity'):
             required(cur, cid, 'mobility')
             if action == 'opportunity':
-                service.save_opportunity(cur, cid, user_id, {**f.to_dict(), 'team': f.getlist('team')})
+                service.save_opportunity(cur, cid, user_id, {**f.to_dict(), 'team': f.getlist('team')}, external_owner=bool(acting_admin()))
             else:
                 if not service.hiring_access(cur, cid, user_id, f['id']):
                     abort(403)
@@ -303,7 +312,7 @@ def competency_api():
 @talent_bp.route('/muligheder/ansaettelsesteam')
 @login_required
 def hiring():
-    cur, cid, user_id = context()
+    cur, cid, user_id = context(management=True)
     try:
         required(cur, cid, 'mobility')
         applications = rows(cur, 'SELECT a.*,o.title,o.kind FROM talent_applications a JOIN talent_opportunities o ON o.id=a.opportunity_id AND o.company_id=a.company_id '

@@ -201,13 +201,16 @@ def goals(cur, company_id, user_id=None, *, hr=False):
     return [unpack(r) for r in cur.fetchall()]
 
 
-def save_opportunity(cur, company_id, actor_id, data):
+def save_opportunity(cur, company_id, actor_id, data, *, external_owner=False):
     role(cur, company_id, data['role_version_id'])
     if data['kind'] not in ('role', 'project') or not data['title'].strip() or date(data['deadline']) < dt.date.today():
         raise ValueError('Angiv titel, type og en fremtidig frist.')
     team = sorted(set([actor_id] + [int(i) for i in data.get('team', [])]))
     for person in team:
-        member(cur, company_id, person)
+        # Only the authenticated acting platform administrator may be external.
+        # Every explicitly added colleague still needs active company membership.
+        if person != actor_id or not external_owner:
+            member(cur, company_id, person)
     oid = uid()
     cur.execute('INSERT INTO talent_opportunities (id,company_id,role_version_id,kind,title,description,department,location,deadline,owner_user_id,hiring_team_json) '
                 'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',

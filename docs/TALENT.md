@@ -77,6 +77,10 @@ creates them. Profile schema maintenance adds the nullable numeric level. No des
 backfill is needed: legacy profile/matrix rows are projected directly. Activate roles,
 mobility and planning per company in HR (company-settings capability). New modules default
 to off. Disabling a module preserves its data and blocks its gated routes/writes.
+The existing time-limited platform-admin company workspace can manage HR modules
+without adding the administrator as an employee. Its opportunity owner can manage
+their hiring team, but added colleagues must be active members. Employee profiles,
+development and applications still require actual company membership.
 
 Personal talent tables participate in GDPR export/erasure. Hiring membership is stored
 separately so removing a user also removes team access. Assessment actors and opportunity

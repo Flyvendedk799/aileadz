@@ -22,6 +22,8 @@ Alembic is optional at runtime; to adopt it, follow "Schema lifecycle" in DEPLOY
 
 ## 3. Services and mail
 
+The host-side steps in this section and in section 1 are written out as a hand-over task list in [runbooks/SERVERHOSTER_HANDOVER.md](runbooks/SERVERHOSTER_HANDOVER.md).
+
 - **Web start command:** change it in ServerHoster to `gunicorn -c deploy/gunicorn.conf.py wsgi:application --bind 0.0.0.0:$PORT` (DEPLOY.md). Then open two chats at once and a normal page beside them: none may hang or be cut off after 30 seconds.
 - **Worker service:** create it in ServerHoster and verify "Worker kører" in Systemstatus before setting `SCHEDULER_OPPORTUNISTIC=0` on web (steps in JOB_RUNNER.md). Without it, scheduled reports, overdue-invoice notices, digests, retention, deadline and compliance reminders only run inside web requests.
 - **Mail:** set `MAIL_*` (or ServerHoster's `SMTP_*`/`SMTP_FROM`) and `APP_BASE_URL` on both services, then use Systemstatus "Send test-mail" and confirm arrival, sender and links (EMAIL_SETUP.md). Add SPF/DKIM for the sending domain or mail lands in spam. Reset links, invites, approval mails and scheduled reports all depend on this.

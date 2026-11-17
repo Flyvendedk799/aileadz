@@ -37,6 +37,7 @@ Read in this order when new to the repo: [../CLAUDE.md](../CLAUDE.md) -> [ARCHIT
 |---|---|
 | [runbooks/LAUNCH_WORKFLOWS.md](runbooks/LAUNCH_WORKFLOWS.md) | learning/booking/customer handover, deployment and pilot acceptance |
 | [runbooks/CHAT_DEBUG.md](runbooks/CHAT_DEBUG.md) | finding full captured conversations, errors and tool logs by a copied chat ID |
+| [runbooks/SERVERHOSTER_HANDOVER.md](runbooks/SERVERHOSTER_HANDOVER.md) | pending host-side changes, written to hand to a person or agent with ServerHoster access |
 | [runbooks/DEPLOY.md](runbooks/DEPLOY.md) | ServerHoster deploy, environment variables, post-deploy checks |
 | [runbooks/JOB_RUNNER.md](runbooks/JOB_RUNNER.md) | scheduler jobs, the worker service, opportunistic driver |
 | [runbooks/EMAIL_SETUP.md](runbooks/EMAIL_SETUP.md) | SMTP configuration and test send |

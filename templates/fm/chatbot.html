@@ -104,6 +104,7 @@
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
 <script src="{{ url_for('static', filename='futurematch/assets/ai-stream.js') }}?v={{ asset_version('futurematch/assets/ai-stream.js') }}"></script>
 <script>
+var conversationToken = null;
 const chatMessages = document.getElementById('chatMessages');
 const chatInput = document.getElementById('chatInput');
 const typingIndicator = document.getElementById('typingIndicator');
@@ -135,7 +136,7 @@ function appendMessage(role, content, returnBubble){
 
 function sendMessage(suggestion){
   const query = (suggestion === undefined ? chatInput.value : suggestion).trim();
-  if (!query || isProcessing) return false;
+  if (!query || isProcessing || !conversationToken) return false;
   isProcessing = true;
   if (suggestion === undefined) chatInput.value = '';
   document.getElementById('sendBtn').disabled = true;
@@ -155,7 +156,7 @@ function sendMessage(suggestion){
     }
     return bubble;
   }
-  FMAI.ask('{{ url_for("hr_dashboard.hr_chatbot_ask") }}', {query: query, page: 'chatbot'}, {
+  FMAI.ask('{{ url_for("hr_dashboard.hr_chatbot_ask") }}', {query: query, page: 'chatbot', conversation_token: conversationToken}, {
     tool_call: d => { typingText.textContent = `Kører: ${formatToolName(d)}...`; renderToolCall(d); },
     text: d => { ensureBubble(); acc += d.content || ''; bubble.innerHTML = FMAI.md(acc); scrollDown(); },
     suggestions: d => { ensureBubble(); FMAI.chips(wrapper, d.items, label => sendMessage(label)); scrollDown(); },
@@ -247,7 +248,7 @@ function resetChat(){
     .then(r => { if (!r.ok) throw new Error('Reset failed'); return r.json(); })
     .then(j => {
       if (!j || j.success !== true) throw new Error('Reset failed');
-      if (window.FMChatDebug) window.FMChatDebug.setId(j.session_id, 'hr');
+      conversationToken = j.conversation_token; if (window.FMChatDebug) window.FMChatDebug.setId(j.session_id, 'hr');
       // Keep an unsent draft when starting a new conversation.
       chatMessages.innerHTML = '';
       appendMessage('assistant', 'Ny samtale. Hvad vil du vide?');
@@ -294,7 +295,7 @@ function openSession(sid){
   fetch('{{ url_for("hr_dashboard.hr_chatbot_open") }}', {
     method: 'POST', headers: {'Content-Type': 'application/json'}, credentials: 'same-origin',
     body: JSON.stringify({session_id: sid})
-  }).then(r => r.ok ? r.json() : null).then(j => { if (j){ if (window.FMChatDebug) window.FMChatDebug.setId(j.session_id, 'hr'); renderHistory(j.messages); loadSessions(); } });
+  }).then(r => r.ok ? r.json() : null).then(j => { if (j){ conversationToken = j.conversation_token; if (window.FMChatDebug) window.FMChatDebug.setId(j.session_id, 'hr'); renderHistory(j.messages); loadSessions(); } });
 }
 
 function loadAlerts(){
@@ -320,7 +321,7 @@ function loadAlerts(){
 document.addEventListener('DOMContentLoaded', () => {
   chatInput.focus(); loadAlerts(); loadSessions();
   fetch('{{ url_for("hr_dashboard.hr_chatbot_history") }}', {credentials: 'same-origin'})
-    .then(r => r.ok ? r.json() : null).then(j => { if (j && !isProcessing){ if (window.FMChatDebug) window.FMChatDebug.setId(j.session_id, 'hr'); renderHistory(j.messages); } }).catch(() => {});
+    .then(r => r.ok ? r.json() : null).then(j => { if (j && !isProcessing){ conversationToken = j.conversation_token; if (window.FMChatDebug) window.FMChatDebug.setId(j.session_id, 'hr'); renderHistory(j.messages); } }).catch(() => {});
 });
 </script>
 {% endblock %}

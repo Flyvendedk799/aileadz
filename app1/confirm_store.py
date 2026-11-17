@@ -91,13 +91,17 @@ def _cleanup_expired():
         _STORE.pop(k, None)
 
 
-def store_pending(session_id: str, scope: str, tool_name: str, args: dict) -> str:
+def store_pending(session_id: str, scope: str, tool_name: str, args: dict, *, card=None) -> str:
     """Store a pending confirm and return an opaque 32-hex-char token.
 
     Writes through to both the DB (cross-worker) and the in-process dict
     (same-worker fast path / fallback). A DB failure never blocks issuing the
     token — the in-process copy keeps single-worker deployments working.
     """
+    import ai_actions
+    if ai_actions.identity()[0]:
+        return ai_actions.create(session_id, scope, 'confirmation', tool_name,
+                                 {'args': args, 'card': card or {}}, ttl=_TTL_S)
     token = secrets.token_hex(16)
     expires_at = time.time() + _TTL_S
     entry = {
@@ -150,6 +154,14 @@ def pop_pending(session_id: str, token: str):
     is a single worker and no cross-worker race. This closes the
     in-process-A-vs-DB-B double-execute window.
     """
+    if str(token).startswith('act_'):
+        import ai_actions
+        row = ai_actions.inspect(token)
+        if not row or row['session_id'] != session_id:
+            return None
+        row = ai_actions.claim(token)
+        return ({'session_id': row['session_id'], 'scope': row['scope'], 'tool_name': row['name'],
+                 'args': row['payload'].get('args', {}), 'expires_at': row['expires_at']} if row else None)
     if not token:
         return None
     mysql = _mysql()
@@ -250,6 +262,12 @@ def _record_outcome(token: str, status: str, **extra):
 
 def get_outcome(token: str):
     """Return the last recorded outcome for a token, or None."""
+    if str(token).startswith('act_'):
+        import ai_actions
+        row = ai_actions.inspect(token)
+        if row and row['status'] != 'pending':
+            return {'status': row['status'], 'receipt': row['receipt']}
+        return None
     if not token:
         return None
     with _OUTCOME_LOCK:
@@ -262,6 +280,14 @@ def peek_pending(session_id: str, token: str):
     Returns (entry_or_None, status) where status is one of:
     pending | expired | wrong_session | unknown | rejected | consumed
     """
+    if str(token).startswith('act_'):
+        import ai_actions
+        row = ai_actions.inspect(token)
+        if not row:
+            return None, 'unknown'
+        if row['session_id'] != session_id:
+            return None, 'wrong_session'
+        return ({'args': row['payload'].get('args', {})} if row['status'] == 'pending' else None), row['status']
     if not token:
         return None, "unknown"
     outcome = get_outcome(token)
@@ -321,6 +347,13 @@ def peek_pending(session_id: str, token: str):
 
 def reject_pending(session_id: str, token: str) -> str:
     """Revoke a pending confirmation. Returns status string for the client."""
+    if str(token).startswith('act_'):
+        import ai_actions
+        row = ai_actions.inspect(token)
+        if not row or row['session_id'] != session_id:
+            return 'unknown'
+        ai_actions.transition(token, ('pending',), 'rejected')
+        return ai_actions.inspect(token)['status']
     if not token:
         return "unknown"
     outcome = get_outcome(token)
@@ -360,6 +393,10 @@ def reject_pending(session_id: str, token: str) -> str:
 
 def mark_consumed(token: str, *, ok: bool, tool_name: str = "", receipt: dict | None = None):
     """Record that a popped token finished executing (success or failure)."""
+    if str(token).startswith('act_'):
+        import ai_actions
+        ai_actions.transition(token, ('running',), 'consumed' if ok else 'failed', receipt=receipt or {})
+        return
     _record_outcome(
         token,
         "consumed" if ok else "failed",
@@ -377,6 +414,9 @@ def pending_count() -> int:
 
 def clear_all():
     """Clear all in-process pending entries (test helper — never call in production)."""
+    import ai_actions
+    with ai_actions._LOCK:
+        ai_actions._MEMORY.clear()
     with _LOCK:
         _STORE.clear()
     with _OUTCOME_LOCK:

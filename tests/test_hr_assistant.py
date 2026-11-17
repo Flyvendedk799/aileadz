@@ -63,6 +63,11 @@ class ReplyHelperTests(unittest.TestCase):
 
 
 class ConversationTests(Base):
+    def setUp(self):
+        super().setUp()
+        from flask import session
+        session.update(user='hr1', company_id=7, company_role='hr_manager')
+
     def test_round_trip_is_scoped_to_the_user(self):
         hc.save("hr1", "hr_a", [{"role": "user", "content": "Hvad er budgettet?"},
                                 {"role": "assistant", "content": "Det er 100.000 kr."}])

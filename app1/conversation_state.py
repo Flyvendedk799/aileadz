@@ -85,6 +85,10 @@ def resolve_sid(flask_session, mode, *, username=None):
             sid = str(uuid.uuid4())
         ids[surface] = sid
         flask_session["session_ids"] = ids
+    if username:
+        from conversation_privacy import is_deleted
+        if is_deleted(username, sid):
+            return start_new_session(flask_session, mode)
     _mirror(flask_session, surface, sid)
     return sid
 
@@ -274,6 +278,9 @@ def save_turn(username, sid, mode, messages, *, expected_rev=None, state=None):
     result = {"rev": None, "conflict": False, "messages": payload_msgs}
     if not username or not sid or not payload_msgs:
         return result
+    from conversation_privacy import is_deleted
+    if is_deleted(username, sid):
+        return result
     state_json = json.dumps(state, ensure_ascii=False) if state is not None else None
     try:
         cur = _conn().cursor(MySQLdb.cursors.DictCursor)
@@ -452,9 +459,14 @@ def digest_session(username, sid, mode, messages):
         session_summary = summarize_session(msgs, surface_for_mode(mode))
         if not session_summary:
             return None
+        from conversation_privacy import is_deleted
+        if is_deleted(username, sid):
+            return None
         save_session_summary(username, sid, session_summary, len(msgs))
         merged = summarize_session(msgs, surface_for_mode(mode), previous_digest=previous,
                                    session_summary=session_summary)
+        if is_deleted(username, sid):
+            return None
         save_mode_summary(username, mode, merged or session_summary, source_session_id=sid)
         try:
             from app1 import user_knowledge

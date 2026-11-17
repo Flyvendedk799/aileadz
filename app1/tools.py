@@ -1388,7 +1388,9 @@ OPENAI_TOOLS.extend([
                 "type": "object",
                 "properties": {
                     "order_id": {"type": "string", "description": "Ordre-id på brugerens egen bestilling."},
-                    "action": {"type": "string", "enum": ["cancel"], "description": "Handlingen. Lige nu kun 'cancel'."},
+                    "action": {"type": "string", "enum": ["cancel", "reschedule"], "description": "Annullering eller ønske om nyt hold."},
+                    "session_id": {"type":"string", "description":"Nyt hold fra kataloget ved reschedule."},
+                    "note": {"type":"string"},
                     "confirm": {"type": "boolean", "description": "Skal være true for at annullere. Uden dette returneres kun en forhåndsvisning."},
                 },
                 "required": ["order_id"],
@@ -1620,21 +1622,42 @@ OPENAI_TOOLS.append({
 
 # ── Tool Execution ──
 
-# Module-level state for contextual search (set by agent before tool execution)
-_current_shown_handles = set()
-_current_user_prefs = {}
-_current_blocked_vendors = set()  # Vendors deactivated by the company
-_current_supplier_agreements = {}  # {vendor_name: {discount_type, discount_value, agreement_name}}
+# Request-local search state. Explicit copies propagate into each runtime worker.
+from contextvars import ContextVar
+from copy import deepcopy
+
+_SEARCH_CONTEXT = ContextVar("ai_search_context", default=None)
+_UNBOUND_COMPANY = object()
 
 
-def set_search_context(shown_handles=None, user_prefs=None, blocked_vendors=None, supplier_agreements=None):
-    """Set contextual search state for the current request.
-    Called by agent.py before tool execution to pass session context."""
-    global _current_shown_handles, _current_user_prefs, _current_blocked_vendors, _current_supplier_agreements
-    _current_shown_handles = shown_handles or set()
-    _current_user_prefs = user_prefs or {}
-    _current_blocked_vendors = blocked_vendors or set()
-    _current_supplier_agreements = supplier_agreements or {}
+def search_context():
+    context = _SEARCH_CONTEXT.get() or {}
+    from flask import has_request_context, request
+    if has_request_context():
+        request_key = request.environ.get('ai_search_context_key')
+        if not request_key or context.get('_request_key') != request_key:
+            return {}
+    return context
+
+
+def set_search_context(shown_handles=None, user_prefs=None, blocked_vendors=None, supplier_agreements=None,
+                       company_id=_UNBOUND_COMPANY):
+    """Capture this turn's search policy without sharing mutable tenant state."""
+    from flask import has_request_context, request
+    import uuid
+    request_key = None
+    if has_request_context():
+        request_key = request.environ.setdefault('ai_search_context_key', uuid.uuid4().hex)
+    context = {
+        '_request_key': request_key,
+        "shown_handles": frozenset(shown_handles or ()),
+        "user_prefs": deepcopy(user_prefs or {}),
+        "blocked_vendors": frozenset(blocked_vendors or ()),
+        "supplier_agreements": deepcopy(supplier_agreements or {}),
+    }
+    if company_id is not _UNBOUND_COMPANY:
+        context['company_id'] = company_id
+    _SEARCH_CONTEXT.set(context)
 
 
 # UUID / opaque order ids users paste into chat (L09).
@@ -1711,9 +1734,9 @@ def ensure_order_id_arg(args, session_id=None, user_text=None):
 
 def apply_discount(price_raw, vendor_name):
     """Apply company supplier agreement discount to a price. Returns (discounted_price, original_price, agreement_name) or (None, None, None)."""
-    if not _current_supplier_agreements or not vendor_name:
+    if not search_context().get("supplier_agreements", {}) or not vendor_name:
         return None, None, None
-    agreement = _current_supplier_agreements.get(vendor_name)
+    agreement = search_context().get("supplier_agreements", {}).get(vendor_name)
     if not agreement:
         return None, None, None
     try:
@@ -1768,9 +1791,9 @@ def price_view(raw_price, vendor_name):
 
 def _filter_blocked_vendors(products):
     """Remove products from deactivated vendors."""
-    if not _current_blocked_vendors:
+    if not search_context().get("blocked_vendors", frozenset()):
         return products
-    return [p for p in products if p.get('vendor', '') not in _current_blocked_vendors]
+    return [p for p in products if p.get('vendor', '') not in search_context().get("blocked_vendors", frozenset())]
 
 
 def _catalog_product_url(product):
@@ -1986,7 +2009,7 @@ def _mark_previously_shown(compact):
     the legacy _execute_search_courses behaviour). Mutates in place, returns
     the list for chaining."""
     for cr in compact:
-        if cr.get("handle") in _current_shown_handles:
+        if cr.get("handle") in search_context().get("shown_handles", frozenset()):
             cr["previously_shown"] = True
     return compact
 
@@ -2225,10 +2248,10 @@ def _execute_catalog_search(args, username=None):
     candidates = _post_filter(result["products"])
     products = [
         p for p in candidates
-        if p.get("handle") not in _current_shown_handles and p.get("vendor") not in _current_blocked_vendors
+        if p.get("handle") not in search_context().get("shown_handles", frozenset()) and p.get("vendor") not in search_context().get("blocked_vendors", frozenset())
     ]
     if not products and candidates:
-        products = [p for p in candidates if p.get("vendor") not in _current_blocked_vendors]
+        products = [p for p in candidates if p.get("vendor") not in search_context().get("blocked_vendors", frozenset())]
 
     # L10: strict / no-alternatives searches must not invent "best match" cards.
     if exact_title or strict_match:
@@ -2257,8 +2280,8 @@ def _execute_catalog_search(args, username=None):
         detailed = semantic_search_courses_detailed(
             query,
             limit=limit,
-            shown_handles=_current_shown_handles,
-            user_prefs=_current_user_prefs,
+            shown_handles=search_context().get("shown_handles", frozenset()),
+            user_prefs=search_context().get("user_prefs", {}),
             candidate_limit=candidate_limit,
         )
         if isinstance(detailed, dict) and "error" not in detailed:
@@ -2415,7 +2438,7 @@ def _execute_catalog_get_category(args):
         return json.dumps({"status": "not_found", "message": "Kategorien blev ikke fundet.", "category_url": "/categories"}, ensure_ascii=False)
     limit = int(args.get("limit") or 4)
     result = catalog.search_products({"category": category["slug"], "sort": "relevance"}, page=1, per_page=max(1, min(limit, 8)))
-    products = [p for p in result["products"] if p.get("vendor") not in _current_blocked_vendors]
+    products = [p for p in result["products"] if p.get("vendor") not in search_context().get("blocked_vendors", frozenset())]
     return _model_tool_json(
         status="success",
         category={
@@ -2557,7 +2580,8 @@ def _supplier_state_for_vendor(vendor_name):
     from flask import session as flask_session, current_app as app, has_request_context
     if not has_request_context():
         return {"known": False, "is_active": True, "notes": ""}
-    company_id = flask_session.get("company_id")
+    context = search_context()
+    company_id = context['company_id'] if 'company_id' in context else flask_session.get("company_id")
     if not company_id or not vendor_name:
         return {"known": False, "is_active": True, "notes": ""}
     try:
@@ -2901,7 +2925,7 @@ def _execute_get_learning_context(args, username):
     except Exception:
         agreements = []
 
-    shown = list(_current_shown_handles)[:10]
+    shown = list(search_context().get("shown_handles", frozenset()))[:10]
     return _model_tool_json(
         status="success",
         username=username or "",
@@ -3060,8 +3084,8 @@ def _execute_search_courses(args):
 
     detailed = semantic_search_courses_detailed(
         query, limit=limit,
-        shown_handles=_current_shown_handles,
-        user_prefs=_current_user_prefs
+        shown_handles=search_context().get("shown_handles", frozenset()),
+        user_prefs=search_context().get("user_prefs", {})
     )
 
     if isinstance(detailed, dict) and "error" in detailed:
@@ -3085,7 +3109,7 @@ def _execute_search_courses(args):
 
     # Mark re-shown products so the AI can address it
     for cr in compact_results:
-        if cr.get("handle") in _current_shown_handles:
+        if cr.get("handle") in search_context().get("shown_handles", frozenset()):
             cr["previously_shown"] = True
 
     return _model_tool_json(
@@ -3256,9 +3280,9 @@ def _execute_filter_courses(args):
         return json.dumps({"status": "no_results", "message": "Ingen kurser matchede dine filtre."})
 
     # Deprioritize already-shown products (move to end, don't remove)
-    if _current_shown_handles:
-        new_results = [p for p in filtered if p.get("handle") not in _current_shown_handles]
-        reshown = [p for p in filtered if p.get("handle") in _current_shown_handles]
+    if search_context().get("shown_handles", frozenset()):
+        new_results = [p for p in filtered if p.get("handle") not in search_context().get("shown_handles", frozenset())]
+        reshown = [p for p in filtered if p.get("handle") in search_context().get("shown_handles", frozenset())]
         filtered = new_results + reshown
 
     compact_results = [_extract_compact_fields(r) for r in filtered]
@@ -4529,8 +4553,8 @@ def _execute_recommend_for_profile(args, username):
 
         search_query = " ".join(query_parts)
         detailed = semantic_search_courses_detailed(search_query, limit=6,
-                                                     shown_handles=_current_shown_handles,
-                                                     user_prefs=_current_user_prefs)
+                                                     shown_handles=search_context().get("shown_handles", frozenset()),
+                                                     user_prefs=search_context().get("user_prefs", {}))
 
         if isinstance(detailed, dict) and "error" in detailed:
             return json.dumps({"status": "error", "message": detailed["message"]})
@@ -5049,7 +5073,7 @@ Regler:
             if not topic:
                 continue
             results = semantic_search_courses(topic, limit=4,
-                                               shown_handles=_current_shown_handles)
+                                               shown_handles=search_context().get("shown_handles", frozenset()))
             courses = []
             if isinstance(results, list):
                 for r in results:
@@ -5792,7 +5816,6 @@ def _execute_add_to_calendar(args, username):
     or from explicit handle+date+location args, then builds an .ics via the guarded
     calendar_service module. Falls back to plain event fields if the module is absent.
     """
-    from flask import session as flask_session, current_app as app, has_request_context
 
     title = ""
     date_str = (args.get("date") or "").strip()
@@ -5801,44 +5824,21 @@ def _execute_add_to_calendar(args, username):
     order_id = (args.get("order_id") or "").strip()
     url = ""
 
-    # Path A: resolve from the user's own order row.
-    if order_id and has_request_context() and username:
+    # Order ids always use authoritative fulfillment details and never fall back
+    # to a model-supplied date when the order is missing or unauthorized.
+    if order_id:
+        if not username:
+            return json.dumps({'status': 'error', 'message': 'Log ind for at hente bestillingen.'})
         try:
-            import db_compat  # noqa: F401
-            from db_compat import refresh_flask_mysql_connection
-            import MySQLdb.cursors
-            try:
-                refresh_flask_mysql_connection(app.mysql)
-            except Exception:
-                pass
-            company_id = flask_session.get("company_id")
-            user_id = flask_session.get("user_id")
-            cur = app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-            where = "order_id = %s AND (username = %s"
-            params = [order_id, username]
-            if user_id:
-                where += " OR user_id = %s"
-                params.append(user_id)
-            where += ")"
-            if company_id:
-                where += " AND company_id = %s"
-                params.append(company_id)
-            cur.execute(
-                f"""
-                SELECT product_handle, product_title, variant_date, variant_location
-                FROM course_orders WHERE {where} LIMIT 1
-                """,
-                tuple(params),
-            )
-            row = cur.fetchone()
-            cur.close()
-            if row:
-                title = row.get("product_title") or title
-                handle = handle or (row.get("product_handle") or "")
-                date_str = date_str or (row.get("variant_date") or "")
-                location = location or (row.get("variant_location") or "")
-        except Exception as e:
-            print(f"[add_to_calendar] DB lookup error: {e}")
+            from order_calendar import for_owner
+            event, ics = for_owner(order_id)
+            if not ics:
+                raise ValueError('Bestillingen mangler en gyldig dato.')
+            return json.dumps({'status': 'success', 'has_ics': True, 'ics': ics,
+                               'filename': 'kursus.ics', 'event': event,
+                               'message': 'Kalenderaftalen er klar.'}, default=str)
+        except ValueError as exc:
+            return json.dumps({'status': 'error', 'message': str(exc)})
 
     # Path B / enrich: resolve title + url from the catalog by handle.
     if handle:
@@ -5923,6 +5923,9 @@ def _execute_mark_course_complete(args, username):
     if not _is_danish_yes(args.get("confirm")):
         return json.dumps({
             "status": "needs_confirmation",
+            "needs_confirmation": True,
+            "message_da": "Bekræft, at din deltagelse skal indsendes til bekræftelse.",
+            "details": {"order_id": args.get("order_id"), "handle": args.get("handle")},
             "creates_change": True,
             "message": "Bekræft venligst med et tydeligt 'ja', før jeg indsender din deltagelse til bekræftelse.",
         }, ensure_ascii=False)
@@ -6264,7 +6267,7 @@ def _execute_create_order(args, username=None):
             confirmation_args={"expected_price":quote["price"],"session_id":quote["session_id"]},
             price=price_str,
             next_step=("Bekræftelseskortet vises nu under dit svar. Bed brugeren trykke Bekræft på kortet "
-                       "(eller sige ja, så kalder du create_course_order igen med confirm=true). "
+                       "(via Bekræft-knappen på kortet). "
                        "Ordren er IKKE oprettet endnu, og der er intet link at tilmelde sig via."),
             details={
                 "product_handle": handle,
@@ -6809,54 +6812,10 @@ def _execute_set_course_reminder(args, username):
 
 
 def _execute_manage_my_order(args, username):
-    """MUTATION — cancel the logged-in user's OWN pending order. Confirm-gated.
-
-    Strictly self-scoped: order_service.cancel_order enforces owner-or-same-company-
-    manager ownership, so a foreign order_id behaves like not-found. Without confirm
-    a preview is returned.
-    """
-    from tool_confirm import needs_confirmation_payload
     if not username:
-        return json.dumps({"status": "error", "message": "Du skal være logget ind."})
-    action = (args.get("action") or "cancel").strip().lower()
-    if action != "cancel":
-        return json.dumps({"status": "error", "message": "Kun 'cancel' understøttes lige nu."})
-    order_id = (args.get("order_id") or "").strip()
-    if not order_id:
-        return json.dumps({"status": "error", "message": "Angiv et order_id."})
-
-    try:
-        from order_service import OrderContext, get_order, cancel_order
-    except Exception:
-        return json.dumps({"status": "error", "message": "Ordrehåndtering er ikke tilgængelig lige nu."})
-    ctx = OrderContext.from_session(source="chat")
-
-    order = get_order(ctx, order_id)
-    if not isinstance(order, dict) or not order.get("success"):
-        return json.dumps({"status": "error", "message": "Ordren blev ikke fundet."})
-    o = order.get("order") or order
-
-    if not bool(args.get("confirm")):
-        return json.dumps(needs_confirmation_payload(
-            action="manage_my_order",
-            summary_da=(
-                f"Bekræft at du vil annullere din bestilling '{o.get('product_title') or order_id}'. "
-                f"Send confirm=true for at annullere."
-            ),
-            details={"order_id": order_id, "product_title": o.get("product_title")},
-        ))
-
-    result = cancel_order(ctx, order_id)
-    if not isinstance(result, dict) or not result.get("success"):
-        return json.dumps({"status": "error",
-                           "message": (result or {}).get("message", "Annulleringen fejlede.")})
-    return json.dumps({
-        "status": "success",
-        "order_id": order_id,
-        "refunded": result.get("refunded"),
-        "pending": bool(result.get("pending")),
-        "message": result.get("message") or ("Din bestilling er annulleret." + (" Budgettet er refunderet." if result.get("refunded") else "")),
-    }, default=str)
+        return json.dumps({'status':'error','message':'Du skal være logget ind.'})
+    from ai_booking_tools import change
+    return change(args)
 
 
 def _execute_request_manager_approval(args, username):
@@ -6882,9 +6841,12 @@ def _execute_request_manager_approval(args, username):
         return json.dumps({"status": "error", "message": "Ordrehåndtering er ikke tilgængelig lige nu."})
     ctx = OrderContext.from_session(source="chat")
     order = get_order(ctx, order_id)
-    if not isinstance(order, dict) or not order.get("success"):
+    from order_service import actors_for
+    if not isinstance(order, dict) or 'owner' not in actors_for(ctx, order):
         return json.dumps({"status": "error", "message": "Ordren blev ikke fundet."})
-    o = order.get("order") or order
+    o = order
+    if o.get('status') != 'pending_approval':
+        return json.dumps({'status':'error','message':'Bestillingen afventer ikke godkendelse.'})
     product_title = o.get("product_title") or order_id
 
     if not bool(args.get("confirm")):
@@ -6892,14 +6854,15 @@ def _execute_request_manager_approval(args, username):
             action="request_manager_approval",
             summary_da=(
                 f"Bekræft at du vil bede din leder om at godkende '{product_title}'. "
-                f"Send confirm=true for at sende påmindelsen."
+                f"Brug Bekræft-knappen på kortet."
             ),
             details={"order_id": order_id, "product_title": product_title},
         ))
 
     try:
         from order_service import _manager_recipient_emails
-        from email_service import send_branded_email
+        from mail_delivery import enqueue
+        from ai_actions import ACTIVE_OPERATION
         managers = _manager_recipient_emails(company_id) or []
     except Exception as e:
         print(f"[Tool Error] request_manager_approval: {e}")
@@ -6910,16 +6873,18 @@ def _execute_request_manager_approval(args, username):
     sent = 0
     for email in managers:
         try:
-            if send_branded_email(email, "Kursusbestilling afventer godkendelse",
+            if enqueue(email, "Kursusbestilling afventer godkendelse",
                                   "order_approval_needed", {}, company_id=company_id,
-                                  product_title=product_title, requester=username):
+                                  product_title=product_title, requester=username, related_order_id=order_id,
+                                  delivery_group=ACTIVE_OPERATION.get(), dedupe_key=ACTIVE_OPERATION.get()):
                 sent += 1
         except Exception:
             continue
     return json.dumps({
-        "status": "success",
-        "sent": sent,
-        "message": f"Påmindelse sendt til {sent} leder(e) om '{product_title}'.",
+        "status": "success" if sent == len(managers) else ("partial_success" if sent else "error"),
+        "queued": sent,
+        "order_id": order_id,
+        "message": f"Påmindelse sat i kø til {sent} leder(e) om '{product_title}'.",
     }, default=str)
 
 
@@ -7260,6 +7225,7 @@ def _execute_get_my_agenda(args, username):
                             "title": title,
                             "handle": r.get("product_handle") or "",
                             "order_id": r.get("order_id"),
+                            "chat_url": __import__('ai_followups').order_chat_url(r.get('order_id')),
                             "date": d.isoformat(),
                             "days_left": days_left,
                             "overdue": days_left < 0,
@@ -7273,6 +7239,7 @@ def _execute_get_my_agenda(args, username):
                     "title": title,
                     "handle": r.get("product_handle") or "",
                     "order_id": r.get("order_id"),
+                            "chat_url": __import__('ai_followups').order_chat_url(r.get('order_id')),
                     "date": None,
                     "days_left": None,
                     "overdue": False,
@@ -7499,6 +7466,9 @@ def execute_tool(tool_call, username=None, session_id=None):
     except Exception as e:
         print(f"[Tool ArgError] {function_name} session={session_id}: {e}")
         return json.dumps({"status": "error", "message": f"Kunne ikke parse tool-argumenter: {e}"})
+
+    from tool_confirm import enforce_confirmation
+    args = enforce_confirmation(function_name, args)
 
     try:
         if function_name == "catalog_search":

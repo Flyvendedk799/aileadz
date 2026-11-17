@@ -3129,8 +3129,8 @@ def create_hr_dashboard_blueprint():
         user_query = (data.get('query') or '').strip()
         if not user_query:
             return jsonify({"error": "Tom besked"}), 400
-        if len(user_query) > 3000:
-            user_query = user_query[:3000]
+        if len(user_query) > 5000:
+            return jsonify(error='Beskeden må højst være 5000 tegn.'), 400
 
         # Ensure company context is in session for hr_tools
         session['company_name'] = company.get('company_name', '')
@@ -3153,7 +3153,16 @@ def create_hr_dashboard_blueprint():
                             "credits_paused": True}), 402
 
         from hr_agent import handle_hr_ask
-        return handle_hr_ask(user_query, session, page=page)
+        from conversation_tokens import read
+        token = data.get('conversation_token')
+        sid = read(token, 'hr') if token else None
+        if token and not sid:
+            return jsonify(error='Åbn samtalen igen i den aktuelle virksomhed.'), 409
+        import ai_operations
+        from ai_entity_context import hr_context
+        entity_context = hr_context(data.get('context'))
+        return ai_operations.run(lambda: handle_hr_ask(user_query, session, page=page, conversation_id=sid, entity_context=entity_context),
+                                 scope='hr', sid=sid, request_id=data.get('request_id'), payload=data)
 
     @hr_dashboard_bp.route('/chatbot/reset', methods=['POST'])
     def hr_chatbot_reset():
@@ -3163,7 +3172,7 @@ def create_hr_dashboard_blueprint():
             return jsonify({"error": "Ikke logget ind"}), 401
         import hr_conversations
         sid = hr_conversations.start_new(session, session.get('user'))
-        return jsonify({"success": True, "session_id": sid})
+        return jsonify({"success": True, "session_id": sid, "conversation_token": __import__("conversation_tokens").mint(sid, "hr")})
 
     @hr_dashboard_bp.route('/chatbot/history')
     def hr_chatbot_history():
@@ -3175,7 +3184,7 @@ def create_hr_dashboard_blueprint():
         username = session.get('user')
         sid = hr_conversations.resolve_sid(session, username)
         return jsonify({
-            "session_id": sid,
+            "session_id": sid, "conversation_token": __import__("conversation_tokens").mint(sid, "hr"),
             "messages": hr_conversations.load(username, sid),
             "sessions": hr_conversations.list_sessions(username),
         })
@@ -3192,7 +3201,7 @@ def create_hr_dashboard_blueprint():
         if messages is None:
             return jsonify({"error": "Samtalen blev ikke fundet."}), 404
         session['hr_chat_session_id'] = sid
-        return jsonify({"session_id": sid, "messages": messages})
+        return jsonify({"session_id": sid, "messages": messages, "conversation_token": __import__("conversation_tokens").mint(sid, "hr")})
 
     @hr_dashboard_bp.route('/chatbot/sessions')
     def chatbot_sessions():
@@ -3847,7 +3856,8 @@ def create_hr_dashboard_blueprint():
             ctx.company_id = company_id
             res = learning_path_service.assign_path(cur, ctx, company_id, path_id, user_ids,
                                                     due_date=due_date, sender_id=session.get('user_id'),
-                                                    expected_version=expected_version)
+                                                    expected_version=expected_version, expected_total=expected_total,
+                                                    accept_over_budget=bool(request.form.get('accept_over_budget')), require_review=True)
             assigned = res['assigned']
 
             current_app.mysql.connection.commit()

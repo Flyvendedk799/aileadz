@@ -2149,13 +2149,37 @@ def load_conversation_by_id(username, conv_id):
 
 
 def delete_conversation(username, conv_id):
-    """Delete a conversation from history."""
-    cur = current_app.mysql.connection.cursor()
-    cur.execute("DELETE FROM conversation_history WHERE id = %s AND username = %s", (conv_id, username))
-    current_app.mysql.connection.commit()
-    affected = cur.rowcount
-    cur.close()
-    return affected > 0
+    """Remove the transcript, its artifacts and every derived recall source."""
+    conn = current_app.mysql.connection
+    cur = conn.cursor(MySQLdb.cursors.DictCursor)
+    try:
+        cur.execute('SELECT session_id,mode FROM conversation_history WHERE id=%s AND username=%s', (conv_id, username))
+        row = cur.fetchone()
+        if not row:
+            return False
+        sid = row['session_id']
+        from conversation_privacy import mark_deleted
+        mark_deleted(username, sid)
+        from app1 import memory_store
+        memory_store.erase_subject(session_id=sid)
+        from app1.user_knowledge import _source_id
+        cur.execute("DELETE FROM user_knowledge WHERE username=%s AND source_type='conversation' AND source_id=%s", (username,_source_id('',sid)))
+        # A rolling digest mixes several sources; clearing it avoids retaining a
+        # deleted contribution. Remaining transcripts can be summarized again.
+        cur.execute('DELETE FROM user_conversation_summaries WHERE username=%s', (username,))
+        cur.execute('UPDATE user_conversations SET summary=NULL WHERE username=%s', (username,))
+        cur.execute('DELETE FROM user_active_sessions WHERE username=%s AND session_id=%s', (username,sid))
+        cur.execute("DELETE FROM ai_actions WHERE username=%s AND session_id=%s AND kind<>'tombstone'", (username,sid))
+        cur.execute('DELETE FROM conversation_history WHERE id=%s AND username=%s', (conv_id,username))
+        conn.commit()
+        from app1 import _drop_session_memory
+        _drop_session_memory(sid)
+        return True
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
 
 
 # ── Heartbeat check-ins (profile_checkins.py) ──

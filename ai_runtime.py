@@ -608,14 +608,7 @@ def iter_agent_with_live_tool_events(
             except Exception:
                 pass
 
-    target = _worker
-    try:
-        from flask import copy_current_request_context, has_request_context
-        if has_request_context():
-            target = copy_current_request_context(_worker)
-    except Exception:
-        pass
-
+    target = _in_request_context(_worker)
     worker = threading.Thread(target=target, daemon=True, name=thread_name)
     worker.start()
 
@@ -2052,6 +2045,11 @@ def log_agent_run(
     self_eval_score: Optional[float] = None,
     grounding_violation: Optional[bool] = None,
 ) -> None:
+    try:
+        from ai_support_trace import record
+        record('model_run', {'run_id':run_id}, sid=session_id)
+    except Exception:
+        pass
     # N-6.4: every AI turn is metered through the credit ledger, independent of
     # the trace sampling rate below (shadow calls are not billed).
     try:
@@ -2273,9 +2271,13 @@ def _execute_one_tool(
                 cache_hit=True,
             )
     try:
+        from ai_actions import cancellation_checkpoint
+        cancellation_checkpoint()
         output = executor(_ChatToolCall(call_id, name, arguments), username=username, session_id=session_id)
         try:
             parsed = json.loads(output or "{}")
+            from ai_support_trace import record
+            record(name, parsed, sid=session_id)
             if isinstance(parsed, dict) and (parsed.get("status") == "error" or parsed.get("error")):
                 status = "error"
                 error = str(parsed.get("message") or parsed.get("error") or "")[:1000]
@@ -2321,14 +2323,26 @@ def _in_request_context(fn: Callable[..., Any]) -> Callable[..., Any]:
     Falls back to the bare function when there is no request context (batch
     jobs, tests), preserving the previous behaviour.
     """
+    from contextvars import Context, copy_context
+    from functools import wraps
+    context = Context()
+    # Preserve AI context, while Flask creates a separate app context / DB
+    # connection for each worker. Copying Flask's app ContextVar shares g.
+    for variable, value in copy_context().items():
+        if not variable.name.startswith('flask.'):
+            context.run(variable.set, value)
+    target = fn
     try:
         from flask import copy_current_request_context, has_request_context
-
         if has_request_context():
-            return copy_current_request_context(fn)
-    except Exception:  # noqa: BLE001 - Flask absent or context unavailable
+            target = copy_current_request_context(fn)
+    except Exception:
         pass
-    return fn
+
+    @wraps(fn)
+    def run(*args, **kwargs):
+        return context.run(target, *args, **kwargs)
+    return run
 
 
 def _execute_tool_calls_parallel(

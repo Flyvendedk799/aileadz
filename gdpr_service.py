@@ -168,6 +168,7 @@ _EXPORT_QUERIES = [
     # active-session pointers, durable per-mode conversation digests, and the
     # embedded snippets of memories/profile facts/conversation summaries.
     ("user_active_sessions", "SELECT * FROM user_active_sessions WHERE username=%s"),
+    ("ai_actions", "SELECT * FROM ai_actions WHERE username=%s"),
     ("user_conversation_summaries", "SELECT * FROM user_conversation_summaries WHERE username=%s"),
     ("user_knowledge", "SELECT id, username, source_type, source_id, mode, content, "
                        "embedding_model, created_at, updated_at FROM user_knowledge WHERE username=%s"),
@@ -801,6 +802,7 @@ def _build_where(spec, subject):
 # kind: delete | anonymise | pseudonymise.  set: SQL SET fragment ('%s' params
 # from ``set_params(subject)``); match: [(column, subject-field)], OR-ed.
 EXTRA_SPECS = [
+    dict(kind="delete", table="ai_actions", match=[("username", "username")]),
     dict(kind="anonymise", table="company_launch_checks", match=[("confirmed_by","user_id")], set="confirmed_by=NULL"),
     dict(kind="delete", table="customer_requests", match=[("user_id","user_id")]),
     dict(kind="delete", table="sales_enquiries", match=[("email","email")]),
@@ -1002,7 +1004,7 @@ COVERAGE = {
         "user_learning_paths", "user_profile_checkins", "user_certifications", "user_languages", "user_portfolio_links",
         "user_memories", "user_active_sessions", "user_conversation_summaries", "user_knowledge",
         "notifications",
-        "ai_agent_runs", "ai_tool_runs", "hr_chatbot_interactions", "ai_cv_parse_jobs", "ai_confirm_tokens",
+        "ai_agent_runs", "ai_tool_runs", "hr_chatbot_interactions", "ai_cv_parse_jobs", "ai_confirm_tokens", "ai_actions",
         "employee_learning_progress", "employee_skills_matrix", "employee_goals",
         "employee_performance_reviews", "employee_skill_history", "user_2fa", "password_reset_tokens",
         "email_log",

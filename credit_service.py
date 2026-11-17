@@ -197,7 +197,7 @@ def _notify_low_balance(cur, company_id, balance, threshold, mode):
 
 def charge_from_usage(mysql, *, username, company_id, agent_scope, model, usage, runtime=""):
     """Hook used by ``ai_runtime.log_agent_run`` for every logged AI turn."""
-    if not mysql or not username or (runtime or "").endswith("shadow"):
+    if not mysql or (not username and not company_id) or (runtime or "").endswith("shadow"):
         return 0
     try:
         usage = usage or {}

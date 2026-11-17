@@ -43,6 +43,7 @@ def _convert(row):
     return d
 
 SCHEMA = """
+CREATE TABLE ai_actions (id TEXT PRIMARY KEY, username TEXT, company_key TEXT, session_id TEXT, scope TEXT, kind TEXT, name TEXT, status TEXT, payload_json TEXT, receipt_json TEXT, expires_at REAL, created_at REAL, updated_at REAL);
 CREATE TABLE company_supplier_agreements (id INTEGER PRIMARY KEY AUTOINCREMENT,company_id INTEGER,vendor_name TEXT,discount_type TEXT,discount_value REAL,agreement_name TEXT,agreement_reference TEXT,valid_from TEXT,valid_until TEXT,min_participants INTEGER DEFAULT 1,is_active INTEGER DEFAULT 1);
 CREATE TABLE company_supplier_preferences (id INTEGER PRIMARY KEY AUTOINCREMENT,company_id INTEGER,vendor_name TEXT,is_active INTEGER DEFAULT 1,notes TEXT);
 CREATE TABLE company_courses (id INTEGER PRIMARY KEY AUTOINCREMENT,company_id INTEGER,title TEXT,description TEXT,price REAL DEFAULT 0,external_url TEXT,location TEXT,skill_tags TEXT,is_active INTEGER DEFAULT 1,instructor TEXT,format TEXT,duration_hours REAL,department TEXT);

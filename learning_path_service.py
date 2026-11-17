@@ -318,7 +318,7 @@ def _order_frozen_step(cur, company_id, progress, step, emp, ctx, *, path_id, in
     return result
 
 
-def assign_path(cur, ctx, company_id, path_id, user_ids, *, due_date=None, sender_id=None, create=None, expected_version=None):
+def assign_path(cur, ctx, company_id, path_id, user_ids, *, due_date=None, sender_id=None, create=None, expected_version=None, expected_total=None, accept_over_budget=False, require_review=False):
     """Enrol employees in a path and order its paid steps for each of them.
 
     The path's ``ordering_mode`` is frozen on every assignment: ``all_at_once`` orders every
@@ -344,6 +344,9 @@ def assign_path(cur, ctx, company_id, path_id, user_ids, *, due_date=None, sende
         }
     if expected_version is not None and int(expected_version) != int(path.get("version") or 1):
         return {"assigned": 0, "orders": 0, "order_failures": 1, "message": "Forløbet er ændret. Gennemse trinene og bekræft igen."}
+    if require_review:
+        validate_assignment_review(preview_path_assignment(cur, company_id, path_id, user_ids),
+                                   expected_total, accept_over_budget)
     mode = normalize_mode(path.get("ordering_mode"))
     assigned_by = sender_id or getattr(ctx, "user_id", None)
     steps = get_steps(cur, company_id, path_id)
@@ -858,13 +861,17 @@ def hr_skip_step(ctx, step_id, note=""):
         cur.close()
 
 
-def assign_course_to_people(cur, ctx, company_id, handle, user_ids, *, due_date=None, session_id=None, group_id=None, expected_price=None):
+def assign_course_to_people(cur, ctx, company_id, handle, user_ids, *, due_date=None, session_id=None, group_id=None, expected_price=None, expected_total=None, accept_over_budget=False, require_review=False):
     """Shared course assignment used by the HR screen, AI, and API."""
     import enrollment_service
     import uuid
 
     out = {"assigned": 0, "skipped": 0, "orders": 0, "order_failures": 0, "results": []}
     ids = list(dict.fromkeys(int(i) for i in user_ids))
+    if require_review:
+        quote = enrollment_service.quote_course(handle, company_id, session_id=session_id, participants=len(ids))
+        validate_assignment_review(preview_course_assignment(cur, company_id, quote, ids),
+                                   expected_total, accept_over_budget)
     group_id = group_id or uuid.uuid4().hex
     people = []
     for uid in ids:
@@ -1008,3 +1015,19 @@ def sync_personal_path_completion(cur, row):
                 "UPDATE user_learning_paths SET steps=%s,status=%s WHERE id=%s AND username=%s",
                 (json.dumps(steps, ensure_ascii=False), status, path["id"], row["username"]),
             )
+
+
+def validate_assignment_review(review, expected_total, accept_over_budget=False):
+    """Recheck the reviewed cost at the mutation boundary for every client."""
+    import math
+    try:
+        expected = float(expected_total)
+        stale = not math.isfinite(expected) or abs(expected - review['total_now']) > .005
+    except (TypeError, ValueError, KeyError):
+        stale = True
+    if stale:
+        raise ValueError('Priserne eller deltagerne er ændret. Gennemse tildelingen igen.')
+    if review.get('blocked'):
+        raise ValueError('Tildelingen kan ikke gennemføres. Gennemse problemerne først.')
+    if review.get('over_budget') and accept_over_budget is not True:
+        raise ValueError('Bekræft særskilt, at afdelingens budget overskrides.')

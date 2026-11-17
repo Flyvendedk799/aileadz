@@ -1142,3 +1142,68 @@ __all__ = [
     "get_demand_by_category",
     "get_comparable_courses",
 ]
+
+
+def vendor_booking_work(args, vendor_name):
+    """Operational references only; buyer names and tenant identities stay out."""
+    from flask import session, url_for
+    vendor_id = session.get('vendor_id')
+    if session.get('user_type') != 'vendor' or not vendor_id:
+        return _err('Log ind som leverandør.')
+    cur = _dict_cursor()
+    if cur is None:
+        return _err('Bestillinger kunne ikke hentes.')
+    try:
+        clause, values = 'co.vendor_id=%s', [vendor_id]
+        if args.get('order_id'):
+            clause += ' AND co.order_id=%s'
+            values.append(str(args['order_id']))
+        cur.execute('SELECT co.order_id,co.product_title,co.status,cc.kind AS pending_change '
+                    'FROM course_orders co LEFT JOIN course_order_changes cc ON cc.order_id=co.order_id AND cc.status=\'pending\' '
+                    'WHERE ' + clause + " AND co.status <> 'pending_approval' ORDER BY co.created_at DESC LIMIT 25", tuple(values))
+        rows = cur.fetchall() or []
+        explanations = {'cancel':'Kunden ønsker afbestilling. Afgør gebyr og svar på bestillingen.',
+                        'reschedule':'Kunden ønsker et andet hold. Gennemgå hold og pris før accept.',
+                        'substitute':'Kunden ønsker en anden deltager. Gennemgå og svar på bestillingen.'}
+        return {'orders':[dict(r, explanation=explanations.get(r.get('pending_change'), ''),
+                               url=url_for('vendor.vendor_booking', order_id=r['order_id'])) for r in rows]}
+    finally:
+        cur.close()
+
+
+def vendor_propose_catalog_correction(args, vendor_name):
+    from flask import session
+    import catalog_service as catalog
+    if session.get('user_type') != 'vendor' or not session.get('vendor_id'):
+        return _err('Log ind som leverandør.')
+    product = catalog.get_product_any(str(args.get('handle') or ''))
+    if not product or not catalog._same_vendor(product.get('vendor'), vendor_name):
+        return _err('Kurset blev ikke fundet.')
+    title = str(args.get('title') or product.get('title') or '').strip()[:255]
+    summary = str(args.get('summary') if args.get('summary') is not None else product.get('summary') or '').strip()[:4000]
+    return {'needs_confirmation':True, 'message_da':'Indsend kursusrettelsen til godkendelse.',
+            'details':{'before':{'title':product.get('title'),'summary':product.get('summary')},
+                       'after':{'title':title,'summary':summary}},
+            'confirmation_args':{'handle':product['handle'], 'title':title, 'summary':summary,
+                                 'revision':catalog.product_revision(product)}}
+
+
+def execute_vendor_action(name, args):
+    from tool_confirm import enforce_confirmation
+    args = enforce_confirmation(name, args)
+    if name != 'vendor_propose_catalog_correction' or not args.get('confirm'):
+        return _err('Handlingen kræver en gyldig bekræftelse.')
+    from vendor_catalog_changes import submit
+    try:
+        return submit(args['handle'], {'title':args['title'],'summary':args['summary']}, args['revision'])
+    except ValueError as exc:
+        return _err(str(exc))
+
+
+VENDOR_TOOLS.extend([
+    {'type':'function','function':{'name':'vendor_booking_work','description':'Hent egne bestillingsreferencer, forklar afventende ændringer og åbn bookingarbejdet. Indeholder ingen køberidentiteter.',
+        'parameters':{'type':'object','properties':{'order_id':{'type':'string'}}}}},
+    {'type':'function','function':{'name':'vendor_propose_catalog_correction','description':'Foreslå en titel- eller beskrivelsesrettelse af eget kursus til menneskelig gennemgang. Publicerer aldrig direkte.',
+        'parameters':{'type':'object','properties':{'handle':{'type':'string'},'title':{'type':'string'},'summary':{'type':'string'}},'required':['handle']}}},
+])
+_VENDOR_TOOL_ROUTER.update(vendor_booking_work=vendor_booking_work, vendor_propose_catalog_correction=vendor_propose_catalog_correction)

@@ -85,7 +85,7 @@ def set_active(username, sid):
         return False
 
 
-def load(username, sid):
+def _load_legacy(username, sid):
     """Stored messages for exactly this user's conversation, [] when none."""
     if not username or not sid:
         return []
@@ -131,6 +131,10 @@ def save(username, sid, messages):
     except Exception:
         _rollback()
         return False
+    import assistant_history
+    from ai_actions import identity
+    if identity()[0] == username:
+        assistant_history.binding(sid, MODE, create=True)
     set_active(username, sid)
     return True
 
@@ -154,7 +158,13 @@ def list_sessions(username, limit=30):
         r = dict(r) if isinstance(r, dict) else {"session_id": r[0], "title": r[1], "updated_at": r[2]}
         out.append({"session_id": r["session_id"], "title": r.get("title") or "Ny samtale",
                     "updated_at": str(r.get("updated_at") or "")})
-    return out
+    import assistant_history
+    from ai_actions import identity
+    if identity()[0] != username:
+        return []
+    recent = assistant_history.sessions(MODE)
+    seen = {r['session_id'] for r in recent}
+    return recent + [r for r in out if r['session_id'] not in seen and assistant_history.binding(r['session_id'], MODE)]
 
 
 def open_session(username, sid):
@@ -171,21 +181,33 @@ def open_session(username, sid):
 def resolve_sid(flask_session, username):
     """The HR conversation this browser continues: the session pointer, else the
     user's last active one (new tab / new device / after a deploy), else a new one."""
-    sid = flask_session.get("hr_chat_session_id")
-    if sid and (load(username, sid) or sid.startswith("hr_")):
-        # A pointer we minted ourselves is fine even before its first save.
+    import assistant_history
+    sid = flask_session.get('hr_chat_session_id')
+    if assistant_history.binding(sid, MODE):
         return sid
     sid = active_sid(username)
-    if sid:
-        flask_session["hr_chat_session_id"] = sid
-        return sid
-    sid = new_sid()
-    flask_session["hr_chat_session_id"] = sid
+    if not assistant_history.binding(sid, MODE):
+        sid = new_sid()
+        assistant_history.binding(sid, MODE, create=True)
+    flask_session['hr_chat_session_id'] = sid
     return sid
 
 
 def start_new(flask_session, username):
     sid = new_sid()
+    import assistant_history
+    assistant_history.binding(sid, MODE, create=True)
     flask_session["hr_chat_session_id"] = sid
     set_active(username, sid)
     return sid
+
+
+def load(username, sid):
+    from flask import has_request_context
+    if not has_request_context():
+        return _load_legacy(username, sid)
+    import assistant_history
+    from ai_actions import identity
+    if identity()[0] != username or not assistant_history.binding(sid, MODE):
+        return []
+    return (_load_legacy(username, sid) + assistant_history.load(sid, MODE))[-_MAX_STORED:]

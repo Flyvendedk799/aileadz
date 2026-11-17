@@ -91,6 +91,7 @@
   // handlers: { event(d) } called for every parsed event, plus per-type callbacks
   // (text, suggestions, confirm_card, ui_action, tool_call, meta, error, done).
   async function ask(url, body, handlers, opts) {
+    body = Object.assign({request_id: (window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2))}, body || {});
     handlers = handlers || {};
     opts = opts || {};
     var controller = new AbortController(), reader, idleTimer, totalTimer;
@@ -129,7 +130,7 @@
       if (type === "done") { complete(d); return; }
       if (type === "error") { fail(d.content || "Svaret kunne ikke færdiggøres. Prøv igen."); return; }
       if ((type === "text" && typeof d.content === "string" && d.content.trim()) ||
-          ((type === "confirm_card" || type === "ui_action") && handlers[type])) hasAnswer = true;
+          ((type === "confirm_card" || type === "ui_action" || type === "product" || type === "ui_card") && handlers[type])) hasAnswer = true;
       if (handlers[type]) handlers[type](d);
     }
     // Parse complete SSE frames, including multiline data and CRLF split across reads.
@@ -168,6 +169,10 @@
         method: "POST", headers: headers, body: JSON.stringify(body || {}),
         credentials: opts.credentials || "same-origin", signal: controller.signal,
       });
+      var operationId = resp.headers.get('X-AI-Operation-ID');
+      if (operationId && /^run_[a-f0-9]+$/.test(operationId)) controller.signal.addEventListener('abort', function () {
+        fetch('/app1/actions/' + operationId + '/cancel', {method:'POST', credentials:'same-origin', keepalive:true}).catch(function () {});
+      }, {once:true});
       if (window.FMChatDebug && resp.headers.get("X-Chat-ID")) {
         window.FMChatDebug.setId(resp.headers.get("X-Chat-ID"), resp.headers.get("X-Chat-Scope") || "hr");
       }
@@ -217,10 +222,11 @@
   var OK_STATUSES = ["success", "already_confirmed", "order_created", "team_orders_created", "handed_off_to_hr"];
   function confirmCard(container, data, opts) {
     opts = opts || {};
-    var url = opts.confirmUrl || "/app1/confirm_tool_action";
+    var url = opts.confirmUrl || (String(data.token).indexOf("act_") === 0 ? "/app1/actions/" + encodeURIComponent(data.token) + "/confirm" : "/app1/confirm_tool_action");
     var card = document.createElement("div");
     card.className = "fm-confirm-card";
     var meta = [];
+    var review = data.cost_review || {};
     if (data.recipient_count != null) meta.push(data.recipient_count + " modtagere");
     if (data.price != null) meta.push(Number(data.price).toLocaleString("da-DK") + " kr.");
     card.innerHTML =
@@ -228,6 +234,9 @@
       '<div class="fm-confirm-body">' + esc(data.summary_da || "") + "</div>" +
       (data.details ? '<div class="fm-confirm-details">' + esc(typeof data.details === "string" ? data.details : JSON.stringify(data.details)) + "</div>" : "") +
       (meta.length ? '<div class="fm-confirm-meta">' + esc(meta.join(" · ")) + "</div>" : "") +
+      (review.total_now != null ? '<div class="fm-confirm-details">Pris nu: ' + esc(review.total_now) + ' kr. · Senere: ' + esc(review.total_later != null ? review.total_later : review.total_later_estimate || 0) + ' kr.' +
+        (review.departments || []).map(function (d) { return '<p>' + esc(d.department || 'Uden afdeling') + ': ' + esc(d.before == null ? 'Intet budgetloft' : d.before + ' → ' + d.after + ' kr.') + '</p>'; }).join('') + '</div>' : '') +
+      (review.over_budget ? '<label><input type="checkbox" class="fm-budget-consent"> Jeg accepterer budgetoverskridelsen og godkendelsesforløbet.</label>' : '') +
       '<div class="fm-confirm-actions"><button type="button" class="fm-confirm-ok">Bekræft</button>' +
       '<button type="button" class="fm-confirm-cancel">Afvis</button></div>';
     var ok = card.querySelector(".fm-confirm-ok"), no = card.querySelector(".fm-confirm-cancel");
@@ -242,21 +251,32 @@
       if (opts.onResult) opts.onResult(cls, msg);
     }
     ok.addEventListener("click", function () {
+      var consent = card.querySelector('.fm-budget-consent');
+      if (consent && !consent.checked) { consent.focus(); return; }
       ok.disabled = true; no.disabled = true; ok.textContent = "Bekræfter…";
       fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
-        body: JSON.stringify({ token: data.token }) })
+        body: JSON.stringify({ token: data.token, accept_over_budget: !!(consent && consent.checked) }) })
         .then(function (r) { return r.json().catch(function () { return {}; }); })
         .then(function (j) {
-          if (OK_STATUSES.indexOf(j.status) >= 0 || j.success === true) {
+          if (j.status === 'partial_success' || j.status === 'uncertain' || j.status === 'running') {
+            result("err", j.message_da || j.message || "Kontroller handlingens status før du prøver igen.");
+          } else if (OK_STATUSES.indexOf(j.status) >= 0 || j.success === true) {
             if (j.confirmation_text) result("ok", j.confirmation_text, true);
             else result("ok", j.message_da || j.message || "Bekræftet.");
           } else {
             result("err", j.message_da || j.message || "Handlingen kunne ikke gennemføres.");
           }
         })
-        .catch(function () { result("err", "Netværksfejl – prøv igen."); });
+        .catch(function () { result("err", "Forbindelsen blev afbrudt. Kontroller AI-handlinger før du prøver igen."); });
     });
-    no.addEventListener("click", function () { result("err", "Afvist – der er ikke ændret noget."); });
+    no.addEventListener("click", function () {
+      ok.disabled = true; no.disabled = true;
+      fetch(opts.rejectUrl || (String(data.token).indexOf('act_') === 0 ? '/app1/actions/' + encodeURIComponent(data.token) + '/reject' : '/app1/reject_tool_action'), {method: 'POST', credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'}, body: JSON.stringify({token: data.token})})
+        .then(function (r) { if (!r.ok) throw new Error('reject failed'); return r.json(); })
+        .then(function (j) { result('err', j.message || (j.status === 'rejected' || j.status === 'already_rejected' ? 'Handlingen er afvist.' : 'Kontroller handlingens status.')); })
+        .catch(function () { ok.disabled = false; no.disabled = false; });
+    });
     container.appendChild(card);
     return card;
   }

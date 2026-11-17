@@ -42,6 +42,9 @@ SURFACES = {
     "cv_upload": "CV-importen under Mit CV",
     "cv": "Mit CV (CV'et bygget af hele deres profil, med forbedringsforslag)",
     "my_learning": "Min læring",
+    "notification": "en notifikation",
+    "checkin": "en opfølgning",
+    "order": "bestillingen",
     "goals": "Mine mål",
     "timeline": "tidslinjen med frister",
 }
@@ -63,7 +66,7 @@ SECTIONS = {
 }
 
 # Node-id prefixes the resolver understands (mind-map vocabulary, api.get_mindmap_api).
-_FOCUS_RE = re.compile(r"^(section|skill|exp|edu|cert|lang|goal|link|path|course|mem):([A-Za-z0-9_\-]{1,40})$")
+_FOCUS_RE = re.compile(r"^(section|skill|exp|edu|cert|lang|goal|link|path|course|mem|order|checkin):([A-Za-z0-9_\-]{1,40})$")
 
 # Tools worth offering for an origin / focus kind. Reads, plus forget_about_user,
 # which only PROPOSES (the removal runs on the user's confirm click). Writes never
@@ -78,6 +81,8 @@ _ORIGIN_TOOLS = {
     "timeline": ("get_my_agenda",),
 }
 _FOCUS_TOOLS = {
+    "order": ("get_my_course_status", "get_my_agenda", "check_order_approval_status"),
+    "checkin": ("get_my_agenda",),
     "skill": ("show_skill_gaps", "recommend_for_profile"),
     "goal": ("get_learning_goals", "track_goal_progress", "recommend_for_profile"),
     "path": ("get_learning_path",),
@@ -297,7 +302,7 @@ def build_layer(ctx, resolved=None, mode="default"):
         return " ".join(head), "", False
     if resolved:
         head.append(
-            "De havde dette element fra deres egen profil åbent (se nedenfor). "
+            "De havde dette element åbent (se nedenfor). "
             "Tag udgangspunkt i det, når beskeden handler om det — uddyb, ret eller byg videre "
             "sammen med brugeren i stedet for at spørge om det, der allerede står."
         )

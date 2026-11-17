@@ -84,7 +84,7 @@
             {% elif can_request_change %}
             <a class="btn btn-ghost btn-sm" href="#anmod-aendring"><i class="fa-solid fa-ban"></i> Anmod om ændring eller afbestilling</a>
             {% endif %}
-            <a class="btn btn-ghost btn-sm" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comments"></i> Spørg AI'en om ordren</a>
+            <a class="btn btn-ghost btn-sm" href="{{ url_for('futurematch.chat', **{'from':'order','focus':'order:' ~ order.order_id}) }}"><i class="fa-solid fa-comments"></i> Spørg AI'en om ordren</a>
           </div>
         </div>
       </div>
@@ -115,7 +115,7 @@
 
           <div class="mo-actions">
             {% if moment.review_url %}<a class="btn btn-soft btn-sm" href="{{ moment.review_url }}"><i class="fa-regular fa-star"></i> Giv en vurdering</a>{% endif %}
-            <a class="btn btn-ghost btn-sm" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comments"></i> Tal med AI'en om det</a>
+            <a class="btn btn-ghost btn-sm" href="{{ url_for('futurematch.chat', **{'from':'order','focus':'order:' ~ order.order_id}) }}"><i class="fa-solid fa-comments"></i> Tal med AI'en om det</a>
             <a class="btn btn-ghost btn-sm" href="{{ url_for('futurematch.my_cv') }}"><i class="fa-solid fa-file-lines"></i> Se det på dit CV</a>
           </div>
           <p style="font-size:12.5px;color:var(--fm-ink-3);margin:8px 0 0">Kurset står nu på dit CV som gennemført via Futurematch, og de kompetencer du tilføjer, vises som dokumenterede.</p>

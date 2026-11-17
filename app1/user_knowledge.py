@@ -594,6 +594,9 @@ def index_conversation_summary(username, session_id, mode, summary_text):
     try:
         if not username or not session_id or not knowledge_enabled():
             return None
+        from conversation_privacy import is_deleted
+        if is_deleted(username, session_id):
+            return None
         content = _clean(summary_text)[:_CONVERSATION_CONTENT_MAX]
         if not content:
             return None

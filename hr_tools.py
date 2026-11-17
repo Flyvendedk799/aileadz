@@ -1389,8 +1389,8 @@ def _execute_get_employee_overview(args):
             SELECT esm.skill_name, esm.current_level
             FROM employee_skills_matrix esm
             JOIN users u ON esm.employee_id = u.id
-            WHERE u.username = %s
-        """, (username,))
+            WHERE u.username = %s AND esm.company_id = %s
+        """, (username, company_id))
         skills = cur.fetchall()
         employees[0]['skills'] = skills
 
@@ -2674,7 +2674,7 @@ def _execute_approve_order_from_chat(args):
             "message_da": (
                 f"Bekræft at du vil {'GODKENDE' if decision == 'approved' else 'AFVISE'} bestillingen "
                 f"'{order.get('product_title')}' for {order.get('username')} "
-                f"({float(order.get('price') or 0):.0f} kr.). Send confirm=true for at udføre."
+                f"({float(order.get('price') or 0):.0f} kr.). Brug Bekræft-knappen på kortet."
             ),
         }, default=str)
     cur.close()
@@ -2799,18 +2799,18 @@ def _execute_assign_learning_path_to_team(args):
 
     # ── Confirmation gate: preview only without confirm. ──
     if not bool(args.get('confirm')):
-        cost_review = None
-        if path_id:
-            try:
-                import learning_path_service
-                review = learning_path_service.preview_path_assignment(cur, company_id, path_id, valid_ids)
-                cost_review = review and {
-                    "total_now": review["total_now"], "total_later_estimate": review["total_later"],
-                    "departments": [{"department": d["department"], "budget_before": d["before"], "budget_after": d["after"],
-                                     "over_budget": d["over"]} for d in review["departments"]],
-                }
-            except Exception as exc:
-                print(f"[HR_TOOLS][assign_path] cost review skipped: {exc}")
+        try:
+            import learning_path_service
+            review = (learning_path_service.preview_path_assignment(cur, company_id, path_id, valid_ids)
+                      if path_id else learning_path_service.preview_course_assignment(cur, company_id, quote, valid_ids))
+            if not review or review.get('blocked'):
+                cur.close()
+                return json.dumps({'error': 'review_blocked', 'message': 'Gennemse forløbets priser og hold før tildeling.', 'cost_review': review}, default=str)
+            cost_review = review
+            confirmation_args['expected_total'] = review['total_now']
+        except Exception:
+            cur.close()
+            return json.dumps({'error': 'review_unavailable', 'message': 'Omkostninger kunne ikke beregnes. Prøv igen senere.'})
         cur.close()
         return json.dumps({
             "needs_confirmation": True,
@@ -2826,7 +2826,7 @@ def _execute_assign_learning_path_to_team(args):
             "rejected_user_ids": rejected_ids,
             "message_da": (
                 f"Bekræft at du vil tildele '{content_name}' til {len(valid_ids)} medarbejder(e). "
-                f"Send confirm=true for at udføre."
+                f"Brug Bekræft-knappen på kortet."
             ),
         }, default=str)
 
@@ -2836,12 +2836,12 @@ def _execute_assign_learning_path_to_team(args):
     try:
         if path_id:
             result = learning_path_service.assign_path(cur, ctx, company_id, path_id, valid_ids,
-                                                      due_date=args.get('due_date'), sender_id=ctx.user_id, expected_version=args.get('expected_path_version'))
+                                                      due_date=args.get('due_date'), sender_id=ctx.user_id, expected_version=args.get('expected_path_version'), expected_total=args.get('expected_total'), accept_over_budget=args.get('accept_over_budget') is True, require_review=True)
         else:
             result = learning_path_service.assign_course_to_people(cur, ctx, company_id, course_handle, valid_ids,
-                                                                  due_date=args.get('due_date'), session_id=args.get('session_id'), expected_price=args.get('expected_price'))
+                                                                  due_date=args.get('due_date'), session_id=args.get('session_id'), expected_price=args.get('expected_price'), expected_total=args.get('expected_total'), accept_over_budget=args.get('accept_over_budget') is True, require_review=True)
         current_app.mysql.connection.commit()
-        return json.dumps({'success': not result.get('order_failures'), 'content_name': content_name,
+        return json.dumps({'success': not result.get('order_failures'), 'partial_failure': bool(result.get('order_failures') and result.get('orders')), 'content_name': content_name,
                            'rejected_user_ids': rejected_ids, **result,
                            'message_da': '%s tildelinger, %s bestillinger, %s kræver opfølgning. Åbn forløbet for at vælge manglende hold.' %
                            (result.get('assigned',0),result.get('orders',0),result.get('order_failures',0))},default=str)
@@ -2882,7 +2882,7 @@ def _hr_manager_ctx(message="Kun ledere/HR-managere kan ændre kompetencemål el
     the historical JSON-string error contract HR callers expect.
     """
     from tool_confirm import manager_guard
-    ctx, err = manager_guard(source='hr_chat', message=message)
+    ctx, err = manager_guard(source='hr_chat', message=message, capability='hr.manage')
     if err is not None:
         return ctx, json.dumps(err)
     return ctx, None
@@ -2974,12 +2974,12 @@ def _execute_set_skill_target(args):
         if is_update:
             msg = (
                 f"Bekræft at du vil ÆNDRE kompetencemålet for '{skill_name}' {scope_da} "
-                f"fra {existing_level} til {target_level} (af 5). Send confirm=true for at udføre."
+                f"fra {existing_level} til {target_level} (af 5). Brug Bekræft-knappen på kortet."
             )
         else:
             msg = (
                 f"Bekræft at du vil OPRETTE et kompetencemål: '{skill_name}' {scope_da} "
-                f"= {target_level} (af 5), prioritet '{priority}'. Send confirm=true for at udføre."
+                f"= {target_level} (af 5), prioritet '{priority}'. Brug Bekræft-knappen på kortet."
             )
         return json.dumps({
             "needs_confirmation": True,
@@ -3101,7 +3101,7 @@ def _execute_create_compliance_requirement(args):
             "message_da": (
                 f"Bekræft at du vil OPRETTE compliance-kravet '{title}' {scope_da}, "
                 f"{recur_da}{', lovpligtigt' if is_statutory else ''}. "
-                f"Send confirm=true for at udføre."
+                f"Brug Bekræft-knappen på kortet."
             ),
         }, default=str)
 
@@ -3722,7 +3722,7 @@ def _execute_schedule_recurring_report(args):
             action="schedule_recurring_report",
             summary_da=(
                 f"Bekræft at {rt_label}-rapporten{scope_da} skal sendes {cad_label}. "
-                f"Send confirm=true for at gemme planen."
+                f"Brug Bekræft-knappen på kortet."
             ),
             details={"report_type": report_type, "cadence": cadence, "department": department},
         ), default=str)
@@ -3785,7 +3785,7 @@ def _execute_recheck_compliance(args):
             summary_da=(
                 "Bekræft at du vil køre et compliance-gentjek for hele virksomheden nu. "
                 "Det opdaterer compliance-kort og kan eskalere kritiske mangler til ledere. "
-                "Send confirm=true for at køre."
+                "Brug Bekræft-knappen på kortet."
             ),
         ), default=str)
 
@@ -3968,7 +3968,7 @@ def _execute_send_company_email(args):
             action="send_company_email",
             summary_da=(
                 f"Bekræft at du vil sende mailen '{subject}' til {len(recipients)} modtager"
-                f"{'e' if len(recipients) != 1 else ''} ({audience}). Send confirm=true for at sende."
+                f"{'e' if len(recipients) != 1 else ''} ({audience}). Brug Bekræft-knappen på kortet."
             ),
             details={"subject": subject, "audience": audience, "department": department},
             recipient_count=len(recipients),
@@ -3983,13 +3983,16 @@ def _execute_send_company_email(args):
 
     sent = 0
     try:
-        from email_service import send_branded_email
+        from mail_delivery import enqueue
+        from ai_actions import ACTIVE_OPERATION
+        operation_id = ACTIVE_OPERATION.get()
         for r in recipients:
             try:
-                ok = send_branded_email(
+                ok = enqueue(
                     r["email"], subject, "announcement", branding,
                     company_id=company_id, recipient_name=r["full_name"],
-                    heading=subject, subject=subject, message=message,
+                    heading=subject, message=message,
+                    dedupe_key=operation_id, delivery_group=operation_id,
                 )
                 if ok:
                     sent += 1
@@ -4014,13 +4017,15 @@ def _execute_send_company_email(args):
 
     failed = len(recipients) - sent
     return json.dumps({
-        "success": True,
+        "success": sent > 0,
+        "status": "partial_success" if sent and failed else ("success" if sent else "error"),
         "recipient_count": len(recipients),
-        "sent": sent,
+        "queued": sent,
+        "delivery_group": operation_id,
         "partial_failure": failed > 0,
         "message_da": (
-            f"Mailen '{subject}' er sendt til {sent} af {len(recipients)} modtagere."
-            + (f" {failed} kunne ikke sendes." if failed else "")
+            f"Mailen '{subject}' er sat i kø til {sent} af {len(recipients)} modtagere."
+            + (f" {failed} kunne ikke sættes i kø." if failed else "")
         ),
     }, default=str)
 
@@ -4046,7 +4051,7 @@ def _execute_send_deadline_reminders(args):
             action="send_deadline_reminders",
             summary_da=(
                 "Bekræft at du vil udsende deadline-påmindelser nu til medarbejdere med "
-                "forestående kursusfrister og deres ledere. Send confirm=true for at sende."
+                "forestående kursusfrister og deres ledere. Brug Bekræft-knappen på kortet."
             ),
         ), default=str)
 
@@ -4217,7 +4222,17 @@ def execute_hr_tool(tool_call):
     except Exception as e:
         return json.dumps({"error": f"Kunne ikke parse argumenter: {e}"})
 
+    from tool_confirm import enforce_confirmation
+    args = enforce_confirmation(name, args)
+
+    from ai_permissions import hr_arguments
+    args, denied = hr_arguments(name, args)
+    if denied:
+        return json.dumps(denied)
+
+    from ai_booking_tools import change
     router = {
+        'hr_request_order_change': lambda args: change(args, manager=True),
         "get_team_training_status": _execute_get_team_training_status,
         "get_company_skill_gaps": _execute_get_company_skill_gaps,
         "get_budget_overview": _execute_get_budget_overview,
@@ -4269,3 +4284,6 @@ def execute_hr_tool(tool_call):
         print(f"[HR Tool Error] {name}: {e}")
         print(f"[HR Tool Traceback] {traceback.format_exc()}")
         return json.dumps({"error": f"Intern fejl i {name}: {str(e)}"})
+
+from ai_booking_tools import HR_SCHEMA
+HR_TOOLS.append(HR_SCHEMA)

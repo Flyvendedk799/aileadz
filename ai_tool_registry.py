@@ -267,6 +267,7 @@ _HR_META = {
         "approve_order_from_chat", "hr",
         company_required=True, side_effect=True, parallel_safe=False, toolset_tags=("approval", "mutation"),
     ),
+    "hr_request_order_change": ToolMeta("hr_request_order_change", "hr", auth_required=True, side_effect=True, parallel_safe=False, confirm_required=True),
     "assign_learning_path_to_team": ToolMeta(
         "assign_learning_path_to_team", "hr",
         company_required=True, side_effect=True, parallel_safe=False, toolset_tags=("path", "mutation"),
@@ -337,6 +338,9 @@ _HR_META = {
 }
 
 _VENDOR_META = {
+    'vendor_booking_work': ToolMeta('vendor_booking_work', 'vendor', auth_required=True, toolset_tags=('vendor','order')),
+    'vendor_propose_catalog_correction': ToolMeta('vendor_propose_catalog_correction', 'vendor', auth_required=True,
+                                                side_effect=True, parallel_safe=False, confirm_required=True, toolset_tags=('vendor','catalog')),
     "vendor_performance_summary": ToolMeta(
         "vendor_performance_summary",
         "vendor",
@@ -1329,7 +1333,7 @@ def get_employee_tool_selection(
         if _has_any(query, (
                 "annullér min", "annuller min", "annullér bestilling", "annuller bestilling",
                 "fortryder kurset", "fortryd bestilling", "slet min ordre", "afbestil", "håndtér bestilling",
-                "ikke sendes", "skal ikke sendes", "stop ordren")):
+                "ikke sendes", "skal ikke sendes", "stop ordren", "flyt min", "nyt hold", "reschedule")):
             names.add("manage_my_order")
         if _has_any(query, (
                 "bed min leder", "bed om godkendelse", "rykke for godkendelse", "ryk for godkendelse",
@@ -1608,6 +1612,10 @@ def get_hr_tool_selection(
             "bestil på vegne af", "bestil paa vegne af")):
         names.add("create_order_for_employee")
 
+    if _has_any(query, ("flyt", "nyt hold", "skift deltager", "anden deltager", "annuller", "annullér", "reschedule", "substitute")):
+        names.add("hr_request_order_change")
+    from ai_permissions import filter_hr_tools
+    names = set(filter_hr_tools(names))
     selected = []
     for name in sorted(names):
         tool = tool_map.get(name)
@@ -1620,7 +1628,7 @@ def get_hr_tool_selection(
 
     if not selected:
         selected = [tool for tool in tool_map.values()
-                    if tool_name(tool) in {"hr_get_company_learning_context", "get_pending_actions", "hr_open_in_app"}]
+                    if tool_name(tool) in filter_hr_tools({"hr_get_company_learning_context", "get_team_training_status", "hr_open_in_app"})]
     selected_names = [tool_name(t) for t in selected]
     return selected, {
         "version": TOOLSET_VERSION,

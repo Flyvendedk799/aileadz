@@ -82,6 +82,7 @@ def manager_guard(
     *,
     source: str = "chat",
     message: Optional[str] = None,
+    capability: Optional[str] = None,
 ) -> Tuple[Optional[Any], Optional[Dict[str, Any]]]:
     """Resolve the actor and require company-manager rights.
 
@@ -96,7 +97,10 @@ def manager_guard(
     except Exception as exc:  # pragma: no cover - defensive import/build guard
         print(f"[TOOL_CONFIRM][manager_guard] OrderContext unavailable: {exc}")
         return None, {"error": "Brugerkontekst er ikke tilgængelig lige nu."}
-    if not getattr(ctx, "is_manager", False):
+    from flask import has_request_context
+    from auth_decorators import can
+    capability_denied = capability and has_request_context() and not can(capability)
+    if capability_denied or not getattr(ctx, "is_manager", False):
         return ctx, {
             "error": "not_authorized",
             "message": message or "Kun ledere/HR-managere kan udføre denne handling.",
@@ -136,11 +140,44 @@ def confirmed_arguments(tool_name, arguments, result):
     quote/version fields may augment the original call.
     """
     args = dict(arguments or {})
-    if tool_name not in ('create_course_order','create_order_for_employee','assign_learning_path_to_team'):
+    if tool_name not in ('create_course_order','create_order_for_employee','assign_learning_path_to_team','manage_my_order','hr_request_order_change'):
         return args
     preview = result.get('confirmation_args') or {}
-    for key in ('expected_price','session_id','expected_path_version'):
+    for key in ('expected_price','session_id','expected_path_version','expected_total'):
         value=preview.get(key)
         if value is not None and isinstance(value,(str,int,float)):
             args[key]=value
     return args
+
+
+def action_status(result):
+    """One interpretation of action outcomes for tools, receipts and all UIs."""
+    if not isinstance(result, dict):
+        return "failed"
+    if result.get("status") == "partial_success" or (result.get("partial_failure") and any(result.get(k) for k in ("sent", "queued", "orders", "assigned"))):
+        return "partial"
+    if result.get("success") is True or result.get("status") in {
+        "success", "ok", "order_created", "team_orders_created", "handed_off_to_hr", "already_confirmed",
+    }:
+        return "consumed"
+    return "failed"
+
+
+def enforce_confirmation(name, args):
+    """A provider cannot approve its own proposal by supplying confirm=true."""
+    from flask import has_request_context
+    if not has_request_context() or not args.get('confirm'):
+        return args
+    import ai_actions
+    row = ai_actions.inspect(ai_actions.ACTIVE_OPERATION.get()) if ai_actions.ACTIVE_OPERATION.get() else None
+    if not row or row['kind'] != 'confirmation' or row['name'] != name or row['status'] != 'running':
+        args = dict(args, confirm=False)
+    return args
+
+
+CONFIRMATION_GUIDANCE = (
+    'Handlinger med bekræftelseskort udføres kun via brugerens klik på Bekræft. '
+    'Kald værktøjet for at vise en forhåndsvisning; sæt aldrig selv confirm=true, heller ikke efter et ja i chatten. '
+    'Når kortet vises, forklar kort hvad det ændrer. Henvis til AI-handlinger ved afbrudt forbindelse '
+    'eller usikkert resultat; opret ikke en ny tilsvarende handling for at gætte på udfaldet.'
+)

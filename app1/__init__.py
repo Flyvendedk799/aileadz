@@ -757,8 +757,6 @@ def ask():
         # Phase 1B: Input length cap
         if len(user_query) > 5000:
             return jsonify({"answers": [{"type": "text", "content": "Din besked er for lang. Prøv at forkorte den."}]}), 400
-        if len(user_query) > 2000:
-            user_query = user_query[:2000]
 
         # One assistant for every logged-in user: the advisor's course toolbox plus
         # profile awareness (the former AI Profiler persona is built in). The client
@@ -782,8 +780,15 @@ def ask():
             if paused:
                 return jsonify({"answers": [{"type": "text", "content": paused}], "credits_paused": True}), 402
 
-        return handle_agentic_ask(user_query, session, mode=mode, turn_kind=turn_kind,
-                                  surface_context=surface_context or None)
+        from conversation_tokens import read
+        token = request.json.get('conversation_token')
+        conversation_id = read(token) if token else None
+        if token and not conversation_id:
+            return jsonify(error='Samtalen tilhører en anden bruger eller virksomhed. Åbn den igen.'), 409
+        import ai_operations
+        return ai_operations.run(lambda: handle_agentic_ask(user_query, session, mode=mode, turn_kind=turn_kind,
+                                  conversation_id=conversation_id, surface_context=surface_context or None),
+                                 scope='employee', sid=conversation_id, request_id=request.json.get('request_id'), payload=request.json)
 
     except Exception as ex:
         print(f"Unexpected error: {ex}")
@@ -1085,7 +1090,7 @@ def new_session():
     req_mode = request.args.get("mode") or body.get("mode") or session.get("session_surface") or "chat"
     surface = conv_state.surface_for_mode(req_mode)
     new_sid = _start_fresh_session(surface)
-    return jsonify({"status": "ok", "session_id": new_sid, "mode": surface})
+    return jsonify({"status": "ok", "session_id": new_sid, "conversation_token": __import__("conversation_tokens").mint(new_sid), "mode": surface})
 
 
 def _start_fresh_session(surface):
@@ -1134,7 +1139,8 @@ def _drop_session_memory(sid):
     from app1 import agent as _agent
     for store in (_agent.CHAT_MEMORY, _agent.CHAT_MEMORY_REV, _agent.SESSION_STATE,
                   _agent.SESSION_SUMMARIES, _agent.SHOWN_PRODUCTS, _agent.CONVERSATION_STAGES,
-                  _agent.REJECTED_SEARCHES, _agent.SHOWN_ARTIFACTS):
+                  _agent.REJECTED_SEARCHES, _agent.SHOWN_ARTIFACTS, _agent.USER_PROFILES,
+                  _agent.LAST_SEARCH_QUERIES, _agent._SESSION_VERSIONS, _agent.ANONYMOUS_PROFILES, _agent.SESSION_LAST_SEEN):
         store.pop(sid, None)
     _agent.PROFILER_HANDOFFS.discard(sid)
 
@@ -1155,7 +1161,7 @@ def load_conversation_endpoint():
     surface = conv_state.surface_for_mode(request.args.get("mode") or "chat")
     try:
         new_sid = _start_fresh_session(surface)
-        return jsonify({"status": "empty", "messages": [], "session_id": new_sid, "mode": surface})
+        return jsonify({"status": "empty", "messages": [], "session_id": new_sid, "conversation_token": __import__("conversation_tokens").mint(new_sid), "mode": surface})
     except Exception as e:
         print(f"[Load Conversation Error] {e}")
         try:
@@ -1267,7 +1273,7 @@ def resume_conversation_endpoint(conv_id):
         except Exception as _st_err:
             print(f"[Resume State Restore] {_st_err}")
 
-        return jsonify({"status": "ok", "session_id": target_sid,
+        return jsonify({"status": "ok", "session_id": target_sid, "conversation_token": __import__("conversation_tokens").mint(target_sid),
                         "id": conv.get("id"), "mode": surface,
                         "title": conv.get("title"), "messages": messages})
     except Exception as e:
@@ -1703,6 +1709,12 @@ def confirm_tool_action():
     if not token:
         return jsonify({"status": "error", "message": "token mangler"}), 400
 
+    if token.startswith('act_'):
+        from ai_action_routes import confirm
+        return confirm(token)
+    if os.getenv('SANDBOX') != '1':
+        return jsonify(status='expired', message='Bed om en ny bekræftelse.'), 409
+
     from app1 import confirm_store as _cs
     from app1 import conversation_state as _conv_state
     hr_sid = session.get("hr_chat_session_id", "")
@@ -1776,7 +1788,7 @@ def confirm_tool_action():
 
         result = json.loads(raw) if isinstance(raw, str) else raw
         ok_statuses = {"success", "order_created", "team_orders_created", "handed_off_to_hr", "ok"}
-        succeeded = isinstance(result, dict) and result.get("status") in ok_statuses
+        succeeded = isinstance(result, dict) and (result.get("status") in ok_statuses or result.get("success") is True)
         _cs.mark_consumed(
             token, ok=bool(succeeded), tool_name=tool_name,
             receipt=result if isinstance(result, dict) else {"status": "ok"},
@@ -1815,6 +1827,10 @@ def reject_tool_action():
     token = (data.get("token") or "").strip()
     if not token:
         return jsonify({"status": "error", "message": "token mangler"}), 400
+
+    if token.startswith('act_'):
+        from ai_action_routes import reject
+        return reject(token)
 
     from app1 import confirm_store as _cs
     from app1 import conversation_state as _conv_state
@@ -1901,7 +1917,13 @@ def adminlog_session(session_id):
     from app1.chat_diagnostics import load_diagnostics, valid_chat_id
     if not valid_chat_id(session_id):
         return jsonify({"error": "Ugyldigt chat-id"}), 400
-    response = jsonify(load_diagnostics(session_id))
+    data = load_diagnostics(session_id)
+    try:
+        from ai_support_trace import load
+        data['workflow_trace'] = load(session_id)
+    except Exception:
+        data.setdefault('warnings', []).append('Workflow trace unavailable')
+    response = jsonify(data)
     response.headers["Cache-Control"] = "no-store"
     if request.args.get("download") == "1":
         response.headers["Content-Disposition"] = f'attachment; filename="chat-{session_id}.json"'
@@ -1954,13 +1976,20 @@ def nudges():
         return jsonify({"nudges": []})
 
     nudge_list = []
+    try:
+        from app1.user_profile_db import get_pending_checkins
+        from urllib.parse import urlencode
+        for item in get_pending_checkins(logged_in_user, limit=2):
+            nudge_list.append({'text': item['topic'], 'action_url': '/chat?' + urlencode({'from':'checkin','focus':'checkin:' + str(item['id'])})})
+    except Exception:
+        pass
 
     try:
         # 1. Check pending/approved order updates
         try:
             cur = current_app.mysql.connection.cursor()
             cur.execute("""
-                SELECT status, product_title FROM course_orders
+                SELECT status, product_title, order_id FROM course_orders
                 WHERE user_id = (SELECT id FROM users WHERE username = %s LIMIT 1)
                   AND status IN ('approved', 'pending_approval')
                 ORDER BY updated_at DESC LIMIT 1
@@ -1969,17 +1998,19 @@ def nudges():
             cur.close()
             if row:
                 status, title = row[0], row[1]
+                from ai_followups import order_chat_url
+                chat_url = order_chat_url(row[2])
                 if status == 'approved':
                     nudge_list.append({
                         "type": "order_update",
                         "text": f"Din kursusordre \"{title}\" er blevet godkendt!",
-                        "action_url": "/profile"
+                        "action_url": chat_url
                     })
                 elif status == 'pending_approval':
                     nudge_list.append({
                         "type": "order_update",
                         "text": f"Din kursusordre \"{title}\" afventer godkendelse.",
-                        "action_url": "/profile"
+                        "action_url": chat_url
                     })
         except Exception as e:
             logging.debug("Nudge order check: %s", e)
@@ -2426,6 +2457,13 @@ def widget_ask(token):
         session['widget_session_id'] = widget_session_id
     widget_session_id = str(widget_session_id)[:80]
 
+    import credit_service
+    paused = credit_service.guard(company_id=widget.get("company_id") or widget.get("cid"))
+    if paused:
+        return jsonify({"error": paused, "credits_paused": True}), 402
+    if len(user_query) > 5000:
+        return jsonify({"error": "Din besked er for lang. Brug højst 5.000 tegn."}), 400
+
     from app1.agent import handle_agentic_ask
     # handle_agentic_ask already returns a fully-built streaming Response — do not
     # re-wrap it in Response(stream_with_context(...)) (that double-wrap raises
@@ -2580,3 +2618,7 @@ def widget_loader_js(token):
     return resp
 
 
+
+
+from ai_action_routes import register as _register_ai_action_routes
+_register_ai_action_routes(app1_bp)

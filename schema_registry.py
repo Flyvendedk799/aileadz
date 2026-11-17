@@ -30,7 +30,26 @@ logger = logging.getLogger(__name__)
 
 _ENGINE = "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 
+AI_ACTIONS_DDL = f"""CREATE TABLE IF NOT EXISTS ai_actions (
+    id VARCHAR(64) PRIMARY KEY,
+    username VARCHAR(255) NOT NULL,
+    company_key VARCHAR(32) NOT NULL,
+    session_id VARCHAR(128) NOT NULL,
+    scope VARCHAR(32) NOT NULL,
+    kind VARCHAR(32) NOT NULL,
+    name VARCHAR(128) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    payload_json LONGTEXT,
+    receipt_json LONGTEXT,
+    expires_at DOUBLE NOT NULL,
+    created_at DOUBLE NOT NULL,
+    updated_at DOUBLE NOT NULL,
+    INDEX idx_action_owner (username, company_key, created_at),
+    INDEX idx_action_session (session_id)
+) {_ENGINE}"""
+
 REGISTRY_DDL = [
+    AI_ACTIONS_DDL,
     f"""CREATE TABLE IF NOT EXISTS customer_accounts (
         company_id INT PRIMARY KEY,
         account_owner VARCHAR(255) NULL,

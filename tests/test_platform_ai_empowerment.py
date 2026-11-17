@@ -428,7 +428,12 @@ class HrOpenInAppTests(unittest.TestCase):
         call = mock.Mock()
         call.function.name = "hr_open_in_app"
         call.function.arguments = json.dumps({"destination": "compliance"})
-        out = json.loads(hr_tools.execute_hr_tool(call))
+        from flask import Flask, session
+        app = Flask(__name__)
+        app.secret_key = 'test'
+        with app.test_request_context('/'):
+            session.update(user='admin', role='admin')
+            out = json.loads(hr_tools.execute_hr_tool(call))
         self.assertEqual(out.get("destination"), "compliance")
 
     def test_it_mutates_nothing(self):
@@ -501,7 +506,7 @@ class HrSelectionTests(unittest.TestCase):
 
     def test_route_whitelists_the_posted_page(self):
         src = open(os.path.join(_REPO_ROOT, "hr_dashboard", "__init__.py"), encoding="utf-8").read()
-        self.assertIn("handle_hr_ask(user_query, session, page=page)", src)
+        self.assertIn("handle_hr_ask(user_query, session, page=page, conversation_id=sid", src)
         self.assertIn("if page not in HR_DESTINATIONS", src)
 
     def test_panel_renders_the_navigation_directive(self):

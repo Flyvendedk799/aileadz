@@ -171,6 +171,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
   const rail = $("#rail");
 
   let sending = false, aborted = false;
+  let resetting = false, conversationToken = null;
   let currentAbort = null;            // AbortController for the in-flight /ask stream
   let lastActualQuery = null;         // last query submitted (after course-ref expansion)
   // No-event watchdog. Once content streams, gaps are tiny (chunks/heartbeats),
@@ -789,7 +790,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
     row.setAttribute("role", "alert");
     row.querySelector("span").textContent = message || "Forbindelsen blev afbrudt, før svaret var færdigt. Det modtagne svar er bevaret.";
     row.querySelector(".retry").onclick = () => {
-      if (sending) return;
+      if (sending || resetting || input.disabled) return;
       row.remove(); run(query, Object.assign({}, retryOpts || {}, { skipUser: true }));
     };
     place(body, "foot", row); down();
@@ -1001,11 +1002,11 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
       const retryBtn = document.createElement("button");
       retryBtn.type = "button";
       retryBtn.className = "tool-chip-retry";
-      retryBtn.title = "Prøv igen";
-      retryBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> Prøv igen';
+      retryBtn.title = "Se status";
+      retryBtn.innerHTML = '<i class="fa-solid fa-list-check"></i> Se status';
       retryBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        if (lastActualQuery && !sending) run(lastActualQuery, { skipUser: true });
+        if (window.fmOpenAiActions) window.fmOpenAiActions();
       });
       chip.appendChild(retryBtn);
     }
@@ -1134,7 +1135,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
           const label = result.order_status_label ? " (" + result.order_status_label + ")" : "";
           showResult("ok", "Bestillingen er registreret" + label + ".",
             { href: result.order_url || "/min-tidslinje", label: "Se bestillingen" });
-        } else if (OK_STATUSES.indexOf(result.status) >= 0) {
+        } else if (OK_STATUSES.indexOf(result.status) >= 0 || (result.success === true && result.status !== "partial_success")) {
           showResult("ok", result.message_da || result.message || "Bekræftet");
         } else if (result.status === "already_confirmed") {
           showResult("ok", "Allerede bekræftet");
@@ -1161,8 +1162,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
         // Nothing is known to have been booked: let the user try again.
         okBtn.disabled = false; cancelBtn.disabled = false;
         okBtn.textContent = "Bekræft";
-        showResult("err", "Netværksfejl — prøv igen");
-        card.querySelector(".confirm-card-actions").hidden = false;
+        showResult("err", "Forbindelsen blev afbrudt. Kontroller AI-handlinger før du prøver igen.");
       }
     });
 
@@ -1616,7 +1616,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
     place(body, "rich", card); down();
   }
 
-  async function streamFromBackend(body, actualQuery, kind, context) {
+  async function streamFromBackend(body, actualQuery, kind, context, requestId) {
     // Abort plumbing: the Stop button aborts via currentAbort; a no-event
     // watchdog aborts a silently dead connection (backend emits an initial
     // ping and heartbeats far below this threshold).
@@ -1677,10 +1677,14 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(Object.assign(
-          { query: actualQuery, mode: (window.CHAT_MODE || "default"), kind: kind || "message" },
+          { query: actualQuery, conversation_token: conversationToken, request_id: requestId || (window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)), mode: (window.CHAT_MODE || "default"), kind: kind || "message" },
           context ? { context: context } : {})),
         signal: controller.signal,
       });
+      const operationId = resp.headers.get('X-AI-Operation-ID');
+      if (operationId && /^run_[a-f0-9]+$/.test(operationId)) controller.signal.addEventListener('abort', () => {
+        fetch('/app1/actions/' + operationId + '/cancel', {method:'POST', credentials:'same-origin', keepalive:true}).catch(() => {});
+      }, {once:true});
       if (window.FMChatDebug && resp.headers.get("X-Chat-ID")) window.FMChatDebug.setId(resp.headers.get("X-Chat-ID"), "employee");
       if (!resp.ok || !(resp.headers.get("content-type") || "").includes("text/event-stream")) {
         const payload = await resp.json().catch(() => ({}));
@@ -1891,7 +1895,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
 
   /* ---------------- send / run ---------------- */
   async function run(query, opts = {}) {
-    if (sending) return;
+    if (sending || resetting || input.disabled) return;
     sending = true; aborted = false;
     document.querySelector(".welcome")?.remove();
     if (!opts.skipUser) addUser(query);
@@ -1915,8 +1919,9 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
     const body = addBot();
     const th = thinking(body);
     let result = null, lastErr = null;
+    const requestId = opts.requestId || Date.now().toString(36) + Math.random().toString(36).slice(2);
     try {
-      result = await streamFromBackend(body, actualQuery, opts.kind, context);
+      result = await streamFromBackend(body, actualQuery, opts.kind, context, requestId);
     } catch (e) {
       // A lost response does not prove that the server did not execute tools.
       // Resending a turn is always an explicit user decision.
@@ -1925,7 +1930,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
     th.remove();
     if (lastErr) {
       settleToolChips(body);
-      appendError(body, actualQuery, { kind: opts.kind, context: context }, lastErr.userMessage);
+      appendError(body, actualQuery, { kind: opts.kind, context: context, requestId: requestId }, lastErr.userMessage);
     } else {
       // User Stop: mark the cut-off, but still render the feedback row so
       // aborted answers are measurable.
@@ -2020,22 +2025,26 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
     paintRecents();
   }
   async function newChat() {
-    if (window.FMChatDebug) window.FMChatDebug.setId(null, "employee");
-    attached = []; renderRef(); input.value = ""; toggleSend();
-    // Honest reset: clear the server-side session (CHAT_MEMORY, shown products,
-    // stage, rejections) BEFORE painting the welcome screen, so a "new" chat
-    // never silently inherits the previous conversation's context. A failed
-    // call still resets the UI — better a fresh screen than a stuck button.
+    if (sending || resetting) return false;
+    resetting = true;
+    const resetController = new AbortController();
+    const resetTimer = setTimeout(() => resetController.abort(), 15000);
     try {
-      // Reset this surface's open conversation on the server.
       const reset = await fetch("/app1/new_session", {
-        method: "POST",
+        method: "POST", signal: resetController.signal,
         headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
-        credentials: "same-origin",
-        body: JSON.stringify({ mode: (window.CHAT_MODE || "default") }),
+        credentials: "same-origin", body: JSON.stringify({ mode: (window.CHAT_MODE || "default") }),
       });
-      if (reset.ok && window.FMChatDebug) window.FMChatDebug.setId((await reset.json()).session_id, "employee");
-    } catch (e) { /* offline / anonymous: still reset the UI */ }
+      if (!reset.ok) throw new Error("reset failed");
+      const data = await reset.json();
+      if (!data.session_id || !data.conversation_token) throw new Error("reset incomplete");
+      conversationToken = data.conversation_token; input.disabled = false;
+      if (window.FMChatDebug) window.FMChatDebug.setId(data.session_id, "employee");
+    } catch (e) {
+      if (!conversationToken) input.disabled = true;
+      toast("Ny samtale kunne ikke åbnes. Dit udkast og din samtale er bevaret.", "courses");
+      return false;
+    } finally { clearTimeout(resetTimer); resetting = false; }
     activeConvId = null;
     syncConvUrl(null);
     if (window.fmAiSidebar && typeof window.fmAiSidebar.setActive === "function") {
@@ -2047,6 +2056,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
     }
     welcome();
     input.focus();
+    return true;
   }
   window.fmNewChat = newChat;
   // The conversation you are in is pinned in the URL (?c=<id>), so a reload or
@@ -2121,10 +2131,12 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
       });
       if (resp.ok) {
         const data = await resp.json();
-        if (data && data.status === "ok") { if (window.FMChatDebug) window.FMChatDebug.setId(data.session_id, "employee"); renderHistory(data.messages); input.focus(); return true; }
+        if (data && data.status === "ok") { conversationToken = data.conversation_token; input.disabled = false; if (window.FMChatDebug) window.FMChatDebug.setId(data.session_id, "employee"); renderHistory(data.messages); input.focus(); return true; }
       }
     } catch (e) { /* fall through to read-only load */ }
-    // Resume unavailable (offline/older backend): still show the transcript.
+    conversationToken = null;
+    input.disabled = true;
+    // Resume unavailable: history is read-only until a conversation opens successfully.
     try {
       const r2 = await fetch("/app1/conversations/" + encodeURIComponent(id), {
         headers: { "X-Requested-With": "XMLHttpRequest" }, credentials: "same-origin",
@@ -2230,7 +2242,8 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
       } catch (e) { /* non-critical */ }
     }
     if (from || focus) pendingHandoff = { from: from, focus: focus };
-    return newChat().then(() => {
+    return newChat().then((opened) => {
+      if (!opened) return false;
       if (intent) {
         input.value = intent;
         input.dispatchEvent(new Event("input", { bubbles: true }));

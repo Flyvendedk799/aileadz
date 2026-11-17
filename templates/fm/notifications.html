@@ -77,6 +77,9 @@
             <div class="nt-title">{% if _href %}<a href="{{ _href }}" data-open="{{ n.id }}" style="color:inherit;text-decoration:none">{{ n.title or 'Notifikation' }}</a>{% else %}{{ n.title or 'Notifikation' }}{% endif %}{% if n.is_urgent %} <span class="fm-badge red">Vigtig</span>{% endif %}</div>
             <div class="nt-desc">{{ n.message|safe_html if n.message else '' }}</div>
             {% if _href %}<div style="margin-top:6px"><a class="fm-link" href="{{ _href }}" data-open="{{ n.id }}">{{ _k[1] if _k else 'Åbn' }} <i class="fa-solid fa-arrow-right"></i></a></div>{% endif %}
+            {% if _href.startswith('/min-ordre/') %}
+            <a class="fm-link" href="{{ url_for('futurematch.chat', **{'from':'notification','focus':'order:' ~ _href.split('/min-ordre/',1)[1].split('/')[0].split('?')[0]}) }}">Spørg AI om bestillingen</a>
+            {% endif %}
             {% if n.sender_name %}<div style="font-size:11.5px;color:var(--fm-ink-3);margin-top:4px"><i class="fa-solid fa-user"></i> {{ n.sender_name }}</div>{% endif %}
             {% if not n.is_read %}
             <div class="nt-act"><button class="btn btn-primary btn-sm" data-mark="{{ n.id }}"><i class="fa-solid fa-check"></i> Markér som læst</button></div>

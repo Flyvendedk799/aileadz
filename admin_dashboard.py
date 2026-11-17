@@ -156,7 +156,8 @@ def _admin_home_data():
                 FROM company_users GROUP BY company_id
             ) emp ON emp.company_id = c.id
             LEFT JOIN (
-                SELECT company_id, COUNT(*) AS order_count, COALESCE(SUM(price), 0) AS revenue
+                SELECT company_id, COUNT(*) AS order_count,
+                       COALESCE(SUM(CASE WHEN status NOT IN ('cancelled', 'rejected') THEN price END), 0) AS revenue
                 FROM course_orders GROUP BY company_id
             ) ord ON ord.company_id = c.id
             ORDER BY c.created_at DESC LIMIT 20

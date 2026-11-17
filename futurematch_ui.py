@@ -186,6 +186,8 @@ SIDEBAR_BY_ENDPOINT = {
     'talent.workspace': 'development',
     'talent.opportunities': 'development',
     'talent.application': 'development',
+    'talent.hiring': 'development',
+    'learning.assignment': 'emphome',
     'futurematch.my_cv': 'cv',
     'futurematch.my_cv_print': 'cv',
     'catalog.catalog_index': 'catalog',

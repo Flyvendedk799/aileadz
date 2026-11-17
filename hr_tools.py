@@ -6,6 +6,7 @@ import json
 import re
 import db_compat  # noqa: F401
 import MySQLdb.cursors
+import order_lifecycle as lc
 from flask import current_app, session
 from datetime import datetime, timedelta
 
@@ -1437,8 +1438,8 @@ def _execute_get_training_report(args):
             COUNT(*) as total_orders,
             COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
             COUNT(CASE WHEN status = 'pending_approval' THEN 1 END) as pending_approval,
-            COUNT(CASE WHEN status IN ('booked','confirmed','processing') THEN 1 END) as in_progress,
-            COALESCE(SUM(CASE WHEN status != 'cancelled' THEN price ELSE 0 END), 0) as total_spend,
+            COUNT(CASE WHEN status IN {lc.SQL_IN_PROGRESS} THEN 1 END) as in_progress,
+            COALESCE(SUM(CASE WHEN status NOT IN {lc.SQL_NOT_COUNTED} THEN price ELSE 0 END), 0) as total_spend,
             COUNT(DISTINCT username) as unique_employees,
             AVG(CASE WHEN status = 'completed' AND completion_date IS NOT NULL
                 THEN DATEDIFF(completion_date, created_at) END) as avg_completion_days
@@ -1452,7 +1453,7 @@ def _execute_get_training_report(args):
         SELECT co.product_title, COUNT(*) as order_count,
                SUM(price) as total_value
         FROM course_orders co
-        WHERE {base_where} AND co.status != 'cancelled'
+        WHERE {base_where} AND co.status NOT IN {lc.SQL_NOT_COUNTED}
         GROUP BY co.product_title
         ORDER BY order_count DESC
         LIMIT 10
@@ -3510,12 +3511,12 @@ def _compute_cohort_metrics(cur, company_id, sel):
         SELECT
             COUNT(DISTINCT cu.user_id) AS members,
             COUNT(DISTINCT CASE WHEN co.status = 'completed' THEN co.id END) AS completed,
-            COUNT(DISTINCT CASE WHEN co.status IN ('confirmed','processing') THEN co.id END) AS in_progress,
+            COUNT(DISTINCT CASE WHEN co.status IN {lc.SQL_IN_PROGRESS} THEN co.id END) AS in_progress,
             COUNT(DISTINCT CASE WHEN co.status = 'pending_approval' THEN co.id END) AS pending,
-            COALESCE(SUM(CASE WHEN co.status != 'cancelled' THEN co.price ELSE 0 END), 0) AS total_spend,
+            COALESCE(SUM(CASE WHEN co.status NOT IN {lc.SQL_NOT_COUNTED} THEN co.price ELSE 0 END), 0) AS total_spend,
             AVG(CASE WHEN co.status = 'completed' AND co.completion_date IS NOT NULL
                 THEN DATEDIFF(co.completion_date, co.created_at) END) AS avg_completion_days,
-            COUNT(DISTINCT CASE WHEN co.status != 'cancelled' THEN co.id END) AS active_orders
+            COUNT(DISTINCT CASE WHEN co.status NOT IN {lc.SQL_NOT_COUNTED} THEN co.id END) AS active_orders
         FROM company_users cu
         LEFT JOIN course_orders co
             ON co.user_id = cu.user_id AND co.company_id = cu.company_id
@@ -3532,7 +3533,7 @@ def _compute_cohort_metrics(cur, company_id, sel):
     total_spend = float(row.get('total_spend') or 0)
     avg_days = row.get('avg_completion_days')
 
-    # completion_rate = completed orders / non-cancelled orders in the window.
+    # completion_rate = completed orders / counted (not rejected or cancelled) orders in the window.
     completion_rate = round(completed / active_orders * 100, 1) if active_orders else 0.0
     # spend_per_member is a cohort-level scalar (denominator = k-safe member count).
     spend_per_member = round(total_spend / members, 2) if members else 0.0
@@ -4283,10 +4284,16 @@ def execute_hr_tool(tool_call):
     try:
         return fn(args)
     except Exception as e:
-        import traceback
-        print(f"[HR Tool Error] {name}: {e}")
-        print(f"[HR Tool Traceback] {traceback.format_exc()}")
-        return json.dumps({"error": f"Intern fejl i {name}: {str(e)}"})
+        # Same rule as the employee assistant: the exception text (SQL, column
+        # names) is logged, never handed to the model or the stream.
+        import logging
+        logging.getLogger(__name__).exception("HR tool %s failed", name)
+        return json.dumps({
+            "status": "error",
+            "error": "Det lykkedes ikke at hente eller gemme det lige nu. Prøv igen om lidt.",
+            "error_code": f"{name}_failed",
+            "exception_type": type(e).__name__,
+        })
 
 from ai_booking_tools import HR_SCHEMA
 HR_TOOLS.append(HR_SCHEMA)

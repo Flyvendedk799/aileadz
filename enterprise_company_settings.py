@@ -741,6 +741,7 @@ def export_settings():
 WEBHOOK_EVENT_CHOICES = [
     ('order.created', 'Ordre oprettet'),
     ('order.needs_approval', 'Ordre afventer godkendelse'),
+    ('order.auto_approved', 'Ordre godkendt automatisk (regel)'),
     ('order.approved', 'Ordre godkendt'),
     ('order.rejected', 'Ordre afvist'),
     ('order.booked', 'Plads bekræftet af udbyder'),
@@ -752,6 +753,8 @@ WEBHOOK_EVENT_CHOICES = [
     ('employee.added', 'Medarbejder tilføjet'),
     ('employee.updated', 'Medarbejder opdateret'),
     ('course.completed', 'Kursus gennemført'),
+    ('scim.user.provisioned', 'Bruger oprettet via SCIM'),
+    ('scim.user.deprovisioned', 'Bruger fjernet via SCIM'),
     ('ping', 'Test / ping'),
 ]
 _VALID_WEBHOOK_EVENTS = {name for name, _ in WEBHOOK_EVENT_CHOICES}

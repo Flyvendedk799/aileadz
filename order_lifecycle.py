@@ -33,6 +33,14 @@ TERMINAL_STATUSES = frozenset({COMPLETED, REJECTED, CANCELLED})
 # Statuses that hold a budget charge (a seat that will be paid for).
 CHARGED_STATUSES = frozenset({APPROVED, BOOKED, COMPLETED})
 
+# KPI definitions shared by every report, dashboard and assistant tool, as SQL
+# literals for "status [NOT] IN ...". Spend, revenue and order counts leave out
+# rejected and cancelled orders (DECISIONS.md, item 3); "in progress" is an
+# order that is approved or booked but not yet held.
+NOT_COUNTED_STATUSES = frozenset({REJECTED, CANCELLED})
+SQL_NOT_COUNTED = "('cancelled', 'rejected')"
+SQL_IN_PROGRESS = "('approved', 'booked')"
+
 # Statuses that older rows / older code paths still use. Reads normalise them so
 # an unmigrated row renders correctly; schema_registry migrates the data once.
 LEGACY_ALIASES = {

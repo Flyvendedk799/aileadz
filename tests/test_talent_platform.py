@@ -396,3 +396,17 @@ def test_a_failing_subscriber_never_reaches_the_emitter_or_its_peers(env):
         assert seen==[(7,'test.thing')]
     finally:
         event_bus._SUBSCRIBERS.pop('test.thing',None)
+
+
+def test_an_unmet_requirement_links_to_learning_and_a_met_one_does_not(env):
+    from flask import render_template_string
+    db,app=env
+    app.add_url_rule('/catalog','catalog.catalog_index',lambda:'') if 'catalog.catalog_index' not in app.view_functions else None
+    r=dict(available=True,total=2,counts=dict(satisfied=1,unknown=1,provisional=0),requirements=[
+        dict(skill='Python',current_level=4,target_level=4,provisional=False),
+        dict(skill='Ledelse & co',current_level=None,target_level=3,provisional=False)])
+    with app.test_request_context():
+        learner=render_template_string("{% import 'fm/_talent.html' as t %}{{ t.readiness(r, links=true) }}",r=r)
+        hr=render_template_string("{% import 'fm/_talent.html' as t %}{{ t.readiness(r) }}",r=r)
+    assert learner.count('Find læring')==1 and 'q=Ledelse+%26+co' in learner
+    assert 'Find læring' not in hr

@@ -309,6 +309,12 @@ def create_app():
     app.register_blueprint(enterprise_settings_bp, url_prefix='/enterprise')
     app.register_blueprint(multitenant_reports_bp, url_prefix='/multitenant-reports')
     app.register_blueprint(futurematch_bp)
+    try:
+        from talent_routes import talent_bp
+        app.register_blueprint(talent_bp)
+    except Exception:
+        app.logger.exception("Talent workspace registration failed")
+
 
     try:
         from learning_routes import learning_bp

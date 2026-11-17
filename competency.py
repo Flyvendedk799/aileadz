@@ -315,7 +315,7 @@ def _skills_in_text(text, *, limit=5):
     return out
 
 
-def _company_targets(username):
+def _company_targets(username, company_id=None):
     """Company skill targets for the learner's company/department, or [].
 
     Fully guarded + offline-safe: any DB problem (no app context, no MySQL,
@@ -323,6 +323,12 @@ def _company_targets(username):
     yields role/goal gaps.
     """
     if not username:
+        return []
+    if company_id is None:
+        from flask import has_request_context, session
+        if has_request_context() and session.get("user") == username:
+            company_id = session.get("company_id")
+    if not company_id:
         return []
     try:
         import MySQLdb.cursors
@@ -332,8 +338,8 @@ def _company_targets(username):
         cur.execute(
             "SELECT cu.company_id, cu.department FROM company_users cu "
             "JOIN users u ON cu.user_id = u.id "
-            "WHERE u.username = %s AND cu.status = 'active' LIMIT 1",
-            (username,),
+            "WHERE u.username = %s AND cu.company_id = %s AND cu.status = 'active' LIMIT 1",
+            (username, company_id),
         )
         row = cur.fetchone()
         if not row:
@@ -354,7 +360,7 @@ def _company_targets(username):
         return []
 
 
-def compute_skill_gaps(username, profile=None, *, limit=12):
+def compute_skill_gaps(username, profile=None, *, limit=12, company_id=None, user_id=None, matrix=None, scope="all"):
     """The per-learner skill-gap engine — the keystone for gap-grounded AI.
 
     Required competencies are derived from three sources, most authoritative
@@ -381,19 +387,13 @@ def compute_skill_gaps(username, profile=None, *, limit=12):
         profile = profile or {}
     profile = profile or {}
 
-    # Current competence: canonical key → best (highest) score seen.
-    current = {}
-    for s in (profile.get("skills") or []):
-        nm = s.get("name") or s.get("skill_name") if isinstance(s, dict) else None
-        if not nm:
-            continue
-        canon = canonical_skill(nm)
-        if not canon:
-            continue
-        key = canon.lower()
-        score = level_to_score(s.get("level") or s.get("skill_level"))
-        if key not in current or score > current[key]["score"]:
-            current[key] = {"display": canon, "score": score}
+    from competency_model import snapshot, load_matrix
+    available = True
+    if matrix is None:
+        matrix, available = load_matrix(username, company_id, user_id)
+    state = snapshot(profile, matrix, available=available)
+    current = {skill_key(r["name"]): {"display": r["name"], "score": r["level"],
+                "provisional": r["provisional"]} for r in state["skills"]}
 
     # Required competence: canonical key → strongest target / most authoritative source.
     required = {}
@@ -420,9 +420,17 @@ def compute_skill_gaps(username, profile=None, *, limit=12):
         else:
             ex["target"] = new_target
 
-    for t in _company_targets(username):
+    for t in ((_company_targets(username, company_id) if company_id else _company_targets(username)) if scope == "all" else []):
         _want(t.get("skill_name"), t.get("target_level") or 3, "company",
               (t.get("priority") or "medium").lower())
+
+    if scope == "all":
+        try:
+            from competency_model import work_requirements
+            for req in work_requirements(username, company_id):
+                _want(req["skill"], req["target_level"], req["source"], req["priority"])
+        except Exception:
+            available = False if company_id else available
 
     role = (profile.get("target_role") or "").strip().lower()
     if role:
@@ -437,21 +445,24 @@ def compute_skill_gaps(username, profile=None, *, limit=12):
             continue
         if g.get("status") in (None, "", "aktiv"):
             goal_blobs.append(g.get("title") or "")
-    for blob in goal_blobs:
+    for blob in (goal_blobs if scope == "all" else []):
         for sk in _skills_in_text(blob):
             _want(sk, _DEFAULT_GOAL_TARGET, "goal", "low")
 
     gaps = []
     for key, info in required.items():
-        cur = current.get(key, {"display": info["display"], "score": 0})
-        gap = info["target"] - cur["score"]
-        if gap <= 0:
+        cur = current.get(key, {"display": info["display"], "score": None})
+        known = cur["score"] is not None and available
+        gap = info["target"] - cur["score"] if known else info["target"]
+        if known and gap <= 0:
             continue
         gaps.append({
             "skill": info["display"],
             "category": skill_category(info["display"]),
-            "current_level": cur["score"],
-            "current_label": score_label_da(cur["score"]),
+            "current_level": cur["score"] if known else None,
+            "current_label": score_label_da(cur["score"]) if known else "ukendt",
+            "unknown": not known, "provisional": cur.get("provisional", False),
+            "available": available,
             "target_level": info["target"],
             "target_label": score_label_da(info["target"]),
             "gap": gap,
@@ -464,7 +475,7 @@ def compute_skill_gaps(username, profile=None, *, limit=12):
                        _SOURCE_RANK.get(g["source"], 0)),
         reverse=True,
     )
-    return gaps[:limit]
+    return gaps[:limit] if limit is not None else gaps
 
 
 def gaps_to_query(gaps, *, limit=4):

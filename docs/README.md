@@ -9,6 +9,7 @@ Read in this order when new to the repo: [../CLAUDE.md](../CLAUDE.md) -> [ARCHIT
 | [ARCHITECTURE.md](ARCHITECTURE.md) | you need to find which module owns something; request lifecycle, auth, DB, jobs |
 | [DECISIONS.md](DECISIONS.md) | you are about to change behaviour that a constraint protects (privacy floors, order rules, permissions, language) |
 | [TESTING.md](TESTING.md) | you are writing or running tests; which harness to use |
+| [TALENT.md](TALENT.md) | connected competencies, development, internal recruitment, capability planning and rollout |
 | [ROADMAP.md](ROADMAP.md) | you want to know what is still open (verified against code) |
 | [USER_ACTIONS.md](USER_ACTIONS.md) | something needs the owner's accounts, servers or a decision (env vars, rotations, one-time ops) |
 

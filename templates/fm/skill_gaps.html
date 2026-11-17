@@ -64,14 +64,14 @@
     {% set ns = namespace(found=false) %}
     {% for dept, skills in (heatmap or {}).items() %}
       {% for skill_name, data in skills.items() %}
-        {% if data.status in ['red','yellow'] %}
+        {% if data.status in ['red','yellow','unknown'] %}
         {% set ns.found = true %}
         <tr>
           <td style="font-weight:650">{{ skill_name }}</td>
           <td><span class="fm-badge">{{ dept }}</span></td>
           <td><span class="fm-badge teal">Mål {{ data.target_level }}/5</span></td>
-          <td><span class="fm-badge {{ 'red' if (data.avg_current or 0)|float < 2 else 'amber' }}">{{ data.avg_current|dknum }}/5 gns.</span></td>
-          <td><span class="fm-badge {{ 'red' if data.status == 'red' else 'amber' }}">−{{ data.gap|dknum }}</span></td>
+          <td><span class="fm-badge {{ 'red' if (data.avg_current or 0)|float < 2 else 'amber' }}">{% if data.avg_current is not none %}{{ data.avg_current|dknum }}/5 gns.{% else %}Ukendt{% endif %}<small>{{ data.employees }} vurderet{% if data.population is defined %} af {{ data.population }}{% endif %}</small></span></td>
+          <td><span class="fm-badge {{ 'red' if data.status == 'red' else 'amber' }}">{{ ('−' ~ data.gap|dknum) if data.gap is not none else 'Afklar først' }}</span></td>
           <td style="text-align:right;white-space:nowrap"><a href="{{ url_for('hr_ext.training_plan', department=dept, focus=skill_name) }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-list-check"></i> Lav træningsplan</a>
             <a href="{{ url_for('hr_dashboard.bulk_assign_form', department=dept, skill=skill_name) }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-user-plus"></i> Tildel</a></td>
         </tr>
@@ -168,6 +168,7 @@
     var skills = heatmap[dept];
     Object.keys(skills).forEach(function (name) {
       var e = skills[name] || {};
+      if (e.avg_current == null) return;
       var emp = Number(e.employees) || 0;
       var cur = Number(e.avg_current) || 0;
       var tgt = Number(e.target_level) || 0;

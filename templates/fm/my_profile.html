@@ -219,6 +219,7 @@
 </style>
 {% endblock %}
 {% block content %}
+{% if has_endpoint('talent.workspace') and session.get('company_id') %}{% import 'fm/_talent.html' as talent with context %}{{ talent.styles() }}{{ talent.nav() }}{% endif %}
 {% set _u = username or session.get('user') or 'Gæst' %}
 <div class="fm-wrap">
         <div class="toasts" id="toasts"></div>

@@ -229,3 +229,31 @@ def record_user_snapshot(username, skill_name, level, previous_level=None,
     except Exception as exc:
         logger.warning("skill_history: record_user_snapshot failed for %s: %s", username, exc)
         return False
+
+
+def set_matrix_level(cur, company_id, employee_id, skill_name, level):
+    """Canonical matrix writer without relying on a nonexistent unique constraint.
+
+    Lock the membership to serialize writes for this employee; update legacy alias
+    rows together, preserving them for migration/audit. Caller owns the transaction.
+    """
+    from competency import canonical_skill, skill_key
+    name = canonical_skill(skill_name)
+    if not name or not 1 <= int(level) <= 5:
+        raise ValueError('Angiv kompetence og niveau 1–5.')
+    cur.execute("SELECT user_id FROM company_users WHERE company_id=%s AND user_id=%s AND status='active' FOR UPDATE",
+                (company_id, employee_id))
+    if not cur.fetchone():
+        raise ValueError('Medarbejderen er ikke aktiv i virksomheden.')
+    cur.execute('SELECT id,skill_name,current_level FROM employee_skills_matrix WHERE company_id=%s AND employee_id=%s', (company_id, employee_id))
+    matches = [r for r in cur.fetchall() if skill_key(r['skill_name']) == skill_key(name)]
+    previous = matches[-1].get('current_level') if matches else None
+    if matches:
+        for row in matches:
+            cur.execute('UPDATE employee_skills_matrix SET skill_name=%s,current_level=%s WHERE company_id=%s AND employee_id=%s AND id=%s',
+                        (name, int(level), company_id, employee_id, row['id']))
+    else:
+        cur.execute('INSERT INTO employee_skills_matrix (employee_id,company_id,skill_name,current_level) VALUES (%s,%s,%s,%s)',
+                    (employee_id, company_id, name, int(level)))
+
+    return previous

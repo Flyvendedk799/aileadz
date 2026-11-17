@@ -19,6 +19,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/cv-studio.css') }}?v={{ asset_version('futurematch/assets/cv-studio.css') }}" />
 {% endblock %}
 {% block content %}
+{% if has_endpoint('talent.workspace') and session.get('company_id') %}{% import 'fm/_talent.html' as talent with context %}{{ talent.styles() }}{{ talent.nav() }}{% endif %}
 <div class="cvs">
   <section class="cvs-hero" data-reveal>
     <div class="cvs-hero-ring">

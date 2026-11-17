@@ -47,6 +47,11 @@ For the AI internals see [ai-framework.md](ai-framework.md). For standing constr
 | `dashboard/`, `pages.py`, `api.py` | learner dashboard, static-ish pages, `/api/...` JSON endpoints for the UI (notifications, profile, credits, CV upload/parse, learner events) |
 
 ### HR, company and enterprise
+
+`competency_model.py` owns the shared competency projection. `talent_service.py` and
+`talent_routes.py` connect role frameworks, development goals, internal opportunities,
+recruitment and capability scenarios. Contracts and module rollout: [TALENT.md](TALENT.md).
+
 | Module | Role |
 |---|---|
 | `hr_dashboard/` (largest file), `hr_ext.py`, `hr_course_assign.py`, `compliance_*.py`, `deadline_service.py`, `cert_expiry_service.py`, `digest_service.py`, `department_service.py`, `team_order_policy.py`, `bulk_invite.py` | HR workspace, assignments, compliance, reminders, weekly digest |

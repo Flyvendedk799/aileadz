@@ -186,7 +186,7 @@ class BuildTests(LearnerContextTestBase):
                                               "target_level": 4, "gap": 2}])
         # Excel is already a matrix gap, Forhandling is met → only CRM remains.
         self.assertEqual([t["skill"] for t in ctx["dept_targets"]], ["CRM"])
-        self.fake_competency._company_targets.assert_called_once_with(USERNAME)
+        self.fake_competency._company_targets.assert_called_once_with(USERNAME, COMPANY_ID)
 
     def test_each_source_degrades_independently(self):
         for needle, name in (("FROM employee_learning_progress", "assignments"),

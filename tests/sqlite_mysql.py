@@ -109,7 +109,7 @@ CREATE TABLE employee_learning_progress (id INTEGER PRIMARY KEY AUTOINCREMENT, u
   started_at TEXT, completed_at TEXT, due_date TEXT, ordering_mode TEXT DEFAULT 'all_at_once',
   assigned_by_user_id INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE employee_skills_matrix (id INTEGER PRIMARY KEY AUTOINCREMENT, employee_id INTEGER,
-  company_id INTEGER, skill_name TEXT, current_level INTEGER, target_level INTEGER,
+  company_id INTEGER, skill_name TEXT, current_level INTEGER, target_level INTEGER, updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(employee_id, company_id, skill_name));
 CREATE TABLE employee_skill_history (id INTEGER PRIMARY KEY AUTOINCREMENT, employee_id INTEGER,
   company_id INTEGER, skill_name TEXT, level INTEGER, previous_level INTEGER, source TEXT, order_id INTEGER,

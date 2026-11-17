@@ -691,7 +691,7 @@ def create_hr_dashboard_blueprint():
             try:
                 # CANONICAL SCALE 1-5 (matches HR matrix/targets + viz); chatbot
                 # 4-label enum spread onto 1-5 so ekspert reaches the ceiling.
-                level_map_sql = "CASE skill_level WHEN 'begynder' THEN 1 WHEN 'mellem' THEN 2 WHEN 'avanceret' THEN 4 WHEN 'ekspert' THEN 5 ELSE 2 END"
+                level_map_sql = "CASE skill_level WHEN 'begynder' THEN 1 WHEN 'mellem' THEN 2 WHEN 'avanceret' THEN 4 WHEN 'ekspert' THEN 5 ELSE 2 END)"
 
                 # Unified skill count: enterprise + chatbot
                 cur.execute(f"""
@@ -1314,20 +1314,20 @@ def create_hr_dashboard_blueprint():
             # Get all employee skills for search/browse (merge enterprise + chatbot)
             # CANONICAL SCALE 1-5 (matches HR matrix/targets + viz); chatbot
             # 4-label enum spread onto 1-5 so ekspert reaches the ceiling.
-            level_map = "CASE us.skill_level WHEN 'begynder' THEN 1 WHEN 'mellem' THEN 2 WHEN 'avanceret' THEN 4 WHEN 'ekspert' THEN 5 ELSE 2 END"
+            level_map = "COALESCE(us.numeric_level, CASE us.skill_level WHEN 'begynder' THEN 1 WHEN 'mellem' THEN 2 WHEN 'avanceret' THEN 4 WHEN 'ekspert' THEN 5 ELSE 2 END)"
             cur2 = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
             cur2.execute(f"""
-                SELECT skill_name, current_level, username, department, job_title, user_id
+                SELECT skill_name, current_level, username, department, job_title, user_id, is_manager
                 FROM (
                     SELECT esm.skill_name, esm.current_level,
-                           u.username, cu.department, cu.job_title, cu.user_id
+                           u.username, cu.department, cu.job_title, cu.user_id, 1 AS is_manager
                     FROM employee_skills_matrix esm
                     JOIN company_users cu ON esm.employee_id = cu.user_id AND esm.company_id = cu.company_id
                     JOIN users u ON cu.user_id = u.id
                     WHERE esm.company_id = %s AND cu.status = 'active'
                     UNION ALL
                     SELECT us.skill_name, {level_map} as current_level,
-                           u2.username, cu2.department, cu2.job_title, cu2.user_id
+                           u2.username, cu2.department, cu2.job_title, cu2.user_id, 0 AS is_manager
                     FROM user_skills us
                     JOIN users u2 ON us.username = u2.username
                     JOIN company_users cu2 ON cu2.user_id = u2.id AND cu2.company_id = %s AND cu2.status = 'active'
@@ -1343,16 +1343,23 @@ def create_hr_dashboard_blueprint():
             all_employee_skills = cur2.fetchall()
 
             # Build summary: unique skills with avg level and employee count
+            from competency import canonical_skill, skill_key
             skill_summary = {}
-            for row in all_employee_skills:
-                sn = row['skill_name']
+            seen_employee_skills = set()
+            for row in sorted(all_employee_skills, key=lambda r: not r.get('is_manager', True)):
+                sn = canonical_skill(row['skill_name'])
+                key = (row['user_id'], skill_key(sn))
+                if key in seen_employee_skills or not sn:
+                    continue
+                seen_employee_skills.add(key)
                 if sn not in skill_summary:
                     skill_summary[sn] = {'skill_name': sn, 'total_level': 0, 'count': 0, 'employees': []}
                 try:
                     lvl = int(row['current_level'] or 0)
                 except (ValueError, TypeError):
-                    lvl = 2 # fallback for non-numeric data
-                    current_app.logger.warning(f"Non-numeric skill level for {sn}: {row['current_level']}")
+                    continue
+                if not 1 <= lvl <= 5:
+                    continue
 
                 skill_summary[sn]['total_level'] += lvl
                 skill_summary[sn]['count'] += 1
@@ -1542,23 +1549,21 @@ def create_hr_dashboard_blueprint():
             for eid in employee_ids:
                 # Capture the pre-change level so the history trail records a real
                 # before/after trajectory point (plan #19), then overwrite.
-                prev_level = _sh.current_level_for(cur, company['id'], eid, skill_name)
-                cur.execute("""
-                    INSERT INTO employee_skills_matrix (employee_id, company_id, skill_name, current_level)
-                    VALUES (%s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE current_level = %s
-                """, (eid, company['id'], skill_name, level, level))
+                prev_level = _sh.set_matrix_level(cur, company['id'], eid, skill_name, level)
                 # Append-only skill-history snapshot in the SAME transaction.
                 # Guarded: a history-append failure never aborts the real write.
-                _sh.record_snapshot(
+                recorded = _sh.record_snapshot(
                     cur, company['id'], eid, skill_name, level,
                     previous_level=prev_level, source='assign')
+                if not recorded and prev_level != level:
+                    raise ValueError('Kompetencehistorikken kunne ikke gemmes.')
                 count += 1
 
             current_app.mysql.connection.commit()
             cur.close()
             return jsonify({'success': True, 'message': f'Kompetence tildelt {count} medarbejder(e).'})
         except Exception as e:
+            current_app.mysql.connection.rollback()
             current_app.logger.error(f"assign_employee_skill error: {e}")
             return jsonify({'success': False, 'message': 'Kompetencen kunne ikke tildeles. Prøv igen om lidt.'}), 500
 
@@ -1635,15 +1640,12 @@ def create_hr_dashboard_blueprint():
                     linked_order = None
 
             import skill_history as _sh
-            prev_level = _sh.current_level_for(cur, company['id'], employee_id, skill_name)
-            cur.execute("""
-                INSERT INTO employee_skills_matrix (employee_id, company_id, skill_name, current_level)
-                VALUES (%s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE current_level = %s
-            """, (employee_id, company['id'], skill_name, new_level, new_level))
+            prev_level = _sh.set_matrix_level(cur, company['id'], employee_id, skill_name, new_level)
             recorded = _sh.record_snapshot(
                 cur, company['id'], employee_id, skill_name, new_level,
                 previous_level=prev_level, source='post_course', order_id=linked_order)
+            if not recorded and prev_level != new_level:
+                raise ValueError('Kompetencehistorikken kunne ikke gemmes.')
             current_app.mysql.connection.commit()
             cur.close()
 

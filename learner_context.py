@@ -277,12 +277,13 @@ def _skill_gaps_from_matrix(matrix_rows):
     return gaps[:_SKILL_GAP_LIMIT]
 
 
-def _load_dept_targets(username, current_levels):
+def _load_dept_targets(username, current_levels, company_id=None):
     """Department targets via competency._company_targets, annotated with the
     learner's HR-rated current level where one exists. Targets already met are
     dropped — they are not actionable for the advisor."""
     import competency  # ImportError → recorded as a failed source by caller
-    rows = competency._company_targets(username) or []
+    rows = competency._company_targets(username, company_id) if company_id else competency._company_targets(username)
+    rows = rows or []
     prio_rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     out = []
     for r in rows:
@@ -406,7 +407,7 @@ def build_learner_hr_context(username, *, user_id=None, company_id=None) -> dict
             try:
                 gap_skills = {str(g["skill"]).strip().lower() for g in ctx["skill_gaps"]}
                 ctx["dept_targets"] = [
-                    t for t in _load_dept_targets(username, current_levels)
+                    t for t in _load_dept_targets(username, current_levels, cid)
                     if str(t["skill"]).strip().lower() not in gap_skills
                 ]
             except Exception as e:

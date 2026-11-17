@@ -280,7 +280,7 @@ def get_skill_gap_analysis(app, company_id, department=None):
         # CANONICAL SCALE 1-5: map the chatbot 4-label enum onto the same 1-5
         # scale the HR matrix/targets and the viz use, so a chatbot "ekspert"
         # reaches 5 and gaps cannot flip sign against a 5/5 target.
-        level_map = "CASE us.skill_level WHEN 'begynder' THEN 1 WHEN 'mellem' THEN 2 WHEN 'avanceret' THEN 4 WHEN 'ekspert' THEN 5 ELSE 2 END"
+        level_map = "COALESCE(us.numeric_level, CASE us.skill_level WHEN 'begynder' THEN 1 WHEN 'mellem' THEN 2 WHEN 'avanceret' THEN 4 WHEN 'ekspert' THEN 5 ELSE 2 END)"
         cur.execute(f"""
             SELECT skill_name, current_level, department, user_id FROM (
                 SELECT esm.skill_name, esm.current_level, cu.department, cu.user_id
@@ -301,6 +301,8 @@ def get_skill_gap_analysis(app, company_id, department=None):
             ) combined
         """, (company_id, company_id, company_id))
         skills = cur.fetchall()
+        cur.execute("SELECT user_id,department FROM company_users WHERE company_id=%s AND status='active'", (company_id,))
+        members = list(cur.fetchall() or [])
         cur.close()
 
         # Build heatmap
@@ -320,15 +322,24 @@ def get_skill_gap_analysis(app, company_id, department=None):
                 'status': 'unknown',
             }
 
-        for s in skills:
-            dept = s['department'] or 'All'
-            skill = s['skill_name']
-            # Match against department-specific or global targets
-            for target_dept in [dept, 'All']:
-                if target_dept in heatmap and skill in heatmap[target_dept]:
-                    entry = heatmap[target_dept][skill]
-                    entry['employees'] += 1
-                    entry['total_current'] += (s['current_level'] or 0)
+        from competency import skill_key
+        # Matrix rows come first; alias matches must not double count a person.
+        for target_dept, entries in heatmap.items():
+            for target_name, entry in entries.items():
+                cohort = {m['user_id'] for m in members if target_dept == 'All' or (m.get('department') or 'All') == target_dept}
+                measured = {}
+                for row in skills:
+                    if skill_key(row['skill_name']) != skill_key(target_name):
+                        continue
+                    if target_dept != 'All' and (row.get('department') or 'All') != target_dept:
+                        continue
+                    if row.get('current_level') is not None:
+                        measured.setdefault(row['user_id'], row['current_level'])
+                entry['employees'] = len(measured)
+                entry['total_current'] = sum(measured.values())
+                entry['population'] = len(cohort)
+                entry['unknown'] = len(cohort - set(measured))
+                entry['coverage_pct'] = round(100 * len(cohort & set(measured)) / len(cohort)) if cohort else None
 
         # Calculate averages and gap status
         for dept in heatmap:
@@ -336,6 +347,11 @@ def get_skill_gap_analysis(app, company_id, department=None):
                 e = heatmap[dept][skill]
                 if e['employees'] > 0:
                     e['avg_current'] = round(e['total_current'] / e['employees'], 1)
+                if not e['employees']:
+                    e['avg_current'] = None
+                    e['gap'] = None
+                    e['status'] = 'unknown'
+                    continue
                 e['gap'] = e['target_level'] - e['avg_current']
                 if e['gap'] <= 0:
                     e['status'] = 'green'
@@ -343,6 +359,16 @@ def get_skill_gap_analysis(app, company_id, department=None):
                     e['status'] = 'yellow'
                 else:
                     e['status'] = 'red'
+
+        # Protect each skill cell, not only the largest cohort in its department.
+        import kanon
+        privacy_floor = kanon._resolve_k_default()
+        for entries in heatmap.values():
+            for entry in entries.values():
+                count, population = entry['employees'], entry['population']
+                if 0 < count < privacy_floor or (population and 0 < population - count < privacy_floor):
+                    entry.update(employees=0, population=None, unknown=None, coverage_pct=None,
+                                 total_current=0, avg_current=None, gap=None, status='suppressed')
 
         # k-anonymity: a department whose largest measured skill cohort is below
         # k represents only a handful of (possibly one) employees, so its skill

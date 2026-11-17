@@ -205,7 +205,8 @@ def test_cv_summary_api_endpoint(client):
     assert len(s["recent_experience"]) == 1
     assert s["recent_experience"][0]["company"] == "Tech Corp"
     assert s["completeness_pct"] == 80
-    assert len(s["top_gaps"]) == 1
+    assert len(s["top_gaps"]) == 5
+    assert any(g["current"] == "ukendt" for g in s["top_gaps"])
 
 
 def test_cv_summary_api_empty_profile(client):

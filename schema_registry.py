@@ -48,7 +48,130 @@ AI_ACTIONS_DDL = f"""CREATE TABLE IF NOT EXISTS ai_actions (
     INDEX idx_action_session (session_id)
 ) {_ENGINE}"""
 
+TALENT_DDL = [
+    f"""CREATE TABLE IF NOT EXISTS talent_hiring_members (
+        company_id INT NOT NULL, user_id INT NOT NULL, opportunity_id VARCHAR(36) NOT NULL,
+        PRIMARY KEY (company_id, user_id, opportunity_id)
+    ) {_ENGINE}""",
+
+    f"""CREATE TABLE IF NOT EXISTS talent_settings (
+        company_id INT PRIMARY KEY,
+        roles_enabled TINYINT NOT NULL DEFAULT 0,
+        mobility_enabled TINYINT NOT NULL DEFAULT 0,
+        planning_enabled TINYINT NOT NULL DEFAULT 0
+    ) {_ENGINE}""",
+    f"""CREATE TABLE IF NOT EXISTS talent_role_versions (
+        id VARCHAR(36) PRIMARY KEY,
+        company_id INT NOT NULL,
+        role_id VARCHAR(36) NOT NULL,
+        version INT NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        requirements_json LONGTEXT NOT NULL,
+        published TINYINT NOT NULL DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY role_version (company_id,
+        role_id,
+        version)
+    ) {_ENGINE}""",
+    f"""CREATE TABLE IF NOT EXISTS talent_role_assignments (
+        company_id INT NOT NULL,
+        user_id INT NOT NULL,
+        role_version_id VARCHAR(36) NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (company_id,
+        user_id)
+    ) {_ENGINE}""",
+    f"""CREATE TABLE IF NOT EXISTS talent_assessments (
+        id VARCHAR(36) PRIMARY KEY,
+        company_id INT NOT NULL,
+        user_id INT NOT NULL,
+        competency_id VARCHAR(32) NOT NULL,
+        skill_name VARCHAR(100) NOT NULL,
+        level INT NOT NULL,
+        kind VARCHAR(20) NOT NULL,
+        actor_user_id INT NULL,
+        source_ref VARCHAR(100) NOT NULL,
+        note TEXT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY assessment_source (company_id,
+        user_id,
+        competency_id,
+        kind,
+        source_ref),
+        INDEX assessment_person (company_id,
+        user_id,
+        created_at)
+    ) {_ENGINE}""",
+    f"""CREATE TABLE IF NOT EXISTS talent_goal_links (
+        id VARCHAR(36) PRIMARY KEY,
+        company_id INT NOT NULL,
+        user_id INT NOT NULL,
+        goal_id INT NOT NULL,
+        shared TINYINT NOT NULL DEFAULT 0,
+        requirements_json LONGTEXT NOT NULL,
+        baseline_json LONGTEXT NOT NULL,
+        actions_json LONGTEXT NOT NULL,
+        review_date DATE NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY goal_link (company_id,
+        user_id,
+        goal_id)
+    ) {_ENGINE}""",
+    f"""CREATE TABLE IF NOT EXISTS talent_opportunities (
+        id VARCHAR(36) PRIMARY KEY,
+        company_id INT NOT NULL,
+        role_version_id VARCHAR(36) NOT NULL,
+        kind VARCHAR(20) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        description TEXT NULL,
+        department VARCHAR(100) NULL,
+        location VARCHAR(150) NULL,
+        deadline DATE NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'draft',
+        owner_user_id INT NULL,
+        hiring_team_json TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) {_ENGINE}""",
+    f"""CREATE TABLE IF NOT EXISTS talent_applications (
+        id VARCHAR(36) PRIMARY KEY,
+        company_id INT NOT NULL,
+        user_id INT NOT NULL,
+        opportunity_id VARCHAR(36) NOT NULL,
+        snapshot_json LONGTEXT NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'submitted',
+        revision INT NOT NULL DEFAULT 1,
+        history_json LONGTEXT NOT NULL,
+        placement_confirmed TINYINT NOT NULL DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY application_person (company_id,
+        user_id,
+        opportunity_id)
+    ) {_ENGINE}""",
+    f"""CREATE TABLE IF NOT EXISTS talent_project_members (
+        company_id INT NOT NULL,
+        user_id INT NOT NULL,
+        opportunity_id VARCHAR(36) NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (company_id,
+        user_id,
+        opportunity_id)
+    ) {_ENGINE}""",
+    f"""CREATE TABLE IF NOT EXISTS talent_scenarios (
+        id VARCHAR(36) PRIMARY KEY,
+        company_id INT NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        department VARCHAR(100) NULL,
+        target_date DATE NOT NULL,
+        requirements_json LONGTEXT NOT NULL,
+        actions_json LONGTEXT NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'draft',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) {_ENGINE}""",
+]
+
 REGISTRY_DDL = [
+    *TALENT_DDL,
     AI_ACTIONS_DDL,
     f"""CREATE TABLE IF NOT EXISTS customer_accounts (
         company_id INT PRIMARY KEY,

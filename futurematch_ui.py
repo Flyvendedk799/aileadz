@@ -57,6 +57,7 @@ HR_TAB_BY_ENDPOINT = {
     'hr_dashboard.funnel_dashboard': 'funnel',
     'hr_dashboard.retention_dashboard': 'retention',
     'hr_dashboard.benchmarking_view': 'benchmarking',
+    'talent.hr': 'talent',
     'hr_dashboard.skill_gaps_view': 'skill_gaps',
     'hr_ext.engagement': 'engagement',
     'hr_ext.ai_quality': 'ai_quality',
@@ -85,6 +86,7 @@ HR_TAB_GROUP = {
     'employees': 'organisation', 'departments': 'organisation',
     'approvals': 'orders', 'approval_policies': 'orders', 'assign_course': 'orders', 'mail': 'orders',
     'training_plan': 'training', 'learning_paths': 'training', 'internal_courses': 'training',
+    'talent': 'organisation',
     'compliance': 'training', 'skill_gaps': 'training',
     'budgets': 'finance', 'billing': 'finance', 'procurement': 'finance', 'suppliers': 'finance',
     'learning_analytics': 'insight', 'roi': 'insight', 'funnel': 'insight', 'retention': 'insight',
@@ -181,6 +183,9 @@ SIDEBAR_BY_ENDPOINT = {
     'futurematch.company_chat': 'company_chat',
     'futurematch.ai_profiler': 'chat',
     'futurematch.mind_map': 'mindmap',
+    'talent.workspace': 'development',
+    'talent.opportunities': 'development',
+    'talent.application': 'development',
     'futurematch.my_cv': 'cv',
     'futurematch.my_cv_print': 'cv',
     'catalog.catalog_index': 'catalog',
@@ -465,29 +470,23 @@ RECOMMENDATION_POPULAR = 'popular'
 
 
 def _home_recommendations(profile, company_id, limit=_HOME_REC_LIMIT):
-    """Cheap, non-LLM course recommendations for the learner home.
-
-    Strategy (no model call, page-route safe):
-      1. If the user has skills, run a catalog keyword search on the first skill
-         name — this reuses catalog_service.search_products (pure in-memory).
-      2. Otherwise fall back to the first page of the catalog (popular/recent by
-         the catalog's default ordering).
-    Company-scoped pricing is applied when company_id is present. Always returns
-    a list (possibly empty); never raises.
-    """
+    """Recommend against known gaps; unknown competence needs assessment first."""
     profile = profile or {}
-    skills = profile.get('skills') or []
+    from competency import compute_skill_gaps
+    gaps = compute_skill_gaps(profile.get('username'), profile=profile, company_id=company_id)
+    actionable = [g for g in gaps if not g.get('unknown') and g.get('available', True)]
+    if gaps and not actionable:
+        return []
     why = 'Populært i kataloget lige nu'
     source = RECOMMENDATION_POPULAR
     products = []
     try:
         import catalog_service
         q = ''
-        if skills:
-            q = (skills[0].get('name') or '').strip()
-            if q:
-                why = f'Matcher din kompetence: {q}'
-                source = RECOMMENDATION_PROFILE
+        if actionable:
+            q = actionable[0]['skill']
+            why = f"Udvikler {q} mod dit mål på {actionable[0]['target_level']}/5"
+            source = RECOMMENDATION_PROFILE
         result = catalog_service.search_products(
             filters={'q': q} if q else {},
             page=1, per_page=limit, company_id=company_id,
@@ -504,6 +503,18 @@ def _home_recommendations(profile, company_id, limit=_HOME_REC_LIMIT):
         current_app.logger.warning("home recommendations: %s", e)
         return []
 
+    excluded = {c.get('handle') or c.get('course_handle') for c in profile.get('completed_courses', [])}
+    try:
+        if profile.get('username'):
+            cur = current_app.mysql.connection.cursor(MySQLdb_cursors_dict())
+            try:
+                cur.execute("SELECT product_handle FROM course_orders WHERE username=%s AND company_id=%s AND status IN ('pending_approval','approved','booked','completed')", (profile['username'], company_id))
+                excluded.update(r['product_handle'] for r in cur.fetchall())
+            finally:
+                cur.close()
+    except Exception:
+        return []  # Do not recommend duplicate purchases when active orders cannot be checked.
+    products = [p for p in products if p.get('handle') not in excluded]
     recs = []
     for p in products[:limit]:
         recs.append({

@@ -28,6 +28,7 @@ _TABLES_SQL = [
         username VARCHAR(255) NOT NULL,
         skill_name VARCHAR(255) NOT NULL,
         skill_level ENUM('begynder','mellem','avanceret','ekspert') DEFAULT 'mellem',
+        numeric_level INT DEFAULT NULL,
         category VARCHAR(60) DEFAULT NULL,
         source VARCHAR(50) DEFAULT 'manual',
         added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -406,6 +407,10 @@ def ensure_tables():
                 except Exception:
                     pass
 
+        if not _column_exists(cur, "user_skills", "numeric_level"):
+            cur.execute("ALTER TABLE user_skills ADD COLUMN numeric_level INT DEFAULT NULL")
+            current_app.mysql.connection.commit()
+
         # Idempotent migration: add the canonical `category` column to an existing
         # user_skills table (competency.skill_category buckets skills for the UI +
         # gap cards). Safe to run every boot.
@@ -513,7 +518,7 @@ def _coerce_skill_level(level):
 
 def get_skills(username):
     cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-    cur.execute("SELECT id, skill_name, skill_level, category, source FROM user_skills WHERE username = %s ORDER BY category, skill_name", (username,))
+    cur.execute("SELECT id, skill_name, skill_level, numeric_level, category, source FROM user_skills WHERE username = %s ORDER BY category, skill_name", (username,))
     rows = cur.fetchall()
     cur.close()
     return list(rows)
@@ -536,8 +541,10 @@ def add_skill(username, skill_name, skill_level="mellem", source="chatbot"):
     level = _coerce_skill_level(skill_level)
     category = skill_category(name)
     cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    # Serialize import/manual merges on the owning user before selecting a claim.
+    cur.execute("SELECT id FROM users WHERE username=%s FOR UPDATE", (username,))
     cur.execute(
-        "SELECT id, skill_name, skill_level FROM user_skills "
+        "SELECT id, skill_name, skill_level, numeric_level, source FROM user_skills "
         "WHERE username = %s AND LOWER(skill_name) = LOWER(%s) LIMIT 1",
         (username, name),
     )
@@ -545,8 +552,8 @@ def add_skill(username, skill_name, skill_level="mellem", source="chatbot"):
     if existing:
         best = level if level_to_score(level) >= level_to_score(existing["skill_level"]) else existing["skill_level"]
         cur.execute(
-            "UPDATE user_skills SET skill_name = %s, skill_level = %s, category = %s, source = %s WHERE id = %s",
-            (name, best, category, source, existing["id"]),
+            "UPDATE user_skills SET skill_name = %s, skill_level = %s, numeric_level = %s, category = %s, source = %s WHERE id = %s",
+            (name, best, max(level_to_score(level), existing.get("numeric_level") or level_to_score(existing["skill_level"])), category, source if level_to_score(level) > (existing.get("numeric_level") or level_to_score(existing["skill_level"])) else existing.get("source", source), existing["id"]),
         )
     else:
         cur.execute(
@@ -576,7 +583,7 @@ def update_skill_level(username, skill_name, new_level):
     level = _coerce_skill_level(new_level)
     name = (skill_name or "").strip()
     cur = current_app.mysql.connection.cursor()
-    cur.execute("UPDATE user_skills SET skill_level = %s, category = %s WHERE username = %s AND LOWER(skill_name) = LOWER(%s)",
+    cur.execute("UPDATE user_skills SET skill_level = %s, numeric_level = NULL, source = 'manual', category = %s WHERE username = %s AND LOWER(skill_name) = LOWER(%s)",
                 (level, skill_category(name), username, name))
     affected = cur.rowcount
     current_app.mysql.connection.commit()
@@ -1585,7 +1592,7 @@ def get_full_profile(username):
         "budget_range": profile.get("budget_range", ""),
         "skills": [
             {"id": s.get("id"), "name": s["skill_name"], "level": s["skill_level"],
-             "category": s.get("category") or "", "source": s.get("source") or "profil"}
+             "category": s.get("category") or "", "source": s.get("source") or "profil", "numeric_level": s.get("numeric_level")}
             for s in skills
         ],
         "experience": [
@@ -1683,7 +1690,7 @@ def format_profile_for_ai(profile_data, include_ids=False, full=False):
     skills = profile_data.get("skills", [])
     if skills:
         skill_strs = [f"{s['name']} ({s['level']})" for s in skills[:_cap("skills")]]
-        parts.append(f"Kompetencer: {', '.join(skill_strs)}{_more(len(skills), 'skills')}")
+        parts.append(f"Selvvurderede kompetencer (ikke lederbekræftede): {', '.join(skill_strs)}{_more(len(skills), 'skills')}")
 
     exp = profile_data.get("experience", [])
     if exp:

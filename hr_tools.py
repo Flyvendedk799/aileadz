@@ -1214,7 +1214,7 @@ def _execute_get_company_skill_gaps(args):
         FROM employee_skills_matrix esm
         JOIN users u ON esm.employee_id = u.id
         JOIN company_users cu ON cu.user_id = u.id AND cu.company_id = %s
-        WHERE cu.status = 'active' {emp_dept_clause}
+        WHERE esm.company_id = cu.company_id AND cu.status = 'active' {emp_dept_clause}
     """, tuple(emp_params))
     skills = cur.fetchall()
 
@@ -1230,7 +1230,8 @@ def _execute_get_company_skill_gaps(args):
     def _add_level(department, username, skill_name, level_int):
         if not skill_name:
             return
-        key = (department or 'Alle', skill_name.strip().lower())
+        from competency import skill_key
+        key = (department or 'Alle', skill_key(skill_name))
         bucket = skill_map.setdefault(key, {})
         # First writer wins per (skill, employee). The matrix is loaded first, so
         # HR-managed levels take precedence over self-reported chatbot levels.
@@ -1254,7 +1255,7 @@ def _execute_get_company_skill_gaps(args):
         if department:
             us_params.append(department)
         cur.execute(f"""
-            SELECT cu.department, u.username, usk.skill_name, usk.skill_level
+            SELECT cu.department, u.username, usk.skill_name, usk.skill_level, usk.numeric_level
             FROM user_skills usk
             JOIN users u ON usk.username = u.username
             JOIN company_users cu ON cu.user_id = u.id AND cu.company_id = %s
@@ -1265,7 +1266,7 @@ def _execute_get_company_skill_gaps(args):
                 s['department'],
                 s['username'],
                 s['skill_name'],
-                _skill_level_to_int(s['skill_level']),
+                _skill_level_to_int(s.get('numeric_level') or s['skill_level']),
             )
     except Exception as exc:
         # user_skills may not exist for every tenant; degrade to matrix-only.
@@ -1277,11 +1278,13 @@ def _execute_get_company_skill_gaps(args):
     gaps = []
     for t in targets:
         dept = t['department'] or 'Alle'
-        key = (dept, (t['skill_name'] or '').strip().lower())
-        levels = list(skill_map.get(key, {}).values())
-        avg_level = round(sum(levels) / len(levels), 1) if levels else 0
+        from competency import skill_key
+        key = (dept, skill_key(t['skill_name']))
+        bucket = skill_map.get(key, {}) if dept != 'Alle' else {user: value for (department_key, skill), people in skill_map.items() if skill == key[1] for user, value in people.items()}
+        levels = [value for value in bucket.values() if value > 0]
+        avg_level = round(sum(levels) / len(levels), 1) if levels else None
         target_level = _skill_level_to_int(t['target_level'])
-        gap = round(target_level - avg_level, 1)
+        gap = round(target_level - avg_level, 1) if avg_level is not None else None
         gaps.append({
             "department": dept,
             "skill": t['skill_name'],
@@ -1290,10 +1293,10 @@ def _execute_get_company_skill_gaps(args):
             "gap": gap,
             "priority": t['priority'],
             "employees_assessed": len(levels),
-            "critical": gap >= 2
+            "critical": gap is not None and gap >= 2
         })
 
-    gaps.sort(key=lambda g: g['gap'], reverse=True)
+    gaps.sort(key=lambda g: g['gap'] if g['gap'] is not None else -1, reverse=True)
     return json.dumps({"gaps": gaps, "total_targets": len(targets)}, default=str)
 
 

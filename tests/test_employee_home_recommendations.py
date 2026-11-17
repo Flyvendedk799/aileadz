@@ -32,7 +32,10 @@ class RecommendationSourceTests(unittest.TestCase):
         app = mock.MagicMock()
         with mock.patch.object(catalog_service, "search_products", side_effect=self._search(by_query)), \
                 mock.patch.object(catalog_service, "exclude_stale", side_effect=lambda p: p), \
-                mock.patch.object(fm, "current_app", app):
+                mock.patch.object(fm, "current_app", app), \
+                mock.patch("competency_model.load_matrix", return_value=([], True)), \
+                mock.patch("competency_model.work_requirements", return_value=[]), \
+                mock.patch("competency._company_targets", return_value=[]):
             return fm._home_recommendations(profile, 7)
 
     def test_empty_profile_is_popular(self):
@@ -41,12 +44,12 @@ class RecommendationSourceTests(unittest.TestCase):
         self.assertEqual(recs[0]["why"], "Populært i kataloget lige nu")
 
     def test_skill_match_is_profile_based(self):
-        recs = self._build({"skills": [{"name": "Ledelse"}]}, {"Ledelse": [{"handle": "a", "title": "A"}]})
+        recs = self._build({"skills": [{"name": "Ledelse", "level": "begynder"}], "goals": "Ledelse"}, {"Ledelse": [{"handle": "a", "title": "A"}]})
         self.assertEqual(fm.recommendation_source(recs), "profile")
         self.assertIn("Ledelse", recs[0]["why"])
 
     def test_skill_without_hits_falls_back_to_popular(self):
-        recs = self._build({"skills": [{"name": "Ledelse"}]}, {"": [{"handle": "a", "title": "A"}]})
+        recs = self._build({"skills": [{"name": "Ledelse", "level": "begynder"}], "goals": "Ledelse"}, {"": [{"handle": "a", "title": "A"}]})
         self.assertEqual(fm.recommendation_source(recs), "popular")
         self.assertEqual(recs[0]["why"], "Populært i kataloget lige nu")
 

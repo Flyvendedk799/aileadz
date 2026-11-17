@@ -30,6 +30,8 @@ MAX_BATCHES_PER_TABLE = 25   # 50 000 rows per table per pass; the rest next pas
 # name -> policy. ``column`` is the timestamp the age is measured on; ``epoch``
 # marks a numeric unix-time column instead of a DATETIME.
 POLICIES = [
+    dict(name="talent_applications", table="talent_applications", column="updated_at", days=365, action="delete", where="status IN ('rejected','withdrawn')"),
+
     dict(name="ai_actions", table="ai_actions", column="updated_at", days=180, action="delete", epoch=True),
     dict(name="mail_outbox", table="mail_outbox", column="created_at", days=365, action="delete", where="state IN ('sent','skipped')"),
     dict(name="sales_enquiries", table="sales_enquiries", column="created_at", days=365, action="delete"),

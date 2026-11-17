@@ -3687,6 +3687,9 @@ def _execute_get_user_profile(args, username):
         profile = get_full_profile(username)
         full = bool(args.get("full")) if isinstance(args, dict) else False
         formatted = format_profile_for_ai(profile, include_ids=True, full=full)
+        from competency_model import load_matrix, snapshot
+        matrix, available = load_matrix(username)
+        competency_snapshot = snapshot(profile, matrix, available=available)
         row_cap = 100 if full else 25
         # update_*/remove_* actions need row ids; hand them over structured too.
         labels = {
@@ -3707,6 +3710,7 @@ def _execute_get_user_profile(args, username):
                 items[section] = rows[:row_cap]
         return _model_tool_json(
             status="success",
+            competency_snapshot=competency_snapshot,
             profile_text=formatted if formatted else "Brugeren har endnu ikke udfyldt sin profil.",
             items=items,
         )
@@ -4520,7 +4524,9 @@ def _execute_recommend_for_profile(args, username):
             gaps = compute_skill_gaps(username, profile=profile)
         except Exception:
             gaps = []
-        gap_skill_names = [g["skill"] for g in gaps]
+        gap_skill_names = [g["skill"] for g in gaps if not g.get("unknown") and g.get("available", True)]
+        if gaps and not gap_skill_names and not args.get("focus"):
+            return json.dumps({"status": "assessment_needed", "message": "Afklar først de ukendte kompetencer på /udvikling. Manglende vurdering er ikke manglende kunnen.", "gaps": gaps}, ensure_ascii=False)
 
         # Build search query from focus + target role + concrete gap skills.
         query_parts = []

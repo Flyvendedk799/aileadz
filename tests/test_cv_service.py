@@ -43,7 +43,7 @@ PROFILE = {
 HR = {"matrix": [{"skill_name": "Kommunikation", "current_level": 4}, {"skill_name": "Ledelse", "current_level": 5}],
       "assignments": [{"title": "GDPR", "progress": 40}]}
 GAPS = [{"skill": "Projektledelse", "current_label": "ingen", "target_label": "avanceret", "source": "role", "priority": "medium"}]
-ORDERS = [{"title": "PRINCE2", "state": "booket"}, {"title": "Scrum", "state": "godkendt"}, {"title": "Afvist", "state": "afvist"}]
+ORDERS = [{"title": "Scrum", "handle": "scrum", "state": "gennemfoert"}, {"title": "PRINCE2", "state": "booket"}, {"title": "Scrum", "state": "godkendt"}, {"title": "Afvist", "state": "afvist"}]
 
 
 def build(**kw):
@@ -146,7 +146,7 @@ class AnalyseTests(unittest.TestCase):
                                    end_year=2016, description="Ledte 4 projekter og reducerede omkostninger 10 %")],
                        skills=PROFILE["skills"] + [{"name": n, "level": "avanceret"} for n in "ABCDE"],
                        certifications=[])
-        q = cv_service.analyse(cv_service.assemble(profile, gaps=[], today=TODAY))
+        q = cv_service.analyse(cv_service.assemble(profile, gaps=[], orders=ORDERS, today=TODAY))
         self.assertGreaterEqual(q["score"], 85)
         self.assertEqual(q["grade"], "Stærkt")
 
@@ -171,7 +171,7 @@ class ExportTests(unittest.TestCase):
         self.assertTrue(card["has_cv"])
         self.assertEqual(card["sections"]["skills"][0]["name"], "Ledelse")
         self.assertTrue(card["sections"]["skills"][0]["verified"])
-        self.assertEqual(card["fit"]["gaps"], ["Projektledelse"])
+        self.assertEqual(card["fit"]["gaps"], ["Projektledelse", "PRINCE2", "Agile"])
         self.assertTrue(card["next_steps"])
         json.dumps(card)
 

@@ -537,14 +537,12 @@ def outcome_review(ctx, order_id, ratings, *, note=""):
         if not clean or not note.strip():
             return _error("Angiv mindst én kompetence og en kort vurdering af udbyttet.")
         for name, level in clean:
-            previous = skill_history.current_level_for(cur, row["company_id"], row["user_id"], name)
-            cur.execute(
-                "INSERT INTO employee_skills_matrix (employee_id,company_id,skill_name,current_level) VALUES (%s,%s,%s,%s) ON DUPLICATE KEY UPDATE current_level=%s",
-                (row["user_id"], row["company_id"], name, level, level),
-            )
-            skill_history.record_snapshot(
+            previous = skill_history.set_matrix_level(cur, row["company_id"], row["user_id"], name, level)
+            recorded = skill_history.record_snapshot(
                 cur, row["company_id"], row["user_id"], name, level, previous_level=previous, source="post_course", order_id=row["id"]
             )
+            if not recorded and previous != level:
+                raise ValueError("Kompetencehistorikken kunne ikke gemmes.")
         cur.execute(
             "UPDATE learning_outcome_reviews SET status='completed',review_note=%s,reviewed_by=%s,reviewed_at=CURRENT_TIMESTAMP WHERE order_id=%s",
             (note[:4000], ctx.user_id, order_id),

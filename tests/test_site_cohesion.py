@@ -181,8 +181,8 @@ class NavResolvesTests(unittest.TestCase):
             for tab in re.findall(r"_hp == '(\w+)'", text):
                 seen[tab] = group
         self.assertEqual(seen, fm.HR_TAB_GROUP)
-        # The 24 tabs that existed before the grouping, plus the three new ones.
-        self.assertEqual(len(seen), 27)
+        # Original grouped tabs plus the connected talent workspace.
+        self.assertEqual(len(seen), 28)
         for tab in ("onboarding", "mail", "assign_course"):
             self.assertIn(tab, seen)
 

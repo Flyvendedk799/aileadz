@@ -802,6 +802,9 @@ def _build_where(spec, subject):
 # kind: delete | anonymise | pseudonymise.  set: SQL SET fragment ('%s' params
 # from ``set_params(subject)``); match: [(column, subject-field)], OR-ed.
 EXTRA_SPECS = [
+    *[dict(kind="delete", table=t, match=[("user_id", "user_id")]) for t in ('talent_hiring_members', 'talent_role_assignments', 'talent_assessments', 'talent_goal_links', 'talent_applications', 'talent_project_members')],
+    dict(kind="anonymise", table="talent_assessments#actor", real_table="talent_assessments", match=[("actor_user_id", "user_id")], set="actor_user_id=NULL"),
+    dict(kind="anonymise", table="talent_opportunities", match=[("owner_user_id", "user_id")], set="owner_user_id=NULL, hiring_team_json='[]'"),
     dict(kind="delete", table="ai_actions", match=[("username", "username")]),
     dict(kind="anonymise", table="company_launch_checks", match=[("confirmed_by","user_id")], set="confirmed_by=NULL"),
     dict(kind="delete", table="customer_requests", match=[("user_id","user_id")]),
@@ -991,6 +994,9 @@ def _cov(disposition, note=""):
 
 
 COVERAGE = {
+    **{t: _cov("delete") for t in ('talent_hiring_members', 'talent_role_assignments', 'talent_assessments', 'talent_goal_links', 'talent_applications', 'talent_project_members')},
+    **{t: _cov("retain", "Company capability definitions; no employee assessments") for t in ("talent_settings", "talent_role_versions", "talent_scenarios")},
+    "talent_opportunities": _cov("anonymise", "Internal opportunity; remove hiring owner"),
     "customer_accounts": _cov("retain", "Company contract and professional account-contact configuration"),
     "company_launch_checks": _cov("anonymise", "Company setup review audit; confirming actor id is removed"),
     "customer_requests": _cov("delete"),

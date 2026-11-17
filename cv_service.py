@@ -14,8 +14,8 @@ What "from the whole platform" means (each source degrades independently):
 * the learner's own profile (``user_profile_db.get_full_profile``),
 * courses completed through Futurematch orders (``user_completed_courses`` rows that carry
   a ``course_handle``; ``order_service`` writes them) -> marked *verified*,
-* skills a completed course proved (``user_skills.source = 'course_completion'``) and
-  skills a manager rated in the HR matrix (``learner_context``) -> evidence badges,
+* self-assessments following a completed course (``user_skills.source = 'course_completion'``) and
+  skills a manager rated in the HR matrix -> badges tied to that assessment,
 * certification validity (``cert_expiry_service._parse_expiry``),
 * work in progress: active learning paths, HR assignments, approved/booked orders,
 * target-role fit and gaps (``competency.compute_skill_gaps``), with catalog links.
@@ -74,8 +74,8 @@ DEFAULT_PREFS = {
 # Skill sources -> evidence shown next to the skill. 'leder' (HR matrix) is added
 # separately; both are things the platform itself observed, not self-reports.
 _SOURCE_EVIDENCE = {
-    "course_completion": ("kursus", "Bevist via kursus"),
-    "post_course": ("kursus", "Bevist via kursus"),
+    "course_completion": ("kursus", "Selvvurdering efter kursus"),
+    "post_course": ("kursus", "Selvvurdering efter kursus"),
 }
 _RESULT_RE = re.compile(r"\d|%|\b(øge|øgede|reducer|reducerede|sparede|halverede|fordoblede|leverede|"
                         r"lancerede|opnåede|vandt|ledte|indførte|implementerede|byggede)\w*", re.I)
@@ -284,45 +284,20 @@ def assemble(profile, *, name="", email="", hr=None, gaps=None, orders=None, pre
         })
     education.sort(key=lambda x: x["year"] or 0, reverse=True)
 
-    # Skills: the person's own list, enriched with what the platform has seen.
-    matrix = {}
-    for r in hr.get("matrix") or []:
-        try:
-            lvl = int(r.get("current_level") or 0)
-        except (TypeError, ValueError):
-            lvl = 0
-        if r.get("skill_name") and lvl > 0:
-            matrix[_skill_key(r["skill_name"])] = (_s(r["skill_name"], 120), lvl)
-    skills, seen = [], set()
-    for s in p.get("skills") or []:
-        if not isinstance(s, dict):
+    # One projection for CV, employee gaps, HR, and AI. Evidence describes its own level.
+    from competency_model import snapshot
+    competency_state = snapshot(p, hr.get("matrix") or [], available=hr.get("available", True))
+    skills = []
+    for row in competency_state["skills"]:
+        if row["level"] is None:
             continue
-        nm = _s(s.get("name") or s.get("skill_name"), 120)
-        if not nm:
-            continue
-        key = _skill_key(nm)
-        if key in seen:
-            continue
-        seen.add(key)
-        level = (s.get("level") or s.get("skill_level") or "mellem")
-        level = level if level in LEVEL_LABELS else "mellem"
-        evidence = []
-        src = _SOURCE_EVIDENCE.get(str(s.get("source") or ""))
-        if src:
-            evidence.append({"kind": src[0], "label": src[1]})
-        if key in matrix:
-            evidence.append({"kind": "leder", "label": "Vurderet af leder"})
-        skills.append({"name": nm, "level": level, "level_label": LEVEL_LABELS[level],
-                       "category": _s(s.get("category"), 60), "evidence": evidence,
-                       "relevant": key in relevant})
-    for key, (nm, lvl) in matrix.items():
-        if key in seen:
-            continue
-        seen.add(key)
-        level = _score_to_level(lvl)
-        skills.append({"name": nm, "level": level, "level_label": LEVEL_LABELS.get(level, "Mellem"),
-                       "category": "", "evidence": [{"kind": "leder", "label": "Vurderet af leder"}],
-                       "relevant": key in relevant})
+        level = _score_to_level(row["level"])
+        skills.append({"name": row["name"], "level": level, "score": row["level"],
+                       "level_label": "Øvet (3/5)" if row["level"] == 3 else LEVEL_LABELS[level],
+                       "category": row["category"], "evidence": row["evidence"],
+                       "self_assessment": row["self"], "manager_assessment": row["manager"],
+                       "disagreement": row["disagreement"], "provisional": row["provisional"],
+                       "relevant": _skill_key(row["name"]) in relevant})
     rank = {lv: i for i, lv in enumerate(LEVEL_ORDER)}
     skills.sort(key=lambda x: (rank.get(x["level"], 9), -len(x["evidence"]), x["name"].lower()))
     if prefs["targeted"] and relevant:
@@ -361,7 +336,7 @@ def assemble(profile, *, name="", email="", hr=None, gaps=None, orders=None, pre
             "vendor": _s(c.get("vendor"), 255),
             "date": _s(c.get("completed_date"), 20),
             "handle": handle,
-            "verified": bool(handle),
+            "verified": any(o.get("handle") == handle and o.get("state") == "gennemfoert" for o in orders or []) if handle else False,
         })
     courses.sort(key=lambda c: (c["date"] or ""), reverse=True)
 
@@ -417,7 +392,7 @@ def assemble(profile, *, name="", email="", hr=None, gaps=None, orders=None, pre
              if isinstance(g, dict) and g.get("status") in (None, "", "aktiv") and _s(g.get("title"))]
 
     verified_courses = sum(1 for c in courses if c["verified"])
-    evidenced_skills = sum(1 for s in skills if s["evidence"])
+    evidenced_skills = sum(1 for s in skills if s.get("manager_assessment"))
     stats = {
         "years": _years_of_experience(experience, this_year),
         "roles": len(experience),
@@ -431,25 +406,22 @@ def assemble(profile, *, name="", email="", hr=None, gaps=None, orders=None, pre
         "in_progress": len(in_progress),
     }
 
-    # Target-role fit: how much of what the role asks for is already on the CV.
+    # Career fit evaluates the complete role requirement set, never a truncated gap list.
     fit = None
-    if target_role or gaps:
-        required = relevant
-        have = {_skill_key(s["name"]) for s in skills}
-        gap_keys = {_skill_key(g.get("skill")) for g in gaps if g.get("skill")}
-        matched = sorted(s["name"] for s in skills if s["relevant"] and _skill_key(s["name"]) not in gap_keys)
-        denominator = len(required) or 0
-        pct = round(100 * (denominator - len(gap_keys & required)) / denominator) if denominator else None
-        fit = {
-            "role": target_role,
-            "pct": pct,
-            "matched": matched[:10],
-            "gaps": [{"skill": g.get("skill"), "current": g.get("current_label") or "", "target": g.get("target_label") or "",
-                      "source": g.get("source") or "", "priority": g.get("priority") or "",
-                      "url": catalog_url(g.get("skill"))}
-                     for g in gaps[:6] if g.get("skill")],
-            "known": len(have & required),
-        }
+    if target_role:
+        from competency import _role_skills, score_label_da
+        from competency_model import evaluate
+        requirements = [{"skill": name, "target_level": 4, "source": "role"}
+                        for name in _role_skills(target_role.lower())]
+        readiness = evaluate(competency_state, requirements)
+        unmet = [r for r in readiness["requirements"] if r["status"] != "satisfied"]
+        fit = {"role": target_role, "pct": readiness["pct"], "suggested": True,
+               "available": readiness["available"], "counts": readiness["counts"],
+               "matched": [r["skill"] for r in readiness["requirements"] if r["status"] == "satisfied"],
+               "known": readiness["total"] - readiness["counts"]["unknown"],
+               "gaps": [{"skill": r["skill"], "current": score_label_da(r["current_level"]) if r["current_level"] else "ukendt",
+                         "target": score_label_da(r["target_level"]), "source": "role", "priority": "medium",
+                         "url": catalog_url(r["skill"]), "unknown": r["status"] == "unknown"} for r in unmet]}
 
     has_content = any((_s(p.get("bio")), experience, education, skills, certifications, courses, languages, links))
     return {
@@ -581,7 +553,7 @@ def analyse(cv):
     if fit.get("gaps"):
         top = fit["gaps"][0]["skill"]
         checks.append(_check(
-            "fit", "Dækker din ønskede rolle", False, 6,
+            "fit", "Dækker din ønskede rolle", False, 0,
             f"Største gab mod {cv.get('target_role') or 'dine mål'}: {', '.join(g['skill'] for g in fit['gaps'][:3])}.",
             {"kind": "catalog", "query": top}))
     expired = [c for c in certs if c.get("state") == "udloebet"]
@@ -698,7 +670,7 @@ def chat_card(cv, quality):
     }
     return {
         "sections": {
-            "skills": [{"name": s["name"], "level": s["level"], "verified": bool(s["evidence"])}
+            "skills": [{"name": s["name"], "level": s["level"], "score": s.get("score"), "level_label": s.get("level_label"), "verified": bool(s.get("manager_assessment"))}
                        for s in (cv.get("skills") or [])[:6]],
             "experience": [{"title": e["title"], "company": e["company"], "years": e["period"]}
                            for e in (cv.get("experience") or [])[:4]],
@@ -746,17 +718,16 @@ def _display_name(username, company_id):
 
 
 def _hr_data(username, company_id, user_id):
-    out = {"matrix": [], "assignments": []}
+    from competency_model import load_matrix
+    matrix, available = load_matrix(username, company_id, user_id)
+    out = {"matrix": matrix, "assignments": [], "available": available}
     try:
         import learner_context as lc
         ctx = lc.build_learner_hr_context(username, user_id=user_id, company_id=company_id)
         out["assignments"] = ctx.get("assignments") or []
-        emp = ctx.get("employee") or {}
-        uid, cid = emp.get("user_id") or user_id, emp.get("company_id")
-        if uid and cid:
-            out["matrix"] = lc._load_skill_matrix(uid, cid) or []
     except Exception as e:
         logger.debug("cv hr data: %s", e)
+
     return out
 
 
@@ -769,7 +740,7 @@ def _orders(username, user_id):
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
         try:
             cur.execute(
-                "SELECT product_title, status FROM course_orders "
+                "SELECT product_title, product_handle, status FROM course_orders "
                 "WHERE (username = %s OR (user_id IS NOT NULL AND user_id = %s)) "
                 "ORDER BY created_at DESC LIMIT 40",
                 (username, user_id),
@@ -777,7 +748,7 @@ def _orders(username, user_id):
             rows = cur.fetchall() or []
         finally:
             cur.close()
-        return [{"title": r.get("product_title") or "", "state": _ORDER_STATE.get(r.get("status") or "", "")}
+        return [{"title": r.get("product_title") or "", "handle": r.get("product_handle"), "state": _ORDER_STATE.get(r.get("status") or "", "")}
                 for r in rows]
     except Exception as e:
         logger.debug("cv orders: %s", e)
@@ -806,7 +777,7 @@ def build_cv(username, *, company_id=None, user_id=None, prefs=None, profile=Non
         prefs = load_prefs(username)
     try:
         from competency import compute_skill_gaps
-        gaps = compute_skill_gaps(username, profile=profile) or []
+        gaps = compute_skill_gaps(username, profile=profile, company_id=company_id, user_id=user_id, limit=None) or []
     except Exception:
         gaps = []
     cv = assemble(

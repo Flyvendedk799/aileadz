@@ -47,6 +47,7 @@
   {% elif _grp == 'organisation' %}
   {% if can('company.employees') %}<a class="pg-tab {{ 'active' if _hp == 'employees' }}" href="{{ url_for('companies.employees') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a>{% endif %}
   {% if _ws %}<a class="pg-tab {{ 'active' if _hp == 'departments' }}" href="{{ url_for('hr_dashboard.departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a>{% endif %}
+  {% if can('company.employees') and has_endpoint('talent.hr') %}<a class="pg-tab {{ 'active' if _hp == 'talent' }}" href="{{ url_for('talent.hr') }}"><i class="fa-solid fa-seedling"></i> Talent og udvikling</a>{% endif %}
   {% elif _grp == 'orders' %}
   {% if can('company.approvals') %}<a class="pg-tab {{ 'active' if _hp == 'approvals' }}" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-circle-check"></i> Godkendelser</a>{% endif %}
   {% if can('company.policies') %}<a class="pg-tab {{ 'active' if _hp == 'approval_policies' }}" href="{{ url_for('hr_dashboard.approval_policies') }}"><i class="fa-solid fa-bolt"></i> Auto-godkendelse</a>{% endif %}

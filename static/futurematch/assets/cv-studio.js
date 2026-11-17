@@ -114,7 +114,7 @@
     let html = cv.target_role ? '<div style="font-weight:700">' + esc(cv.target_role) + "</div>" : '<div style="font-weight:700">Dine mål</div>';
     if (fit && fit.pct != null) {
       html += '<div class="cvs-fit-bar" role="img" aria-label="' + esc(fit.pct) + ' procent dækket"><span style="width:' + Math.max(4, Math.min(100, fit.pct)) + '%"></span></div>' +
-        '<div class="cvs-muted" style="font-size:12.5px;margin:-4px 0 8px">' + esc(fit.pct) + " % af det, rollen kræver, står allerede på dit CV</div>";
+        '<div class="cvs-muted" style="font-size:12.5px;margin:-4px 0 8px">' + esc(fit.pct) + " % af de foreslåede rollekrav er dækket (selvvurderinger kan indgå)</div>";
     }
     if (fit && (fit.matched || []).length) {
       html += '<div class="cvs-muted" style="font-size:12px">Det har du:</div><div class="cvs-chips">' +
@@ -123,7 +123,7 @@
     if (fit && (fit.gaps || []).length) {
       html += fit.gaps.map((g) => '<div class="cvs-gap"><div><b>' + esc(g.skill) + "</b><small>" +
         esc(g.current || "Ikke på CV'et") + " → " + esc(g.target || "") + "</small></div>" +
-        '<a class="cvs-check-btn" href="' + esc(g.url || catalogUrl(g.skill)) + '">Kurser</a></div>').join("");
+        '<a class="cvs-check-btn" href="' + esc(g.unknown ? '/udvikling#kompetencer' : (g.url || catalogUrl(g.skill))) + '">Næste skridt</a></div>').join("");
       html += '<div style="margin-top:10px"><a class="cvs-link" href="' + esc(chatUrl("Lav en læringssti, der lukker mine største gab mod " + (cv.target_role || "mine mål"))) + '">Lav en læringssti med AI →</a></div>';
     } else if (fit) {
       html += '<p class="cvs-muted" style="margin:6px 0 0">Ingen kendte gab mod rollen. Godt gået.</p>';

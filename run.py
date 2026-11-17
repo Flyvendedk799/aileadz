@@ -314,6 +314,11 @@ def create_app():
         app.register_blueprint(talent_bp)
     except Exception:
         app.logger.exception("Talent workspace registration failed")
+    try:
+        import domain_reactions
+        domain_reactions.register()
+    except Exception:
+        app.logger.exception("Domain reactions registration failed")
 
 
     try:

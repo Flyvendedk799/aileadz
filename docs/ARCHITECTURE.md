@@ -13,7 +13,7 @@ For the AI internals see [ai-framework.md](ai-framework.md). For standing constr
 - **Boot guards:** `create_app()` refuses to start without `SECRET_KEY` unless `SANDBOX=1`. Optional subsystems register inside `try/except` and log a warning instead of crashing boot (`feature_status.py` reports what degraded).
 - **Auth:** `auth_decorators.py` is the single place for guards and the role matrix (`login_required`, `require_role`, `require_company`, `require_company_role`, `require_capability`, `requires_feature`). Roles: `admin` (platform), `company_admin`, `hr_manager`, `department_head`, learner. Templates and nav ask `capabilities.can("company.approvals")`, never compare role names. Vendors have an isolated session (`vendor_auth.py`) and never get `session['user']`.
 - **Background work:** `scheduler.py` holds the `JOBS` registry and the `scheduled_job_runs` table. Driven by `drain_worker.py` (`--loop` worker or single pass) and, best-effort, an `after_request` hook (`SCHEDULER_OPPORTUNISTIC=0` turns it off). See [runbooks/JOB_RUNNER.md](runbooks/JOB_RUNNER.md).
-- **Integration events:** `event_bus.emit_event` writes to the `event_outbox` table; `drain_outbox` delivers to company webhooks (HMAC-signed by `webhook_signing.py`, SSRF-guarded by `safe_http.py`).
+- **Domain events:** `event_bus.emit_event` writes to the `event_outbox` table and then runs the in-process subscribers registered in `domain_reactions.register()` (post-commit, each failure-isolated; `event_bus.publish_internal` runs subscribers without an outbox row). `drain_outbox` delivers outbox rows to company webhooks (HMAC-signed by `webhook_signing.py`, SSRF-guarded by `safe_http.py`). A cross-module reaction belongs in `domain_reactions.py`, not inside the emitting service.
 
 ## The core domain: orders
 
@@ -30,7 +30,7 @@ For the AI internals see [ai-framework.md](ai-framework.md). For standing constr
 | `error_pages.py`, `health.py` (`/healthz`, `/readyz`), `observability.py`, `feature_status.py` | error pages, probes, request ids / structured logs, degraded-subsystem status |
 | `perf_cache.py`, `response_compression.py`, `asset_version.py`, `performance_indexes.py` | TTL cache, gzip, content-hash `?v=` for static files, idempotent DB indexes |
 | `notification_service.py`, `email_service.py`, `mail_delivery.py`, `delivery_routes.py` | notifications, SMTP transport and durable business-mail delivery/recovery |
-| `scheduler.py`, `drain_worker.py`, `event_bus.py` | job registry + worker, webhook outbox |
+| `scheduler.py`, `drain_worker.py`, `event_bus.py`, `domain_reactions.py` | job registry + worker, webhook outbox and in-process event subscribers |
 
 ### Learner experience
 | Module | Role |

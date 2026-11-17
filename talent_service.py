@@ -127,6 +127,32 @@ def assign_role(cur, company_id, user_id, version_id):
                 'ON DUPLICATE KEY UPDATE role_version_id=VALUES(role_version_id),updated_at=CURRENT_TIMESTAMP', (company_id, user_id, version_id))
 
 
+def _name(cur, company_id, user_id):
+    from person_names import display_name
+    return display_name(cur, company_id, user_id=user_id, default='En kollega')
+
+
+def _tell(cur, company_id, user_id, title, message, url, *, actor=None, key=None):
+    """One in-app card to one person, inside the caller's transaction."""
+    from notification_service import notify_user
+    notify_user(cur, title=title, message=message, user_id=user_id, company_id=company_id,
+                action_url=url, actor_user_id=actor, dedupe_key=key)
+
+
+def _tell_hiring_team(cur, company_id, oid, title, message, *, actor=None, key=None):
+    cur.execute('SELECT user_id FROM talent_hiring_members WHERE company_id=%s AND opportunity_id=%s', (company_id, oid))
+    for row in cur.fetchall():
+        _tell(cur, company_id, row['user_id'], title, message, '/muligheder/ansaettelsesteam', actor=actor,
+              key=key and '%s:%s' % (key, row['user_id']))
+
+
+def _tell_hr_goal_shared(cur, company_id, user_id, link_id, goal_title):
+    from notification_service import HR_ROLES, notify_roles
+    notify_roles(cur, company_id, HR_ROLES, title='Udviklingsmål delt med HR',
+                 message='%s har delt udviklingsmålet "%s".' % (_name(cur, company_id, user_id), goal_title),
+                 action_url='/hr/talent', actor_user_id=user_id, dedupe_key='talent-goal-shared:%s' % link_id)
+
+
 def employee_state(cur, company_id, user_id, profile=None):
     who = member(cur, company_id, user_id)
     if profile is None:
@@ -167,12 +193,17 @@ def assess(cur, company_id, user_id, skill, level, kind, actor_id, source_ref, n
         cur.execute('INSERT INTO user_skills (username,skill_name,skill_level,numeric_level,category,source) VALUES (%s,%s,%s,%s,%s,%s) '
                     'ON DUPLICATE KEY UPDATE skill_level=VALUES(skill_level),numeric_level=VALUES(numeric_level),source=VALUES(source)',
                     (who['username'], name, score_to_level(level), int(level), skill_category(name), 'manual'))
+    if kind == 'manager':
+        _tell(cur, company_id, user_id, 'Ny vurdering fra din leder',
+              '%s har vurderet %s til niveau %s af 5.' % (_name(cur, company_id, actor_id), name, int(level)),
+              '/udvikling', actor=actor_id, key='talent-assessment:%s' % source_ref[:100])
 
 
 def link_goal(cur, company_id, user_id, goal_id, reqs, review_date, actions, shared):
     who = member(cur, company_id, user_id)
-    cur.execute('SELECT id FROM user_learning_goals WHERE id=%s AND username=%s', (goal_id, who['username']))
-    if not cur.fetchone():
+    cur.execute('SELECT id,title FROM user_learning_goals WHERE id=%s AND username=%s', (goal_id, who['username']))
+    goal = cur.fetchone()
+    if not goal:
         raise ValueError('Vælg et af dine eksisterende udviklingsmål.')
     reqs = requirements(reqs)
     baseline = evaluate(employee_state(cur, company_id, user_id), reqs)
@@ -186,9 +217,61 @@ def link_goal(cur, company_id, user_id, goal_id, reqs, review_date, actions, sha
             if not cur.fetchone() or action['kind'] != 'course':
                 raise ValueError('Vælg en af dine egne kursusbestillinger.')
         clean.append(dict(id=uid(), kind=action['kind'], title=action['title'][:500], done=False, order_id=linked_order))
+    link_id = uid()
     cur.execute('INSERT INTO talent_goal_links (id,company_id,user_id,goal_id,shared,requirements_json,baseline_json,actions_json,review_date) '
                 'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)',
-                (uid(), company_id, user_id, goal_id, int(shared), dump(reqs), dump(baseline), dump(clean), date(review_date)))
+                (link_id, company_id, user_id, goal_id, int(shared), dump(reqs), dump(baseline), dump(clean), date(review_date)))
+    if shared:
+        _tell_hr_goal_shared(cur, company_id, user_id, link_id, goal['title'])
+    return link_id
+
+
+def share_goal(cur, company_id, user_id, link_id, shared):
+    """The owner shares or unshares one development goal with HR. HR is told once when it becomes shared."""
+    cur.execute('SELECT l.shared,g.title FROM talent_goal_links l JOIN users u ON u.id=l.user_id '
+                'JOIN user_learning_goals g ON g.id=l.goal_id AND g.username=u.username '
+                'WHERE l.company_id=%s AND l.user_id=%s AND l.id=%s', (company_id, user_id, link_id))
+    row = cur.fetchone()
+    if not row:
+        raise ValueError('Udviklingsmålet findes ikke.')
+    cur.execute('UPDATE talent_goal_links SET shared=%s WHERE company_id=%s AND user_id=%s AND id=%s', (int(bool(shared)), company_id, user_id, link_id))
+    if shared and not row['shared']:
+        _tell_hr_goal_shared(cur, company_id, user_id, link_id, row['title'])
+
+
+def _mark_course_steps(cur, company_id, links):
+    """A course step follows its order: done exactly when that order is completed."""
+    wanted = sorted({s['order_id'] for l in links for s in l['actions'] if s.get('order_id')})
+    if not wanted:
+        return
+    cur.execute('SELECT order_id,status FROM course_orders WHERE company_id=%%s AND order_id IN (%s)' % ','.join(['%s'] * len(wanted)),
+                [company_id] + wanted)
+    status = {r['order_id']: r['status'] for r in cur.fetchall()}
+    for l in links:
+        for s in l['actions']:
+            if s.get('order_id') in status:
+                s['done'] = status[s['order_id']] == 'completed'
+
+
+def complete_course_steps(cur, company_id, user_id, order_id):
+    """Persist "done" on every development-goal step linked to a completed order.
+
+    Returns the titles of the goals that moved, so the caller can tell the learner."""
+    cur.execute('SELECT l.id,l.actions_json,g.title FROM talent_goal_links l JOIN users u ON u.id=l.user_id '
+                'JOIN user_learning_goals g ON g.id=l.goal_id AND g.username=u.username '
+                'WHERE l.company_id=%s AND l.user_id=%s', (company_id, user_id))
+    moved = []
+    for row in cur.fetchall():
+        actions = json.loads(row['actions_json'] or '[]')
+        hit = [a for a in actions if a.get('order_id') == order_id and not a.get('done')]
+        if not hit:
+            continue
+        for a in hit:
+            a['done'] = True
+        cur.execute('UPDATE talent_goal_links SET actions_json=%s WHERE company_id=%s AND user_id=%s AND id=%s',
+                    (dump(actions), company_id, user_id, row['id']))
+        moved.append(row['title'])
+    return moved
 
 
 def goals(cur, company_id, user_id=None, *, hr=False):
@@ -198,7 +281,9 @@ def goals(cur, company_id, user_id=None, *, hr=False):
                 'JOIN company_users cu ON cu.user_id=l.user_id AND cu.company_id=l.company_id '
                 "WHERE l.company_id=%s AND cu.status='active'" + clause + ' ORDER BY l.review_date',
                 (company_id,) if hr else (company_id, user_id))
-    return [unpack(r) for r in cur.fetchall()]
+    links = [unpack(r) for r in cur.fetchall()]
+    _mark_course_steps(cur, company_id, links)
+    return links
 
 
 def save_opportunity(cur, company_id, actor_id, data, *, external_owner=False):
@@ -250,6 +335,9 @@ def apply(cur, company_id, user_id, oid, snapshot_data):
         raise ValueError('Muligheden modtager ikke længere ansøgninger.')
     cur.execute('INSERT INTO talent_applications (id,company_id,user_id,opportunity_id,snapshot_json,history_json) VALUES (%s,%s,%s,%s,%s,%s)',
                 (uid(), company_id, user_id, oid, dump(snapshot_data), dump([dict(stage='submitted', at=str(dt.datetime.now(dt.timezone.utc)))])))
+    _tell_hiring_team(cur, company_id, oid, 'Ny ansøgning',
+                      '%s har søgt "%s".' % (_name(cur, company_id, user_id), opp['title']),
+                      actor=user_id, key='talent-application:%s:%s' % (oid, user_id))
 
 
 def transition(cur, company_id, user_id, application_id, target, revision):
@@ -274,6 +362,14 @@ def transition(cur, company_id, user_id, application_id, target, revision):
     history.append(dict(stage=target, at=str(dt.datetime.now(dt.timezone.utc)), actor='applicant' if own else 'hiring_team'))
     cur.execute('UPDATE talent_applications SET status=%s,revision=revision+1,history_json=%s,updated_at=CURRENT_TIMESTAMP WHERE company_id=%s AND id=%s',
                 (target, dump(history), company_id, application_id))
+    label = STAGE_LABELS.get(target, target)
+    key = 'talent-stage:%s:%s' % (application_id, target)
+    if own:
+        _tell_hiring_team(cur, company_id, opp['id'], 'Ansøgning opdateret',
+                          '%s: %s til "%s".' % (label, _name(cur, company_id, user_id), opp['title']), actor=user_id, key=key)
+    else:
+        _tell(cur, company_id, app['user_id'], 'Nyt om din ansøgning',
+              'Din ansøgning til "%s" har nu status: %s.' % (opp['title'], label), '/udvikling', actor=user_id, key=key)
 
 
 def confirm_placement(cur, company_id, application_id):
@@ -285,9 +381,18 @@ def confirm_placement(cur, company_id, application_id):
     opp = opportunity(cur, company_id, app['opportunity_id'])
     if opp['kind'] == 'role':
         assign_role(cur, company_id, app['user_id'], opp['role_version_id'])
+        # The person's title (and department, when the role names one) follows the
+        # confirmed move, so the profile, the CV and the employee list agree with it.
+        title = role(cur, company_id, opp['role_version_id'])['title']
+        cur.execute('UPDATE company_users SET job_title=%s WHERE company_id=%s AND user_id=%s', (title[:150], company_id, app['user_id']))
+        if (opp.get('department') or '').strip():
+            cur.execute('UPDATE company_users SET department=%s WHERE company_id=%s AND user_id=%s',
+                        (opp['department'].strip()[:100], company_id, app['user_id']))
     else:
         cur.execute('INSERT INTO talent_project_members (company_id,user_id,opportunity_id) VALUES (%s,%s,%s)', (company_id, app['user_id'], opp['id']))
     cur.execute('UPDATE talent_applications SET placement_confirmed=1 WHERE company_id=%s AND id=%s', (company_id, application_id))
+    _tell(cur, company_id, app['user_id'], 'Din placering er bekræftet',
+          'HR har bekræftet din plads i "%s".' % opp['title'], '/udvikling', key='talent-placement:%s' % application_id)
 
 
 def coverage(states, reqs, k):

@@ -44,6 +44,17 @@ Practical/mentoring tasks can be acknowledged without changing proficiency. Cour
 can reference the employee's own order and follow its actual completion status. HR's
 outcome queue links to the existing guarded order review.
 
+A course step is done exactly when its order is completed: `talent_service.goals` derives
+it for the employee and HR views alike, and the `course.completed` subscriber
+(`domain_reactions.py`) persists it and tells the learner once.
+
+## Notifications
+
+Talent writes notify inside the caller's transaction (`talent_service._tell`), never the
+person who acted: HR when a goal becomes shared (never for a private goal), the hiring
+team on a new application and on the applicant's accept/withdraw, the applicant on each
+stage set by the hiring team and on placement, and the employee on a manager assessment.
+
 ## Internal recruitment
 
 Opportunities pin published role requirements and have explicit hiring-team membership.
@@ -57,7 +68,9 @@ Stages: submitted → screening → interview → offer → accepted; rejection/
 terminal. Projects may skip interview. Stage writes use row locks and revision checks.
 Only the applicant accepts or withdraws; only the assigned hiring team advances a case.
 An accepted offer needs a separate HR placement confirmation before changing a role or
-adding project membership. No automatic ranking, rejection, hiring or role changes.
+adding project membership. Confirming a role placement also sets `company_users.job_title`
+to the role title and, when the opportunity names one, the department; the employee's own
+`target_role` is left alone. No automatic ranking, rejection, hiring or role changes.
 
 ## Capability scenarios
 

@@ -306,3 +306,93 @@ def test_course_handle_alone_does_not_verify_completion():
     p={'completed_courses':[dict(title='SQL',handle='sql')]}
     assert not cv_service.assemble(p)['courses'][0]['verified']
     assert cv_service.assemble(p,orders=[dict(handle='sql',state='gennemfoert')])['courses'][0]['verified']
+
+
+def notes(db, username):
+    return db.query('SELECT title,message,action_url FROM notifications WHERE user_id=%s ORDER BY id', (username,))
+
+
+def test_sharing_a_goal_tells_hr_once_and_private_goals_tell_nobody(env):
+    db,app=env
+    cur=db.connection.cursor()
+    with app.test_request_context():
+        svc.link_goal(cur,7,1,1,'Python | 4','2030-01-01',[dict(kind='practice',title='Byg et værktøj')],False)
+    db.connection.commit()
+    assert notes(db,'hr')==[]
+    goal=svc.goals(cur,7,1)[0]
+    c=client(app)
+    c.post('/talent/actions/share_goal',data=dict(id=goal['id'],shared='yes'))
+    c.post('/talent/actions/share_goal',data=dict(id=goal['id'],shared='yes'))
+    told=notes(db,'hr')
+    assert len(told)==1 and 'Privat mål' in told[0]['message'] and told[0]['action_url']=='/hr/talent'
+    assert notes(db,'ada')==[] and notes(db,'bo')==[]
+
+
+def test_manager_assessment_tells_the_employee_not_the_assessor(env):
+    db,app=env
+    cur=db.connection.cursor()
+    with app.test_request_context():
+        svc.assess(cur,7,1,'Python',4,'manager',3,'ref-1')
+        svc.assess(cur,7,1,'Python',2,'self',1,'ref-2')
+    db.connection.commit()
+    assert len(notes(db,'ada'))==1 and 'niveau 4 af 5' in notes(db,'ada')[0]['message']
+    assert notes(db,'hr')==[]
+
+
+def test_application_stages_and_placement_reach_the_right_people(env):
+    db,app=env
+    rid=publish_role(db);oid=opportunity(db,rid)
+    db.execute("UPDATE talent_opportunities SET department='Udvikling' WHERE id=%s",(oid,))
+    cur=db.connection.cursor()
+    svc.apply(cur,7,1,oid,{})
+    assert [n['title'] for n in notes(db,'hr')]==['Ny ansøgning']
+    application=db.one('SELECT * FROM talent_applications')
+    for revision,status in enumerate(('screening','interview','offer'),start=1):
+        svc.transition(cur,7,3,application['id'],status,revision)
+    assert len(notes(db,'ada'))==3 and 'Tilbud' in notes(db,'ada')[-1]['message']
+    svc.transition(cur,7,1,application['id'],'accepted',4)
+    assert notes(db,'hr')[-1]['title']=='Ansøgning opdateret'
+    svc.confirm_placement(cur,7,application['id'])
+    db.connection.commit()
+    assert notes(db,'ada')[-1]['title']=='Din placering er bekræftet'
+    person=db.one('SELECT job_title,department FROM company_users WHERE company_id=7 AND user_id=1')
+    assert person['job_title']=='Udvikler' and person['department']=='Udvikling'
+
+
+def test_completed_course_ticks_the_goal_step_for_hr_and_tells_the_learner(env):
+    import domain_reactions, event_bus
+    db,app=env
+    db.execute("INSERT INTO course_orders (order_id,company_id,user_id,username,product_title,status) VALUES ('own-order',7,1,'ada','Python','booked')")
+    cur=db.connection.cursor()
+    with app.test_request_context():
+        svc.link_goal(cur,7,1,1,'Python | 4','2030-01-01',[dict(kind='course',title='Tag kurset',order_id='own-order')],True)
+    db.connection.commit()
+    assert not svc.goals(cur,7,hr=True)[0]['actions'][0]['done']
+    db.execute("UPDATE course_orders SET status='completed' WHERE order_id='own-order'")
+    # Read side: HR and the learner see the same thing without any event.
+    assert svc.goals(cur,7,hr=True)[0]['actions'][0]['done']
+    domain_reactions.register()
+    with app.app_context():
+        for _ in range(2):
+            event_bus.publish_internal(7,'course.completed',dict(order_id='own-order',user_id=1,product_title='Python'))
+    assert '"done": true' in db.one('SELECT actions_json FROM talent_goal_links')['actions_json']
+    told=[n for n in notes(db,'ada') if n['action_url']=='/udvikling']
+    assert len(told)==1 and 'Privat mål' in told[0]['message']
+    # Another tenant's event for the same order id touches nothing.
+    with app.app_context():
+        assert event_bus.publish_internal(8,'course.completed',dict(order_id='own-order',user_id=1))==1
+
+
+def test_a_failing_subscriber_never_reaches_the_emitter_or_its_peers(env):
+    import event_bus
+    db,app=env
+    seen=[]
+    def boom(*a): raise RuntimeError('x')
+    def ok(cid,kind,payload): seen.append((cid,kind))
+    event_bus.subscribe('test.thing',boom); event_bus.subscribe('test.thing',ok); event_bus.subscribe('test.thing',ok)
+    try:
+        with app.app_context():
+            assert event_bus.publish_internal(7,'test.thing',{})==1
+        assert seen==[(7,'test.thing')]
+    finally:
+        event_bus._SUBSCRIBERS.pop('test.thing',None)

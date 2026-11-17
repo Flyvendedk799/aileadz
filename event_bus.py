@@ -113,8 +113,66 @@ def ensure_outbox_table(conn=None):
         return False
 
 
+# ── In-process subscribers ──────────────────────────────────────────────────
+# The outbox carries an event to the customer's systems. Subscribers carry the
+# same event to OUR other modules, so a cross-module reaction ("a completed
+# course ticks the linked development-goal step") is one registered function
+# instead of an edit inside the emitting service. Registered at boot by
+# ``domain_reactions.register()``.
+_SUBSCRIBERS = {}
+
+
+def subscribe(event_type, handler):
+    """Call ``handler(company_id, event_type, payload)`` after each such event.
+
+    Handlers run after the emitter's transaction has committed, on the same
+    connection, and own their own commit. A handler that raises is logged and
+    rolled back; it never reaches the emitter or the other handlers.
+    Registering the same handler twice is a no-op.
+    """
+    handlers = _SUBSCRIBERS.setdefault(str(event_type), [])
+    if handler not in handlers:
+        handlers.append(handler)
+
+
+def publish_internal(company_id, event_type, payload):
+    """Run the in-process subscribers of an event WITHOUT writing the outbox.
+
+    For events that are not (yet) part of the customer webhook contract.
+    Returns the number of handlers that completed.
+    """
+    done = 0
+    for handler in list(_SUBSCRIBERS.get(str(event_type), ())):
+        try:
+            handler(company_id, event_type, payload)
+            done += 1
+        except Exception as e:
+            logger.warning("event_bus: subscriber %s failed on %s: %s",
+                           getattr(handler, "__name__", handler), event_type, e)
+            conn = _get_conn()
+            if conn is not None:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+    return done
+
+
 def emit_event(company_id, event_type, payload):
-    """Record ONE integration event into the outbox (the single emit point).
+    """Record ONE integration event and run its in-process subscribers.
+
+    Call it after the business transaction has committed (it commits the
+    outbox row, and subscribers commit their own work). Guarded: never raises
+    into the caller. Returns the outbox row id, or None when it was not stored.
+    """
+    new_id = _write_outbox(company_id, event_type, payload)
+    if company_id and event_type:
+        publish_internal(company_id, event_type, payload)
+    return new_id
+
+
+def _write_outbox(company_id, event_type, payload):
+    """Record ONE integration event into the outbox.
 
     Writes a single pending row and commits. This is intentionally cheap and
     network-free so it can be called from inside order/employee request paths

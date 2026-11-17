@@ -67,12 +67,8 @@ def workspace():
         settings = service.flags(cur, cid)
         links = service.goals(cur, cid, user_id)
         orders = rows(cur, 'SELECT order_id,product_title,status FROM course_orders WHERE company_id=%s AND user_id=%s ORDER BY created_at DESC LIMIT 100', (cid,user_id))
-        order_map = {o['order_id']: o for o in orders}
         for item in links:
             item['readiness'] = evaluate(state, item['requirements'])
-            for step in item['actions']:
-                if step.get('order_id') in order_map:
-                    step['done'] = order_map[step['order_id']]['status'] == 'completed'
         role_list = service.roles(cur, cid) if settings.get('roles_enabled') else []
         exploration = None
         if request.args.get('role') and settings.get('roles_enabled'):
@@ -228,19 +224,18 @@ def action(action):
         elif action == 'goal':
             service.link_goal(cur, cid, user_id, int(f['goal_id']), f['requirements'], f['review_date'],
                               [dict(kind=f['kind'], title=f['next_step'], order_id=f.get('order_id'))], bool(f.get('shared')))
-        elif action in ('share_goal', 'complete_action'):
+        elif action == 'share_goal':
+            service.share_goal(cur, cid, user_id, f['id'], f.get('shared') == 'yes')
+        elif action == 'complete_action':
             cur.execute('SELECT * FROM talent_goal_links WHERE company_id=%s AND user_id=%s AND id=%s FOR UPDATE', (cid, user_id, f['id']))
             row = cur.fetchone()
             if not row:
                 abort(404)
-            if action == 'share_goal':
-                cur.execute('UPDATE talent_goal_links SET shared=%s WHERE company_id=%s AND user_id=%s AND id=%s', (int(f.get('shared') == 'yes'), cid, user_id, f['id']))
-            else:
-                actions = json.loads(row['actions_json'])
-                for item in actions:
-                    if item['id'] == f['action_id'] and item['kind'] in ('practice', 'mentoring'):
-                        item['done'] = True
-                cur.execute('UPDATE talent_goal_links SET actions_json=%s WHERE company_id=%s AND user_id=%s AND id=%s', (service.dump(actions), cid, user_id, f['id']))
+            actions = json.loads(row['actions_json'])
+            for item in actions:
+                if item['id'] == f['action_id'] and item['kind'] in ('practice', 'mentoring'):
+                    item['done'] = True
+            cur.execute('UPDATE talent_goal_links SET actions_json=%s WHERE company_id=%s AND user_id=%s AND id=%s', (service.dump(actions), cid, user_id, f['id']))
         elif action in ('opportunity', 'publish_opportunity', 'close_opportunity'):
             required(cur, cid, 'mobility')
             if action == 'opportunity':

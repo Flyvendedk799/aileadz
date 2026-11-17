@@ -38,8 +38,9 @@ Role definitions are immutable versions. Publishing makes a version discoverable
 assignments pin a version, so editing a framework never silently changes someone's role.
 The existing learning-goal record remains the source for title/status. `talent_goal_links`
 adds requirements, an initial baseline, next actions, review date and explicit sharing.
-Only shared links enter the HR queue. Unsharing immediately removes the link from that
-queue. Neither shared goals nor applications expose private chat/check-in history.
+Visibility belongs to the goal (`goal_service.share_own_goal`): sharing or unsharing in the
+workspace or on `/mine-maal` moves the goal and all its links together. Only shared links
+enter the HR queue. Unsharing immediately removes the link from that queue. Neither shared goals nor applications expose private chat/check-in history.
 Practical/mentoring tasks can be acknowledged without changing proficiency. Course steps
 can reference the employee's own order and follow its actual completion status. HR's
 outcome queue links to the existing guarded order review.

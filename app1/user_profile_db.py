@@ -118,6 +118,9 @@ _TABLES_SQL = [
         description TEXT DEFAULT NULL,
         target_date VARCHAR(50) DEFAULT NULL,
         status ENUM('aktiv','fuldfoert','paa_pause') DEFAULT 'aktiv',
+        shared_with_hr TINYINT(1) NOT NULL DEFAULT 0,
+        shared_company_id INT DEFAULT NULL,
+        shared_at DATETIME DEFAULT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_username (username)
@@ -406,6 +409,12 @@ def ensure_tables():
                     current_app.mysql.connection.rollback()
                 except Exception:
                     pass
+
+        # A person's own goal is private until they share it with their company's
+        # HR (goal_service.py): per goal, bound to the company it was shared with.
+        _ensure_column(cur, "user_learning_goals", "shared_with_hr", "shared_with_hr TINYINT(1) NOT NULL DEFAULT 0")
+        _ensure_column(cur, "user_learning_goals", "shared_company_id", "shared_company_id INT DEFAULT NULL")
+        _ensure_column(cur, "user_learning_goals", "shared_at", "shared_at DATETIME DEFAULT NULL")
 
         if not _column_exists(cur, "user_skills", "numeric_level"):
             cur.execute("ALTER TABLE user_skills ADD COLUMN numeric_level INT DEFAULT NULL")
@@ -1342,9 +1351,11 @@ _GOAL_STATUSES = ("aktiv", "fuldfoert", "paa_pause")
 
 
 def get_learning_goals(username):
+    ensure_tables()  # the sharing columns are added there; cheap once cached
     cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     cur.execute(
-        "SELECT id, title, description, target_date, status, created_at, updated_at "
+        "SELECT id, title, description, target_date, status, created_at, updated_at, "
+        "shared_with_hr, shared_company_id "
         "FROM user_learning_goals WHERE username = %s "
         "ORDER BY (status = 'aktiv') DESC, updated_at DESC",
         (username,)

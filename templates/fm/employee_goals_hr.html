@@ -33,6 +33,14 @@
         {% if g.goal_description %}<div class="muted" style="font-size:13px">{{ g.goal_description }}</div>{% endif %}
         <div class="muted" style="font-size:12px;margin-top:4px">{% if g.target_date %}Måldato {{ g.target_date.strftime('%d/%m/%Y') if g.target_date.strftime else g.target_date }} · {% endif %}{% if is_shared and g.shared_at %}Delt {{ g.shared_at.strftime('%d/%m/%Y') if g.shared_at.strftime else g.shared_at }}{% endif %}{% if is_shared and g.share_note %} · “{{ g.share_note }}”{% endif %}</div>
       </div>
+      {% set g_status = {'completed':'done','done':'done','paused':'paused','on_hold':'paused'}.get(g.status, 'active') %}
+      <form method="post" action="{{ url_for('hr_dashboard.employee_goal_status', goal_id=g.id) }}" class="fm-flex fm-gap8" style="align-items:center">
+        <label class="fm-sr-only" for="goal-status-{{ g.id }}">Status</label>
+        <select class="fm-input" id="goal-status-{{ g.id }}" name="status" onchange="this.form.submit()" style="min-width:120px">
+          {% for value, label in (('active','Aktiv'),('paused','På pause'),('done','Fuldført')) %}<option value="{{ value }}"{{ ' selected' if value == g_status }}>{{ label }}</option>{% endfor %}
+        </select>
+        <noscript><button class="btn btn-ghost btn-sm" type="submit">Gem status</button></noscript>
+      </form>
       <form method="post" action="{{ url_for('hr_dashboard.employee_goal_share', goal_id=g.id) }}" class="fm-flex fm-gap8" style="align-items:center;flex-wrap:wrap">
         {% if is_shared %}
         <input type="hidden" name="shared" value="0">
@@ -50,7 +58,18 @@
     {% endif %}
   {% endmacro %}
 
-  <div class="fm-section-head"><div><span class="fm-eyebrow clay"><i class="fa-solid fa-share-nodes"></i> Synligt for medarbejderen</span><h2 class="fm-section-title">Delt med medarbejderen</h2></div></div>
+  <div class="fm-section-head"><div><span class="fm-eyebrow"><i class="fa-solid fa-user"></i> Medarbejderens egne mål</span><h2 class="fm-section-title">Delt af medarbejderen</h2></div></div>
+  {% for g in from_employee or [] %}
+  <div class="fm-card" style="padding:14px 18px;margin-bottom:10px">
+    <div style="font-weight:650">{{ g.title }} <span class="fm-badge {{ 'success' if g.status == 'done' else ('amber' if g.status == 'paused' else 'teal') }}">{{ g.status_label }}</span></div>
+    {% if g.description %}<div class="muted" style="font-size:13px">{{ g.description }}</div>{% endif %}
+    <div class="muted" style="font-size:12px;margin-top:4px">{% if g.target_date %}Måldato {{ g.target_date }} · {% endif %}Medarbejderen har selv valgt at dele dette mål og kan trække det tilbage.</div>
+  </div>
+  {% else %}
+  {{ empty('Ingen delte mål', 'Medarbejderens egne mål er private, indtil medarbejderen vælger at dele dem med HR.', 'fa-lock') }}
+  {% endfor %}
+
+  <div class="fm-section-head" style="margin-top:22px"><div><span class="fm-eyebrow clay"><i class="fa-solid fa-share-nodes"></i> Synligt for medarbejderen</span><h2 class="fm-section-title">Delt med medarbejderen</h2></div></div>
   {{ goal_list(shared, true) }}
 
   <div class="fm-section-head" style="margin-top:22px"><div><span class="fm-eyebrow"><i class="fa-solid fa-lock"></i> Privat</span><h2 class="fm-section-title">Kun synligt for HR</h2></div></div>

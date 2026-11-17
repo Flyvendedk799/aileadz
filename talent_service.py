@@ -146,13 +146,6 @@ def _tell_hiring_team(cur, company_id, oid, title, message, *, actor=None, key=N
               key=key and '%s:%s' % (key, row['user_id']))
 
 
-def _tell_hr_goal_shared(cur, company_id, user_id, link_id, goal_title):
-    from notification_service import HR_ROLES, notify_roles
-    notify_roles(cur, company_id, HR_ROLES, title='Udviklingsmål delt med HR',
-                 message='%s har delt udviklingsmålet "%s".' % (_name(cur, company_id, user_id), goal_title),
-                 action_url='/hr/talent', actor_user_id=user_id, dedupe_key='talent-goal-shared:%s' % link_id)
-
-
 def employee_state(cur, company_id, user_id, profile=None):
     who = member(cur, company_id, user_id)
     if profile is None:
@@ -201,9 +194,8 @@ def assess(cur, company_id, user_id, skill, level, kind, actor_id, source_ref, n
 
 def link_goal(cur, company_id, user_id, goal_id, reqs, review_date, actions, shared):
     who = member(cur, company_id, user_id)
-    cur.execute('SELECT id,title FROM user_learning_goals WHERE id=%s AND username=%s', (goal_id, who['username']))
-    goal = cur.fetchone()
-    if not goal:
+    cur.execute('SELECT id FROM user_learning_goals WHERE id=%s AND username=%s', (goal_id, who['username']))
+    if not cur.fetchone():
         raise ValueError('Vælg et af dine eksisterende udviklingsmål.')
     reqs = requirements(reqs)
     baseline = evaluate(employee_state(cur, company_id, user_id), reqs)
@@ -217,26 +209,28 @@ def link_goal(cur, company_id, user_id, goal_id, reqs, review_date, actions, sha
             if not cur.fetchone() or action['kind'] != 'course':
                 raise ValueError('Vælg en af dine egne kursusbestillinger.')
         clean.append(dict(id=uid(), kind=action['kind'], title=action['title'][:500], done=False, order_id=linked_order))
+    # The link follows the goal's own visibility (goal_service): a goal that is
+    # already shared with HR brings its new link along, and sharing here shares the goal.
+    import goal_service
+    shared = bool(shared) or goal_service.own_goal_is_shared(cur, company_id, who['username'], goal_id)
     link_id = uid()
     cur.execute('INSERT INTO talent_goal_links (id,company_id,user_id,goal_id,shared,requirements_json,baseline_json,actions_json,review_date) '
                 'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)',
                 (link_id, company_id, user_id, goal_id, int(shared), dump(reqs), dump(baseline), dump(clean), date(review_date)))
     if shared:
-        _tell_hr_goal_shared(cur, company_id, user_id, link_id, goal['title'])
+        goal_service.share_own_goal(cur, company_id, user_id, goal_id, True)
     return link_id
 
 
 def share_goal(cur, company_id, user_id, link_id, shared):
-    """The owner shares or unshares one development goal with HR. HR is told once when it becomes shared."""
-    cur.execute('SELECT l.shared,g.title FROM talent_goal_links l JOIN users u ON u.id=l.user_id '
-                'JOIN user_learning_goals g ON g.id=l.goal_id AND g.username=u.username '
-                'WHERE l.company_id=%s AND l.user_id=%s AND l.id=%s', (company_id, user_id, link_id))
+    """The owner shares or unshares a development goal with HR, from the talent workspace.
+
+    Visibility belongs to the goal (goal_service), so every link of that goal moves with it."""
+    import goal_service
+    cur.execute('SELECT goal_id FROM talent_goal_links WHERE company_id=%s AND user_id=%s AND id=%s', (company_id, user_id, link_id))
     row = cur.fetchone()
-    if not row:
+    if not row or goal_service.share_own_goal(cur, company_id, user_id, row['goal_id'], shared) is None:
         raise ValueError('Udviklingsmålet findes ikke.')
-    cur.execute('UPDATE talent_goal_links SET shared=%s WHERE company_id=%s AND user_id=%s AND id=%s', (int(bool(shared)), company_id, user_id, link_id))
-    if shared and not row['shared']:
-        _tell_hr_goal_shared(cur, company_id, user_id, link_id, row['title'])
 
 
 def _mark_course_steps(cur, company_id, links):

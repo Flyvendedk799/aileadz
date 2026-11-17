@@ -774,6 +774,38 @@ def learning_goal_status(goal_id):
     return redirect(url_for('futurematch.learning_goals'))
 
 
+@futurematch_bp.route('/mine-maal/<int:goal_id>/del', methods=['POST'])
+def learning_goal_share(goal_id):
+    """The owner shares one of their own goals with their company's HR, or takes it back."""
+    if not session.get('user'):
+        return redirect(url_for('auth.login'))
+    company_id, user_id = session.get('company_id'), session.get('user_id')
+    if not company_id or not user_id:
+        flash('Du kan dele mål med HR, når du er tilknyttet en virksomhed.', 'warning')
+        return redirect(url_for('futurematch.learning_goals'))
+    shared = request.form.get('shared') == 'yes'
+    import MySQLdb.cursors
+    import goal_service
+    conn = current_app.mysql.connection
+    cur = conn.cursor(MySQLdb.cursors.DictCursor)
+    try:
+        from app1.user_profile_db import ensure_tables
+        ensure_tables()
+        title = goal_service.share_own_goal(cur, company_id, user_id, goal_id, shared)
+        conn.commit()
+        if title is None:
+            flash('Målet blev ikke fundet.', 'danger')
+        else:
+            flash('Målet er nu delt med HR.' if shared else 'Målet er igen privat. HR kan ikke længere se det.', 'success')
+    except Exception as e:
+        conn.rollback()
+        current_app.logger.warning("goal share: %s", e)
+        flash('Kunne ikke ændre deling. Prøv igen.', 'danger')
+    finally:
+        cur.close()
+    return redirect(url_for('futurematch.learning_goals') + '#goal-%d' % goal_id)
+
+
 # Status vocabulary comes from order_lifecycle (N-1.1): one source for every
 # label map in the app. The names below stay for older imports.
 _ORDER_STATUS_LABELS = dict(_lc.STATUS_LABELS)

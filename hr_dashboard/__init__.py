@@ -2762,12 +2762,53 @@ def create_hr_dashboard_blueprint():
         try:
             shared, private = goal_sharing.list_goals_for_hr(cur, company['id'], user_id, conn=conn)
             emp = goal_sharing.employee_in_company(cur, company['id'], user_id) if html else None
+            # The employee's own goals: only the ones they chose to share with this company.
+            from_employee = []
+            try:
+                import goal_service
+                from_employee = goal_service.for_hr(cur, company['id'], user_id)['shared_by_employee']
+            except Exception:
+                current_app.logger.warning("employee-shared goals unavailable", exc_info=True)
         finally:
             cur.close()
         if not html:
-            return jsonify({'success': True, 'delt_med_medarbejderen': shared, 'kun_synligt_for_hr': private})
+            return jsonify({'success': True, 'delt_med_medarbejderen': shared, 'kun_synligt_for_hr': private,
+                            'delt_af_medarbejderen': from_employee})
         return render_template('fm/employee_goals_hr.html', company=company, employee=emp,
-                               shared=shared, private=private)
+                               shared=shared, private=private, from_employee=from_employee)
+
+    @hr_dashboard_bp.route('/goals/<int:goal_id>/status', methods=['POST'])
+    def employee_goal_status(goal_id):
+        """HR moves a goal it wrote between active, paused and done."""
+        auth_check = require_hr_manager_access(cap='hr.employees.manage')
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return redirect(url_for('auth.login'))
+        import goal_service
+        conn = current_app.mysql.connection
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        try:
+            employee_id = goal_service.hr_goal_employee(cur, company['id'], goal_id)
+            if employee_id is None or not _employee_in_scope(company, employee_id):
+                flash("Målet blev ikke fundet.", "danger")
+                return redirect(url_for('hr_dashboard.employee_progress'))
+            goal_service.set_hr_goal_status(cur, company['id'], goal_id, request.form.get('status'))
+            conn.commit()
+        except ValueError as e:
+            conn.rollback()
+            flash(str(e), "danger")
+            return redirect(url_for('hr_dashboard.employee_progress'))
+        finally:
+            cur.close()
+        try:
+            import learner_context
+            learner_context.clear_cache()
+        except Exception:
+            pass
+        flash("Målets status er opdateret.", "success")
+        return redirect(url_for('hr_dashboard.employee_goals', user_id=employee_id))
 
     @hr_dashboard_bp.route('/employee/<int:user_id>/goals/add', methods=['POST'])
     def employee_goal_add(user_id):

@@ -19,7 +19,7 @@ def env():
         db.raw.execute(ddl)
     db.raw.executescript('''
         CREATE TABLE user_skills (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT,skill_name TEXT,skill_level TEXT,numeric_level INTEGER,category TEXT,source TEXT,UNIQUE(username,skill_name));
-        CREATE TABLE user_learning_goals (id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT,title TEXT,status TEXT DEFAULT 'aktiv');
+        CREATE TABLE user_learning_goals (id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT,title TEXT,description TEXT,target_date TEXT,status TEXT DEFAULT 'aktiv',shared_with_hr INTEGER DEFAULT 0,shared_company_id INTEGER,shared_at TEXT,updated_at TEXT);
         CREATE TABLE company_skill_targets (id INTEGER PRIMARY KEY AUTOINCREMENT,company_id INTEGER,department TEXT,skill_name TEXT,target_level INTEGER,priority TEXT);
     ''')
     for user_id, username, cid in ((1,'ada',7),(2,'bo',7),(3,'hr',7),(4,'outside',8)):
@@ -324,7 +324,7 @@ def test_sharing_a_goal_tells_hr_once_and_private_goals_tell_nobody(env):
     c.post('/talent/actions/share_goal',data=dict(id=goal['id'],shared='yes'))
     c.post('/talent/actions/share_goal',data=dict(id=goal['id'],shared='yes'))
     told=notes(db,'hr')
-    assert len(told)==1 and 'Privat mål' in told[0]['message'] and told[0]['action_url']=='/hr/talent'
+    assert len(told)==1 and 'Privat mål' in told[0]['message'] and told[0]['action_url']=='/hr/employee/1/goals'
     assert notes(db,'ada')==[] and notes(db,'bo')==[]
 
 

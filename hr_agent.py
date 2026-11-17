@@ -202,7 +202,7 @@ def _hr_context_layers(flask_session, page):
     return layers
 
 
-def handle_hr_ask(user_query, flask_session, page=None):
+def handle_hr_ask(user_query, flask_session, page=None, conversation_id=None, entity_context=None):
     """Handle an HR chatbot query. Returns SSE stream response.
 
     ``page`` is the ``active_hr_page`` id of the view the panel is embedded on
@@ -217,14 +217,19 @@ def handle_hr_ask(user_query, flask_session, page=None):
     import hr_conversations
 
     username = flask_session.get("user")
-    hr_sid = hr_conversations.resolve_sid(flask_session, username)
+    hr_sid = conversation_id or hr_conversations.resolve_sid(flask_session, username)
     from app1.chat_diagnostics import bind_chat, instrument_response, record_failure
     bind_chat(hr_sid)
     history = hr_conversations.load(username, hr_sid)
     # The turn's own messages: system prompt + stored transcript + this question.
-    base_messages = [{"role": "system", "content": get_hr_system_prompt()}] + history
+    from tool_confirm import CONFIRMATION_GUIDANCE
+    base_messages = [{"role": "system", "content": get_hr_system_prompt() + "\n" + CONFIRMATION_GUIDANCE}] + history
     base_messages.append({"role": "user", "content": user_query})
     context_layers = _hr_context_layers(flask_session, page)
+    if entity_context:
+        import ai_context_layers as _ctx
+        context_layers.append(_ctx.layer('assistant_page', json.dumps(entity_context, ensure_ascii=False, default=str),
+                                         header='Aktuelt element og filtre på siden:', fence='SIDEKONTEKST'))
     intent = _classify_hr_intent(user_query)
     sse = ai_reply.sse
 
@@ -393,11 +398,15 @@ def handle_hr_ask(user_query, flask_session, page=None):
                         "label": _hr_tr_dict.get("label", "Åbn"),
                         "new_tab": bool(_hr_tr_dict.get("new_tab")),
                     })
+                if _hr_tr_dict.get('ui_type') == 'download':
+                    from ai_actions import artifact
+                    yield sse(artifact(hr_sid, 'hr', _hr_tr_dict))
                 if _hr_tr_dict.get("needs_confirmation"):
                     try:
                         from app1 import confirm_store as _cs
                         _token = _cs.store_pending(
-                            hr_sid, "hr", tool_result.name, __import__("tool_confirm").confirmed_arguments(tool_result.name,tool_result.arguments,_hr_tr_dict)
+                            hr_sid, "hr", tool_result.name, __import__("tool_confirm").confirmed_arguments(tool_result.name,tool_result.arguments,_hr_tr_dict),
+                            card={"summary_da": _hr_tr_dict.get("message_da", ""), "details": _hr_tr_dict.get("details"), "cost_review": _hr_tr_dict.get("cost_review"), "recipient_count": _hr_tr_dict.get("recipient_count"), "price": _hr_tr_dict.get("price")},
                         )
                         yield sse({
                             "type": "confirm_card",
@@ -405,6 +414,7 @@ def handle_hr_ask(user_query, flask_session, page=None):
                             "action": _hr_tr_dict.get("action", tool_result.name),
                             "summary_da": _hr_tr_dict.get("message_da", ""),
                             "details": _hr_tr_dict.get("details"),
+                            "cost_review": _hr_tr_dict.get("cost_review"),
                             "recipient_count": _hr_tr_dict.get("recipient_count"),
                             "price": _hr_tr_dict.get("price"),
                         })
@@ -476,7 +486,9 @@ def handle_hr_ask(user_query, flask_session, page=None):
             # the client which answer it can rate.
             stored = history + [{"role": "user", "content": user_query},
                                 {"role": "assistant", "content": full_text}]
-            hr_conversations.save(username, hr_sid, stored)
+            import assistant_history
+            assistant_history.append(hr_sid, 'hr', user_query, full_text)
+            hr_conversations.set_active(username, hr_sid)
             message_index = sum(1 for m in stored if m["role"] == "assistant")
             _log_hr_interaction(flask_session, hr_sid, user_query, full_text, intent, tools_used,
                                 (time.time() - turn_start) * 1000, message_index)

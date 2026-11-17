@@ -115,6 +115,15 @@ class WidgetOriginTests(unittest.TestCase):
         r = self.c.post("/app1/widget/tok1/ask", json={"query": "hej"})
         self.assertEqual(r.status_code, 200)
 
+    def test_hard_credit_limit_blocks_widget_before_agent_execution(self):
+        token, _ = self._token()
+        with mock.patch('credit_service.guard',return_value='Kreditgrænsen er nået.') as guard:
+            response = self.c.post('/app1/widget/tok1/ask',json={'query':'hej'},headers={'X-Widget-Session':token})
+        self.assertEqual(response.status_code,402)
+        self.assertTrue(response.json['credits_paused'])
+        self.assertEqual(guard.call_args.kwargs['company_id'],7)
+        self.assertNotIn('sid',self.seen)
+
 
 if __name__ == "__main__":
     unittest.main()

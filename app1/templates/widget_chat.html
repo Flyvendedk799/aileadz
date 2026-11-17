@@ -372,6 +372,7 @@
       <button type="button" data-chat-id-copy data-chat-scope="widget" disabled><span data-chat-id-label>Kopiér chat-id</span></button>
     </div>
     <script src="{{ url_for('static', filename='futurematch/assets/chat-debug.js') }}?v={{ asset_version('futurematch/assets/chat-debug.js') if asset_version is defined else 1 }}"></script>
+    <script src="{{ url_for('static', filename='futurematch/assets/ai-stream.js') }}"></script>
     <script>
     (function() {
         const chatMessages = document.getElementById('chatMessages');
@@ -588,136 +589,20 @@
             const botContent = addBotRow();
             const typing = addTypingIndicator(botContent);
 
-            try {
-                const resp = await fetch(ASK_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-Widget-Session': WIDGET_SESSION },
-                    body: JSON.stringify({ query: query })
-                });
-
-                if (window.FMChatDebug && resp.headers.get('X-Chat-ID')) window.FMChatDebug.setId(resp.headers.get('X-Chat-ID'), 'widget');
-                if (!resp.ok) {
-                    // Surface the server's Danish message for origin/rate errors
-                    // (403/429) instead of a generic failure.
-                    if (resp.status === 429 || resp.status === 403) {
-                        let serverMsg = '';
-                        try { serverMsg = (await resp.json()).error || ''; } catch (e) {}
-                        if (typing.parentNode) typing.remove();
-                        const noticeBubble = document.createElement('div');
-                        noticeBubble.className = 'bot-bubble';
-                        noticeBubble.textContent = serverMsg ||
-                            (resp.status === 429
-                                ? 'For mange forespørgsler. Vent et øjeblik, og prøv igen.'
-                                : 'Denne widget er ikke tilladt på dette domæne.');
-                        botContent.appendChild(noticeBubble);
-                        scrollBottom();
-                        isSending = false;
-                        return;
-                    }
-                    throw new Error('HTTP ' + resp.status);
-                }
-
-                const reader = resp.body.getReader();
-                const decoder = new TextDecoder('utf-8');
-                let buffer = '';
-                let isFirst = true;
-                let fullText = '';
-                let textEl = null;
-
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-
-                    buffer += decoder.decode(value, { stream: true });
-                    const parts = buffer.split('\n\n');
-                    buffer = parts.pop();
-
-                    for (const part of parts) {
-                        if (!part.startsWith('data: ')) continue;
-                        const raw = part.slice(6).trim();
-                        if (raw === '[DONE]') continue;
-
-                        try {
-                            const data = JSON.parse(raw);
-                            if (data.chat_id && window.FMChatDebug) window.FMChatDebug.setId(data.chat_id, 'widget');
-                            if (data.type === 'ping' || data.type === 'meta') continue;
-
-                            if (data.type === 'thinking') {
-                                if (!typing.parentNode) botContent.appendChild(typing);
-                                continue;
-                            }
-                            if (data.type === 'notice') {
-                                const note = document.createElement('div');
-                                note.className = 'chat-notice';
-                                note.textContent = data.content || '';
-                                botContent.appendChild(note);
-                                scrollBottom();
-                                continue;
-                            }
-
-                            if (isFirst) {
-                                typing.remove();
-                                isFirst = false;
-                            }
-
-                            if (data.type === 'chunk') {
-                                if (!textEl) {
-                                    textEl = document.createElement('div');
-                                    textEl.className = 'bot-bubble';
-                                    botContent.appendChild(textEl);
-                                }
-                                fullText += data.content;
-                                const parsed = extractSuggestions(fullText);
-                                textEl.innerHTML = sanitizeHtml(renderMarkdown(parsed.text));
-                                scrollBottom();
-                            } else if (data.type === 'suggestions') {
-                                if (Array.isArray(data.items) && data.items.length) renderSuggestions(data.items, botContent);
-                            } else if (data.type === 'product') {
-                                const cardWrap = document.createElement('div');
-                                cardWrap.className = 'product-card-container';
-                                cardWrap.innerHTML = sanitizeHtml(data.html);
-                                botContent.appendChild(cardWrap);
-                                scrollBottom();
-                            } else if (data.type === 'ui_card') {
-                                // Render as simple info card (no save actions in widget)
-                                const card = document.createElement('div');
-                                card.className = 'ui-card-widget';
-                                card.innerHTML = sanitizeHtml(data.message || '');
-                                botContent.appendChild(card);
-                                scrollBottom();
-                            }
-                        } catch(e) {
-                            // Skip malformed JSON
-                        }
-                    }
-                }
-
-                // After streaming, check for suggestions in full text
-                if (fullText) {
-                    const parsed = extractSuggestions(fullText);
-                    if (textEl && parsed.suggestions.length > 0) {
-                        textEl.innerHTML = sanitizeHtml(renderMarkdown(parsed.text));
-                        renderSuggestions(parsed.suggestions, botContent);
-                    }
-                }
-
-                // If we never got a chunk (typing still visible), remove it
-                if (isFirst && typing.parentNode) {
+            let fullText = '', textEl = null;
+            await FMAI.ask(ASK_URL, {query:query}, {
+                text: function (data) {
                     typing.remove();
-                    const errorBubble = document.createElement('div');
-                    errorBubble.className = 'bot-bubble';
-                    errorBubble.textContent = 'Beklager, der opstod en fejl. Prøv venligst igen.';
-                    botContent.appendChild(errorBubble);
-                }
-
-            } catch (err) {
-                if (typing.parentNode) typing.remove();
-                const errorBubble = document.createElement('div');
-                errorBubble.className = 'bot-bubble';
-                errorBubble.textContent = 'Beklager, der opstod en fejl. Prøv venligst igen.';
-                botContent.appendChild(errorBubble);
-                scrollBottom();
-            }
+                    if (!textEl) { textEl=document.createElement('div'); textEl.className='bot-bubble'; botContent.appendChild(textEl); }
+                    fullText += data.content || ''; textEl.innerHTML = sanitizeHtml(renderMarkdown(extractSuggestions(fullText).text)); scrollBottom();
+                },
+                suggestions: function (data) { renderSuggestions(data.items || [],botContent); },
+                product: function (data) { typing.remove(); const el=document.createElement('div'); el.className='product-card-container'; el.innerHTML=sanitizeHtml(data.html); botContent.appendChild(el); scrollBottom(); },
+                ui_card: function (data) { const el=document.createElement('div'); el.className='ui-card-widget'; el.innerHTML=sanitizeHtml(data.message || ''); botContent.appendChild(el); },
+                notice: function (data) { const el=document.createElement('p'); el.textContent=data.content || ''; botContent.appendChild(el); },
+                error: function (data) { typing.remove(); const el=document.createElement('p'); el.textContent=data.content; el.setAttribute('role','alert'); botContent.appendChild(el); scrollBottom(); },
+                done: function () { typing.remove(); isSending=false; }
+            }, {headers:{'X-Widget-Session':WIDGET_SESSION}});
 
             isSending = false;
         }

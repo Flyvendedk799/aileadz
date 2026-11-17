@@ -289,6 +289,10 @@
 <script src="{{ url_for('static', filename='futurematch/assets/ai-sidebar.js') }}?v={{ asset_version('futurematch/assets/ai-sidebar.js') }}"></script>
 {% endif %}
 <script src="{{ url_for('static', filename='futurematch/assets/chat-debug.js') }}?v={{ asset_version('futurematch/assets/chat-debug.js') }}"></script>
+{% if session.get('user') %}
+<script src="{{ url_for('static', filename='futurematch/assets/ai-stream.js') }}?v={{ asset_version('futurematch/assets/ai-stream.js') }}"></script>
+<script src="{{ url_for('static', filename='futurematch/assets/ai-actions.js') }}?v={{ asset_version('futurematch/assets/ai-actions.js') }}"></script>
+{% endif %}
 {% block extra_scripts %}{% endblock %}
 </body>
 </html>

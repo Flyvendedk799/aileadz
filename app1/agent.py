@@ -2163,7 +2163,7 @@ def _hr_learning_layer(username, user_id, company_id):
 # ── Main Agent Loop ──
 
 def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="message",
-                       sid_override=None, company_override=None, surface_context=None):
+                       sid_override=None, company_override=None, surface_context=None, conversation_id=None):
     """
     Core Agent Loop with all 6 phases integrated.
 
@@ -2190,7 +2190,7 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
     # writes a logged-in user's conversations.
     logged_in_user = None if sid_override else session.get("user")  # From auth blueprint
     company_id_for_turn = company_override if company_override is not None else session.get("company_id")
-    sid = sid_override or _conv.resolve_sid(session, mode, username=logged_in_user)
+    sid = sid_override or conversation_id or _conv.resolve_sid(session, mode, username=logged_in_user)
     from app1.chat_diagnostics import bind_chat, instrument_response, record_failure
     bind_chat(sid)
 
@@ -2516,7 +2516,8 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
             # which is what used to drop the profile and the profiler playbook.
             company_id = company_id_for_turn
             profile_cfg = mode_profile(mode)
-            context_layers = []
+            from tool_confirm import CONFIRMATION_GUIDANCE
+            context_layers = [_ctx.layer("assistant_context", CONFIRMATION_GUIDANCE)]
             user_turns = sum(1 for m in messages if m.get("role") == "user")
 
             if profile_cfg.get("core_playbook"):
@@ -2576,7 +2577,14 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                         if _sc_kind == "skill":
                             from competency import compute_skill_gaps
                             _sc_gaps = compute_skill_gaps(logged_in_user, profile=db_profile or None) or []
-                        _surface_resolved = _sc.resolve_focus(_focus, db_profile, _sc_mem, _sc_gaps)
+                        if _sc_kind == 'order':
+                            from ai_entity_context import order_focus
+                            _surface_resolved = order_focus(_focus.split(':',1)[1])
+                        elif _sc_kind == 'checkin':
+                            from ai_followups import checkin_focus
+                            _surface_resolved = checkin_focus(logged_in_user, _focus.split(':',1)[1])
+                        else:
+                            _surface_resolved = _sc.resolve_focus(_focus, db_profile, _sc_mem, _sc_gaps)
                     _sc_parts = _sc.build_layer(surface_context, _surface_resolved, mode)
                     if _sc_parts:
                         _sc_header, _sc_body, _sc_fenced = _sc_parts
@@ -2855,7 +2863,8 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
             ephemeral_messages = messages[:1] + context_layers + messages[1:]
 
             set_search_context(shown_handles=shown_handles, user_prefs=search_user_prefs,
-                               blocked_vendors=blocked_vendors, supplier_agreements=supplier_agreements)
+                               blocked_vendors=blocked_vendors, supplier_agreements=supplier_agreements,
+                               company_id=company_id_for_turn)
             close_flask_mysql_connection()
 
             from ai_context import choose_max_iterations, run_chitchat_turn
@@ -2984,7 +2993,7 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                 tool_choice=tool_choice,
                 max_iterations=max_iterations,
                 prompt_cache_key=f"futurematch:{toolset_meta.get('version')}:{_get_prompt_version(sid)}",
-                agent_scope="employee",
+                agent_scope="widget" if sid_override else "employee",
             )
             if not all_tools and intent == "chit_chat":
                 runtime_result = run_chitchat_turn(ephemeral_messages, intent=intent)
@@ -3030,7 +3039,7 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                     session_id=sid,
                     company_id=company_id,
                     username=logged_in_user,
-                    agent_scope="employee",
+                    agent_scope="widget" if sid_override else "employee",
                     runtime=runtime_result.runtime,
                     model=turn_model,
                     prompt_version=AI_PROMPT_VERSION,
@@ -3056,7 +3065,7 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                         session_id=sid,
                         company_id=company_id,
                         username=logged_in_user,
-                        agent_scope="employee",
+                        agent_scope="widget" if sid_override else "employee",
                         result=tool_result,
                     )
                 except Exception:
@@ -3383,6 +3392,9 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                             "reason": tool_result_dict.get("reason", ""),
                         }, ensure_ascii=False, default=str))
 
+                elif fn == 'add_to_calendar' and tool_result_dict.get('has_ics') and logged_in_user:
+                    from ai_actions import artifact
+                    buffered_profile_events.append(json.dumps(artifact(sid, 'employee', tool_result_dict)))
                 elif tool_result_dict.get("needs_confirmation"):
                     # Generic confirm_card: any tool that returned needs_confirmation=True
                     # (Phase 5-7 side-effect tools). Store args server-side so the
@@ -3400,7 +3412,8 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                         try:
                             from app1 import confirm_store as _cs
                             _token = _cs.store_pending(
-                                sid, "employee", _confirm_tool, __import__("tool_confirm").confirmed_arguments(_confirm_tool,tool_result.arguments,tool_result_dict)
+                                sid, "employee", _confirm_tool, __import__("tool_confirm").confirmed_arguments(_confirm_tool,tool_result.arguments,tool_result_dict),
+                                card={"summary_da": tool_result_dict.get("message_da", ""), "details": tool_result_dict.get("details"), "price": tool_result_dict.get("price")},
                             )
                             _confirm_payload = {
                                 "type": "confirm_card",

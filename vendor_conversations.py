@@ -70,7 +70,7 @@ def set_active(who, sid):
         _rollback()
 
 
-def load(who, sid):
+def _load_legacy(who, sid):
     """Stored messages for exactly this vendor's conversation, [] when none."""
     if not who or not sid:
         return []
@@ -133,3 +133,8 @@ def resolve_sid(flask_session, vendor_id):
     sid = new_sid(vendor_id)
     flask_session["vendor_chat_session_id"] = sid
     return sid
+
+
+def load(who, sid):
+    import assistant_history
+    return (_load_legacy(who, sid) + assistant_history.load(sid, MODE))[-_MAX_STORED:]

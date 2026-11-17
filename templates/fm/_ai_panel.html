@@ -39,6 +39,7 @@
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
 <script src="{{ url_for('static', filename='futurematch/assets/ai-stream.js') }}?v={{ asset_version('futurematch/assets/ai-stream.js') if asset_version is defined else 1 }}"></script>
 <script>
+var conversationToken = null;
 (function () {
   var root = document.getElementById('fmAip');
   // Self-guard: if a page somehow includes this partial twice, only wire the first.
@@ -99,7 +100,7 @@
   function restore() {
     if (restored) return; restored = true;
     fetch(HISTORY, { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
-      if (j && !busy && window.FMChatDebug) window.FMChatDebug.setId(j.session_id, 'hr');
+      if (j && !busy) { conversationToken = j.conversation_token; if (window.FMChatDebug) window.FMChatDebug.setId(j.session_id, 'hr'); }
       if (!j || !j.messages || !j.messages.length || body.querySelector('.fm-aip-msg')) return;
       clearIntro();
       j.messages.forEach(function (m) { addMsg(m.role === 'user' ? 'user' : 'bot', m.content); });
@@ -127,7 +128,7 @@
       .then(function (r) { if (!r.ok) throw new Error('Reset failed'); return r.json(); })
       .then(function (j) {
         if (!j || j.success !== true) throw new Error('Reset failed');
-        if (window.FMChatDebug) window.FMChatDebug.setId(j.session_id, 'hr');
+        conversationToken = j.conversation_token; if (window.FMChatDebug) window.FMChatDebug.setId(j.session_id, 'hr');
         Array.prototype.slice.call(body.querySelectorAll('.fm-aip-msg,.fm-chips,.fm-confirm-card,.fm-action-link,.fm-feedback')).forEach(function (n) { n.remove(); });
         addMsg('bot', 'Ny samtale. Hvad vil du vide?');
       }).catch(function () {
@@ -141,10 +142,11 @@
 
   function send(q) {
     if (busy || !q) return false;
+    if (!conversationToken) { restore(); return false; }
     busy = true; clearIntro();
     addMsg('user', q);
     var out = addMsg('bot', '…'), acc = '', msgIndex = null;
-    FMAI.ask(ASK, { query: q, page: page }, {
+    FMAI.ask(ASK, { query: q, page: page, context: {path:location.pathname, filters:Object.fromEntries(new URLSearchParams(location.search))}, conversation_token: conversationToken }, {
       text: function (d) { acc += d.content || ''; out.innerHTML = FMAI.md(acc); down(); },
       suggestions: function (d) { FMAI.chips(body, d.items, function (label) { return send(label); }); down(); },
       confirm_card: function (d) { FMAI.confirmCard(body, d); down(); },
@@ -171,7 +173,7 @@
   form.addEventListener('submit', function (e) {
     e.preventDefault();
     var q = (input.value || '').trim(); if (busy || !q) return;
-    input.value = ''; send(q);
+    if (send(q) !== false) input.value = '';
   });
 })();
 </script>

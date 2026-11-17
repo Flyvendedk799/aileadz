@@ -599,6 +599,15 @@ body.chat-page, body.mindmap-page { --fm-top-bg: var(--fm-surface); }
 .fm-foot a { color: var(--fm-ink-2); }
 .fm-foot a:hover { color: var(--fm-primary); }
 
+.fm-ai-inbox {
+  box-sizing: border-box; width: min(640px, calc(100vw - 32px)); max-height: 80vh;
+  padding: 24px; overflow-y: auto; border: 1px solid var(--fm-line); border-radius: 16px;
+  background: var(--fm-surface); color: var(--fm-ink);
+}
+.fm-ai-inbox::backdrop { background: rgb(0 0 0 / 40%); }
+.fm-ai-inbox section { padding: 16px 0; border-bottom: 1px solid var(--fm-line); }
+.fm-ai-inbox section:last-child { border-bottom: 0; }
+
 /* utilities */
 .fm-grid { display: grid; gap: 16px; }
 .fm-flex { display: flex; }

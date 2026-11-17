@@ -43,7 +43,7 @@ function harness(kind, chunks, response = {}) {
     },
     document: { createElement: () => { const el = { innerHTML: '', className: '' }; elements.push(el); return el; } },
     ASK_URL: '/ask', WATCHDOG_MS: 25000, WATCHDOG_FIRST_MS: 90000,
-    currentAbort: null, aborted: false, CARDS_MARK: '<cards>',
+    currentAbort: null, aborted: false, conversationToken: null, CARDS_MARK: '<cards>',
     md: t => t, balanceMarkdown: t => t,
     requestAnimationFrame: fn => fn(),
     down() {}, place() {}, settleActivity() {}, clearThinking() {},
@@ -163,7 +163,7 @@ for (const kind of ['shared', 'employee']) {
 test('employee: a failed POST is never automatically replayed', async () => {
   let calls = 0, errorRows = 0, finished = false;
   const context = {
-    sending: false, aborted: false, attached: [], lastActualQuery: '',
+    sending: false, resetting: false, aborted: false, attached: [], lastActualQuery: '',
     document: { querySelector: () => null }, input: { value: 'draft' },
     addUser() {}, takeHandoff: () => null, resize() {}, toggleSend() {}, setSending() {},
     addBot: () => ({}), thinking: () => ({ remove() {} }),
@@ -195,12 +195,13 @@ test('HR panel: preserves partial answers and drafts submitted while busy', () =
   const requests = [];
   const kit = { md: text => text, ask: (_url, payload, handlers) => requests.push({ payload, handlers }) };
   const context = {
-    window: { FMAI: kit }, FMAI: kit,
+    window: { FMAI: kit }, FMAI: kit, location: {pathname:'/hr',search:''}, URLSearchParams,
     document: { getElementById: id => nodes[id], createElement: element, addEventListener() {} },
   };
   vm.createContext(context);
   const panel = fs.readFileSync(path.join(root, 'templates/fm/_ai_panel.html'), 'utf8');
   vm.runInContext(panel.slice(panel.indexOf('<script>') + 8, panel.indexOf('</script>', panel.indexOf('<script>'))), context);
+  context.conversationToken = 'ready';
   function submit(text) {
     nodes.fmAipInput.value = text;
     nodes.fmAipForm.listeners.submit({ preventDefault() {} });
@@ -224,7 +225,7 @@ test('HR panel: preserves partial answers and drafts submitted while busy', () =
 test('employee: explicit resend keeps its context and preserves a new draft and attachments', async () => {
   let sent;
   const context = {
-    sending: false, aborted: false, attached: ['New course'], lastActualQuery: '',
+    sending: false, resetting: false, aborted: false, attached: ['New course'], lastActualQuery: '',
     document: { querySelector: () => null }, input: { value: 'My next question' },
     resize() {}, toggleSend() {}, setSending() {},
     addBot: () => ({}), thinking: () => ({ remove() {} }),
@@ -290,7 +291,7 @@ function hrUI(kind) {
   const nodes = {}, requests = [], timers = new Map(), resets = [];
   const getNode = id => nodes[id] || (nodes[id] = uiElement());
   const context = {
-    window: {}, AbortController,
+    window: {}, AbortController, location:{pathname:'/hr',search:''}, URLSearchParams,
     setTimeout(fn) { const id = {}; timers.set(id, fn); return id; },
     clearTimeout(id) { timers.delete(id); },
     document: { getElementById: getNode, createElement: uiElement, addEventListener() {} },
@@ -310,6 +311,7 @@ function hrUI(kind) {
   const file = kind === 'panel' ? '_ai_panel.html' : 'chatbot.html';
   const source = fs.readFileSync(path.join(root, 'templates/fm', file), 'utf8');
   vm.runInContext(source.slice(source.indexOf('<script>') + 8, source.indexOf('</script>', source.indexOf('<script>'))), context);
+  context.conversationToken = 'ready';
   return {
     input: getNode(kind === 'panel' ? 'fmAipInput' : 'chatInput'),
     body: getNode(kind === 'panel' ? 'fmAipBody' : 'chatMessages'),
@@ -370,7 +372,7 @@ for (const kind of ['panel', 'page']) {
     h.requests[0].handlers.done({});
     h.input.value = 'Min kladde';
     const pending = h.reset();
-    h.resets[0].resolve({ ok: true, json: async () => ({ success: true }) });
+    h.resets[0].resolve({ ok: true, json: async () => ({ success: true, conversation_token:'fresh' }) });
     await pending;
     assert.ok(!h.body.textContent.includes('Mit oprindelige spørgsmål'));
     assert.ok(h.body.textContent.includes('Ny samtale'));
@@ -396,3 +398,91 @@ for (const kind of ['shared', 'employee']) {
     assert.deepEqual(ids, ['chat-from-server']);
   });
 }
+
+function employeeResetUI() {
+  const timers = new Map(), notices = [], resets = [];
+  const context = {
+    window:{}, AbortController, sending:false, resetting:false, conversationToken:'old-token',
+    activeConvId:42, attached:['Unsent course'], input:{value:'Unsent draft',focus(){}},
+    welcome(){ context.painted='welcome'; }, painted:'existing messages',
+    syncConvUrl(value){ context.url=value; }, url:42,
+    toast(message){ notices.push(message); },
+    setTimeout(fn){ const id={}; timers.set(id,fn); return id; },
+    clearTimeout(id){ timers.delete(id); },
+    fetch(_url,opts){ return new Promise((resolve,reject)=>{
+      resets.push({resolve,reject});
+      opts.signal.addEventListener('abort',()=>reject(new Error('timeout')),{once:true});
+    }); },
+  };
+  vm.createContext(context);
+  vm.runInContext(employee.slice(employee.indexOf('  async function newChat()'),employee.indexOf('  window.fmNewChat')),context);
+  return {context,resets,timers,notices};
+}
+
+for (const failure of ['http','network','timeout','invalid']) {
+  test(`employee: ${failure} reset preserves transcript, token, draft and attachments`, async()=>{
+    const h=employeeResetUI(), pending=h.context.newChat();
+    assert.equal(h.context.resetting,true);
+    if(failure==='http') h.resets[0].resolve({ok:false});
+    if(failure==='network') h.resets[0].reject(new Error('offline'));
+    if(failure==='timeout') for(const timer of h.timers.values()) timer();
+    if(failure==='invalid') h.resets[0].resolve({ok:true,json:async()=>({})});
+    assert.equal(await pending,false);
+    assert.equal(h.context.painted,'existing messages');
+    assert.equal(h.context.conversationToken,'old-token');
+    assert.equal(h.context.input.value,'Unsent draft');
+    assert.deepEqual(h.context.attached,['Unsent course']);
+    assert.equal(h.context.url,42);
+    assert.equal(h.context.resetting,false);
+  });
+}
+
+test('employee: successful reset waits for a signed handle and preserves unsent work',async()=>{
+  const h=employeeResetUI(), pending=h.context.newChat();
+  assert.equal(h.context.painted,'existing messages');
+  h.resets[0].resolve({ok:true,json:async()=>({session_id:'new',conversation_token:'signed-new'})});
+  assert.equal(await pending,true);
+  assert.equal(h.context.painted,'welcome');
+  assert.equal(h.context.conversationToken,'signed-new');
+  assert.equal(h.context.input.value,'Unsent draft');
+  assert.deepEqual(h.context.attached,['Unsent course']);
+  assert.equal(h.context.url,null);
+});
+
+function confirmationUI(result={status:'rejected'}) {
+  const nodes = {}, requests=[];
+  function element(){
+    const el=uiElement();
+    el.querySelector=function(selector){
+      if(selector==='.fm-budget-consent'&&!this.innerHTML.includes('fm-budget-consent')) return null;
+      return nodes[selector]||(nodes[selector]=uiElement());
+    };
+    return el;
+  }
+  const context={window:{},document:{createElement:element},
+    fetch:async(url,opts)=>{ requests.push({url,body:JSON.parse(opts.body)}); return {ok:true,json:async()=>result}; }};
+  vm.createContext(context); vm.runInContext(shared,context);
+  const container=element();
+  context.window.FMAI.confirmCard(container,{token:'act_test',summary_da:'Review',cost_review:{total_now:100,over_budget:true}});
+  return {nodes,requests,container};
+}
+
+test('shared: Reject calls the durable revocation endpoint',async()=>{
+  const h=confirmationUI();
+  h.nodes['.fm-confirm-cancel'].listeners.click();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(h.requests.length,1);
+  assert.equal(h.requests[0].url,'/app1/actions/act_test/reject');
+  assert.equal(h.requests[0].body.token,'act_test');
+});
+
+test('shared: an over-budget proposal requires an explicit checkbox before posting',async()=>{
+  const h=confirmationUI({status:'success'});
+  h.nodes['.fm-confirm-ok'].listeners.click();
+  assert.equal(h.requests.length,0);
+  h.nodes['.fm-budget-consent'].checked=true;
+  h.nodes['.fm-confirm-ok'].listeners.click();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(h.requests.length,1);
+  assert.equal(h.requests[0].body.accept_over_budget,true);
+});

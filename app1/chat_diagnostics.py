@@ -24,6 +24,8 @@ def valid_chat_id(value):
 def bind_chat(chat_id):
     """Bind the server-resolved ID to request logs, never a client-supplied ID."""
     g.chat_id = chat_id
+    from ai_actions import bind_session
+    bind_session(chat_id)
 
 
 def _record(chat_id, step, data):

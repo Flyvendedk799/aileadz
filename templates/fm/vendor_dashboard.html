@@ -207,10 +207,11 @@
     <header class="vp-ai-head">
       <i class="fa-solid fa-robot" style="color:var(--fm-primary)"></i> Leverandør-assistent
       <button type="button" data-chat-id-copy data-chat-scope="vendor" disabled aria-label="Kopiér chat-id"><span data-chat-id-label>Kopiér chat-id</span></button>
+      <button type="button" id="vpAiNew">Ny samtale</button>
       <button type="button" class="x" id="vpAiClose" aria-label="Luk"><i class="fa-solid fa-xmark"></i></button>
     </header>
     <div class="vp-ai-body" id="vpAiBody">
-      <div class="vp-ai-hint">Spørg om dine salgstal, markedsefterspørgsel eller sammenlign et af dine kurser med markedet. Du ser kun dine egne, aggregerede tal.</div>
+      <div class="vp-ai-hint">Spørg om dine salgstal, markedsefterspørgsel eller sammenlign et af dine kurser med markedet. Få også hjælp til egne bestillinger og foreslå kursusrettelser til godkendelse.</div>
       <div class="vp-ai-chips">
         <button type="button" class="vp-ai-chip">Hvordan sælger mine kurser?</button>
         <button type="button" class="vp-ai-chip">Hvad efterspørges på markedet?</button>
@@ -222,6 +223,8 @@
       <button type="submit" aria-label="Send"><i class="fa-solid fa-paper-plane"></i></button>
     </form>
   </section>
+  <script src="{{ url_for('static', filename='futurematch/assets/ai-stream.js') }}"></script>
+  <script src="{{ url_for('static', filename='futurematch/assets/ai-actions.js') }}"></script>
   <script>
   (function () {
     var fab = document.getElementById('vpAiFab'),
@@ -232,13 +235,36 @@
         body = document.getElementById('vpAiBody');
     if (!fab) return;
     var ASK = "{{ url_for('vendor.vendor_ask') }}";
-    var busy = false;
+    var busy = false, conversationToken = null;
+    async function restore(reset) {
+      if (busy) return;
+      busy = true;
+      var controller = new AbortController(), timer = setTimeout(function () { controller.abort(); },15000);
+      try {
+        var response;
+        if (reset) {
+          response = await fetch("{{ url_for('vendor.vendor_assistant_reset') }}", {method:'POST',credentials:'same-origin',signal:controller.signal});
+        } else {
+          response = await fetch("{{ url_for('vendor.vendor_assistant_history') }}", {method:'GET',credentials:'same-origin',signal:controller.signal});
+        }
+        if (!response.ok) throw new Error('history unavailable');
+        var data = await response.json();
+        if (!data.conversation_token) throw new Error('missing conversation handle');
+        conversationToken = data.conversation_token;
+        if (window.FMChatDebug) window.FMChatDebug.setId(data.session_id,'vendor');
+        body.innerHTML = '';
+        (data.messages || []).forEach(function (m) { addMsg(m.role==='user'?'user':'bot',m.content); });
+        if (!data.messages || !data.messages.length) addMsg('bot','Hvad vil du have hjælp til?');
+      } catch (e) { addMsg('bot','Samtalen kunne ikke åbnes. Dit udkast er bevaret. Prøv igen.'); }
+      finally { clearTimeout(timer); busy=false; }
+    }
+    document.getElementById('vpAiNew').addEventListener('click',function () { restore(true); });
     var activeToolRun = null;
 
     function toggle(open) {
       panel.hidden = !open;
       fab.hidden = open;
-      if (open) setTimeout(function () { input.focus(); }, 50);
+      if (open) { if (!conversationToken) restore(false); setTimeout(function () { input.focus(); }, 50); }
     }
     fab.addEventListener('click', function () { toggle(true); });
     closeb.addEventListener('click', function () { toggle(false); });
@@ -305,7 +331,7 @@
 
     form.addEventListener('submit', function (e) {
       e.preventDefault();
-      if (busy) return;
+      if (busy || !conversationToken) return;
       var q = (input.value || '').trim();
       if (!q) return;
       busy = true;
@@ -315,58 +341,16 @@
       var out = addMsg('bot thinking', 'Arbejder…');
       var acc = '';
 
-      fetch(ASK, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-        body: JSON.stringify({ message: q })
-      })
-        .then(function (r) {
-          if (window.FMChatDebug && r.headers.get('X-Chat-ID')) window.FMChatDebug.setId(r.headers.get('X-Chat-ID'), 'vendor');
-          if (!r.ok || !r.body) {
-            out.classList.remove('thinking');
-            out.textContent = 'Kunne ikke hente svar.';
-            busy = false;
-            return;
-          }
-          var reader = r.body.getReader(), dec = new TextDecoder(), buf = '';
-          (function pump() {
-            return reader.read().then(function (res) {
-              if (res.done) {
-                out.classList.remove('thinking');
-                if (!acc) out.textContent = 'Intet svar.';
-                busy = false;
-                return;
-              }
-              buf += dec.decode(res.value, { stream: true });
-              var lines = buf.split('\n'); buf = lines.pop();
-              lines.forEach(function (line) {
-                if (line.indexOf('data: ') !== 0) return;
-                var d;
-                try { d = JSON.parse(line.substring(6)); } catch (err) { return; }
-                if (d.chat_id && window.FMChatDebug) window.FMChatDebug.setId(d.chat_id, 'vendor');
-                if (d.type === 'thinking' && !acc) {
-                  out.textContent = d.content || 'Arbejder…';
-                } else if (d.type === 'tool_call') {
-                  renderToolCall(out, d);
-                } else if (d.type === 'text' && d.content) {
-                  acc += d.content;
-                  out.classList.remove('thinking');
-                  out.textContent = acc;
-                } else if (d.type === 'error') {
-                  out.classList.remove('thinking');
-                  out.textContent = d.content || 'Der opstod en fejl.';
-                }
-                body.scrollTop = body.scrollHeight;
-              });
-              return pump();
-            });
-          })();
-        })
-        .catch(function () {
-          out.classList.remove('thinking');
-          out.textContent = 'Netværksfejl. Prøv igen.';
-          busy = false;
-        });
+      FMAI.ask(ASK, {message:q,conversation_token:conversationToken}, {
+        thinking: function (d) { if (!acc) out.textContent = d.content || 'Arbejder…'; },
+        tool_call: function (d) { renderToolCall(out,d); },
+        text: function (d) { acc += d.content || ''; out.classList.remove('thinking'); out.innerHTML = FMAI.md(acc); body.scrollTop = body.scrollHeight; },
+        suggestions: function (d) { FMAI.chips(body,d.items,function (label) { if (busy) return false; input.value=label; form.requestSubmit(); return true; }); },
+        confirm_card: function (d) { FMAI.confirmCard(body,d); },
+        ui_action: function (d) { FMAI.action(body,d); },
+        error: function (d) { var notice=document.createElement('p'); notice.textContent=d.content; out.appendChild(notice); },
+        done: function () { busy=false; out.classList.remove('thinking'); }
+      });
     });
   })();
   </script>

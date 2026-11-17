@@ -103,24 +103,24 @@ class SendCompanyEmailTests(unittest.TestCase):
         self.assertIn("error", out)
 
     def test_confirm_sends_and_audits(self):
-        with mock.patch("email_service.send_branded_email", return_value=True) as send, \
+        with mock.patch("mail_delivery.enqueue", return_value=True) as send, \
                 mock.patch("branding_service.get_branding", return_value={}):
             out, cur, conn = _run(hr_tools._execute_send_company_email,
                                   {"subject": "Kursus", "message": "Body", "confirm": True},
                                   fetchall_result=RECIPIENTS)
         self.assertTrue(out.get("success"))
-        self.assertEqual(out.get("sent"), 3)
+        self.assertEqual(out.get("queued"), 3)
         self.assertEqual(send.call_count, 3)
         self.assertTrue(any("audit_log" in s for s, _ in _writes(cur, "INSERT")))
         self.assertTrue(conn.committed)
 
     def test_partial_failure_flagged(self):
-        with mock.patch("email_service.send_branded_email", side_effect=[True, False, True]), \
+        with mock.patch("mail_delivery.enqueue", side_effect=[True, False, True]), \
                 mock.patch("branding_service.get_branding", return_value={}):
             out, _, _ = _run(hr_tools._execute_send_company_email,
                              {"subject": "K", "message": "B", "confirm": True},
                              fetchall_result=RECIPIENTS)
-        self.assertEqual(out.get("sent"), 2)
+        self.assertEqual(out.get("queued"), 2)
         self.assertTrue(out.get("partial_failure"))
 
 

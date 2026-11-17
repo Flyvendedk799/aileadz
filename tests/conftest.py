@@ -78,7 +78,7 @@ def _confirm_store_isolated():
     from app1 import confirm_store
 
     confirm_store._table_ready = False
-    confirm_store._STORE.clear()
+    confirm_store.clear_all()
     yield
     confirm_store._table_ready = False
-    confirm_store._STORE.clear()
+    confirm_store.clear_all()

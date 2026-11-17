@@ -26,7 +26,7 @@ offered, the model decides; nothing here may add a mandatory step.
 | `<suggestions>` parse/strip + SSE helper for HR/vendor/widget | `ai_reply.py` |
 | SSE vocabulary, `UI_ACTIONS`, `HR_DESTINATIONS` (canonical) | `app1/sse_events.py` |
 | Confirm/audit helper for write tools | `tool_confirm.py` |
-| Confirm-token store (MySQL `ai_confirm_tokens`) | `app1/confirm_store.py` |
+| Actor/tenant-bound proposals, receipts, artifacts and turns (`ai_actions`) | `ai_actions.py`, `ai_action_routes.py`, `ai_operations.py`; `app1/confirm_store.py` compatibility adapter |
 | Grounding circuit-breaker + `delimit_untrusted` fence | `grounding.py` |
 | Chat ID propagation, full streamed-turn capture and admin diagnostic export | `app1/chat_diagnostics.py`, `static/futurematch/assets/chat-debug.js`; [debug runbook](runbooks/CHAT_DEBUG.md) |
 | Conversation state (sessions, pointers, `rev`, digests) | `app1/conversation_state.py` |
@@ -132,8 +132,10 @@ chat.js run() -POST {query,mode,kind}-> /app1/ask  (credit_service.guard first)
         grounding circuit-breaker (post-stream disclaimer); cards / profile / cross-surface events; suggestions
 ```
 
-Tool state is passed per turn via module globals: `set_search_context(...)`
-(`tools.py`) injects shown handles, prefs, blocked vendors, supplier agreements.
+Search policy is request-local: `set_search_context(...)` copies shown handles,
+preferences, blocked vendors and supplier agreements into a request-keyed ContextVar.
+Workers copy AI context while creating separate Flask app contexts/DB connections.
+Subsequent requests cannot inherit the previous request's policy.
 
 **Runtime behaviours worth knowing**
 
@@ -143,7 +145,11 @@ Tool state is passed per turn via module globals: `set_search_context(...)`
   visible. JSON guard responses (including credit limits), expired sessions and
   rate limits show useful Danish messages. Neither transport automatically replays
   a failed POST: the server may already have executed a tool. Employee chat offers
-  an explicit **Send igen** action that retains attachments and handoff context.
+  an explicit **Send igen** action retaining attachments, handoff context and request
+  ID. Authenticated turns persist in `ai_actions`; completed duplicates replay stored
+  output, while running/cancelled/uncertain turns never repeat tool execution.
+  Stop also requests server cancellation. Checkpoints prevent subsequent tool calls;
+  an already-running write may finish and is not rolled back.
 - **Bounded waiting:** employee chat keeps its 90-second first-response / 25-second
   content-idle watchdog; shared `FMAI.ask` has a 90-second idle watchdog. Both have
   a 180-second total deadline, even if heartbeats continue. Shared callers may set
@@ -319,18 +325,45 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
   `company_required`, `side_effect`, `parallel_safe`, `cache_ttl`, `confirm_required`,
   `audit_action`, `manager_only`, `progress_label`, label/category/icon. chat.js has a
   parallel `TOOL_LABELS`; backend `label` wins, fallback = humanised name.
-- **Write tools = propose -> confirm -> audit** (`tool_confirm.py`):
-  `needs_confirmation_payload` (executor returns a preview, nothing runs),
-  `manager_guard`, `audit_chat_mutation`. The agent stores args server-side in
-  `confirm_store` and emits a `confirm_card` with an opaque token; the browser posts
-  `POST /app1/confirm_tool_action`, which consumes the token, injects `confirm=True`
-  and re-dispatches (double-confirm is idempotent). HR write tools (e.g.
-  `send_company_email`, `create_order_for_employee`, `schedule_recurring_report`,
-  `send_deadline_reminders`, `recheck_compliance`) are `manager_only` + confirm-gated;
-  `send_company_email` previews recipient count; `create_order_for_employee` rejects
-  cross-tenant targets. Employee action tools: `save_course_for_later`,
-  `set_course_reminder` (immediate), `manage_my_order` (cancel own order),
-  `request_manager_approval` (confirm, self-scoped).
+- **Write tools = propose -> confirm -> audit:** preview arguments and cards live in
+  `ai_actions`, bound to actor, company and surface. `/app1/actions/<id>/confirm`
+  atomically claims pending proposals and rechecks authorization. Models cannot grant
+  themselves `confirm=true`. Reject persists revocation. Success (including boolean
+  `success:true`), partial, expired and uncertain outcomes have durable receipts.
+  The old confirm/reject endpoints route bound tokens to the new handlers; production
+  refuses legacy tokens without actor/company ownership.
+- **Action inbox:** authenticated shells expose pending confirmations, receipts,
+  cancellation and calendar downloads through `/app1/actions`. All endpoints recheck
+  ownership. The additive `c002_ai_actions` migration uses canonical registry DDL;
+  records participate in GDPR export/erasure and 180-day configurable retention
+  (`RETENTION_AI_ACTIONS_DAYS`).
+- **HR parity:** tool selection/dispatch use the normal capability matrix through
+  `ai_permissions.py`. Scoped reads override model filters with the actor's department;
+  unscoped analytics are unavailable to department heads. Assignment previews show
+  current/later totals and department budgets; shared services recheck reviewed totals
+  and explicit over-budget consent. Announcements enqueue through `mail_delivery`
+  using action-based deduplication and delivery groups; receipts say queued, not sent.
+- **Booking and vendor workflows:** `manage_my_order` supports own cancellation and
+  reschedule requests; `hr_request_order_change` also supports substitution. Both use
+  canonical order/fulfillment services and preserve supplier approval. `order_calendar`
+  shares booking times, joining details, references and instructions with order pages.
+  Vendor tools expose own booking references/navigation without buyer identities, and
+  propose title/summary corrections through the revision-checked admin submission
+  queue (`vendor_catalog_changes`), never direct publication.
+- **Cross-surface continuity:** employee/HR tabs carry signed actor/company/surface
+  conversation handles. Failed resets preserve transcript, drafts and attachments.
+  HR/vendor turns append independently through `assistant_history`; vendor history
+  reloads each turn. HR bindings prevent a company switch from reopening foreign
+  history. Deletion clears semantic conversation recall, rolling digests and related
+  actions; tombstones prevent late saves from restoring deleted transcripts.
+- **Context and tracing:** HR page entities/filters are resolved server-side with
+  tenant/department checks. Order pages, notifications, agenda items and check-ins
+  carry resumable references resolved against authorized records, with content fenced
+  as data. Admin diagnostics include `workflow_trace`, correlating operation/tool/run
+  IDs with orders, approvals, notification links and mail delivery state (no bodies).
+- **Transport parity:** vendor/widget use `FMAI.ask` for bounded waits, explicit
+  completion, partial output and suggestions. Widget calls check the embedding
+  company's credit guard and meter company-owned usage without a username.
 - **Course orders:** `create_course_order` without `confirm` (and a ready
   `prepare_course_order`, which carries the same preview with
   `confirm_tool: "create_course_order"`) emits the confirm card; the agent stores the
@@ -774,3 +807,8 @@ SANDBOX=1 AI_WARMUP_ON_IMPORT=0 MYSQL_HOST=127.0.0.1 MYSQL_USER=none MYSQL_PASSW
   `test_competency.py`; memory `test_memory_dedup.py`, `test_memory_routes.py`,
   `test_prune_summary_carryforward.py`; GDPR `test_gdpr_table_coverage.py`; eval scorers
   `test_eval_scorers.py`, `test_eval_fluency.py`, `test_tooler2_scorers.py`.
+
+Cross-surface regressions: `tests/test_ai_cross_surface_workflows.py` covers tenant
+isolation, durable receipts/replay, cancellation, request-local policy, cost review,
+calendar/booking changes and concurrent history. Browser reset, reject, budget
+consent and transport contracts run in `tests/js/chat_stream.test.cjs`.

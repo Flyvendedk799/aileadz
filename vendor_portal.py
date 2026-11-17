@@ -651,15 +651,8 @@ def vendor_course_edit(handle):
             fields=catalog.session_fields_from_form(request.form)
             fields.update(title=request.form.get('title','').strip()[:255],summary=request.form.get('summary','').strip()[:4000])
             if not fields['title']:raise ValueError('Angiv en kursustitel.')
-            candidate=dict(product.get('raw') or {},**fields,handle=handle,vendor=vendor)
-            draft=catalog.save_import_draft({'products':[candidate],'errors':[],'warnings':[],
-                    'direct_edit':True,'forced_vendor':vendor,'edit_fields':fields,'expected_revision':request.form['revision']},
-                    filename='Kursusrettelse: '+product['title'],uploaded_by='vendor:'+str(session['vendor_id']))
-            cur=_db().cursor()
-            try:
-                cur.execute("INSERT INTO vendor_submissions (vendor_id,job_id,filename,row_count,status) VALUES (%s,%s,%s,1,'pending')",(session['vendor_id'],draft['job_id'],'Kursusrettelse: '+product['title']))
-                _db().commit()
-            finally:cur.close()
+            from vendor_catalog_changes import submit
+            submit(handle, fields, request.form['revision'])
             flash('Rettelsen er indsendt. Den publicerede version er uændret indtil godkendelse.','success')
             return redirect(url_for('vendor.vendor_dashboard'))
         except (ValueError,TimeoutError) as exc:
@@ -1031,6 +1024,9 @@ def vendor_ask():
     if not user_query:
         return jsonify({"error": "Skriv et spørgsmål."}), 400
 
+    if len(user_query) > 5000:
+        return jsonify(error='Beskeden må højst være 5000 tegn.'), 400
+
     # Lazy, guarded imports so a broken AI stack never crashes the portal.
     try:
         from vendor_tools import VENDOR_TOOLS, execute_vendor_tool
@@ -1044,14 +1040,17 @@ def vendor_ask():
     # only a cache, so a deploy / second worker / new tab keeps the conversation.
     import vendor_conversations
     who = vendor_conversations.owner(vendor_id)
-    sid = vendor_conversations.resolve_sid(session, vendor_id)
+    from conversation_tokens import read
+    token = payload.get('conversation_token')
+    sid = read(token, 'vendor') if token else vendor_conversations.resolve_sid(session, vendor_id)
+    if not sid:
+        return jsonify(error='Åbn samtalen igen med din leverandørkonto.'), 409
     from app1.chat_diagnostics import bind_chat, instrument_response, record_failure
     bind_chat(sid)
-    if sid not in VENDOR_CHAT_MEMORY:
-        VENDOR_CHAT_MEMORY[sid] = [{"role": "system", "content": VENDOR_SYSTEM_PROMPT}] + [
-            dict(m, _ts=time.time()) for m in vendor_conversations.load(who, sid)]
-
-    messages = VENDOR_CHAT_MEMORY[sid]
+    from tool_confirm import CONFIRMATION_GUIDANCE
+    messages = [{"role": "system", "content": VENDOR_SYSTEM_PROMPT + "\n" + CONFIRMATION_GUIDANCE}] + [
+        dict(m, _ts=time.time()) for m in vendor_conversations.load(who, sid)]
+    VENDOR_CHAT_MEMORY[sid] = messages
     # Inject/refresh a small vendor-context system line (which vendor we are). The
     # name is vendor-controlled free text, so it is fenced as DATA (prompt injection).
     try:
@@ -1175,6 +1174,15 @@ def vendor_ask():
                     )
                 except Exception:
                     pass
+                data = json.loads(tool_result.output or '{}')
+                if data.get('needs_confirmation'):
+                    from app1.confirm_store import store_pending
+                    args = data['confirmation_args'] if tool_result.name == 'vendor_propose_catalog_correction' else tool_result.arguments
+                    card = {'summary_da':data.get('message_da'), 'details':data.get('details')}
+                    token = store_pending(sid, 'vendor', tool_result.name, args, card=card)
+                    yield _vendor_sse(dict(card, type='confirm_card', token=token))
+                for order in data.get('orders', []):
+                    yield _vendor_sse({'type':'ui_action','target':order['url'],'label':'Åbn ' + (order.get('product_title') or 'bestilling')})
 
             close_flask_mysql_connection()
 
@@ -1220,7 +1228,9 @@ def vendor_ask():
             # Bound memory growth.
             if len(messages) > 30:
                 VENDOR_CHAT_MEMORY[sid] = [messages[0]] + messages[-16:]
-            vendor_conversations.save(who, sid, [m for m in VENDOR_CHAT_MEMORY[sid] if m.get("role") in ("user", "assistant")])
+            import assistant_history
+            assistant_history.append(sid, 'vendor', user_query, full_text)
+            vendor_conversations.set_active(who, sid)
 
             yield _vendor_sse({"type": "done"})
         except Exception as e:
@@ -1244,4 +1254,27 @@ def vendor_ask():
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-    return instrument_response(response, chat_id=sid, query=user_query, scope="vendor")
+    import ai_operations
+    return ai_operations.run(lambda: instrument_response(response, chat_id=sid, query=user_query, scope="vendor"),
+                             scope='vendor', sid=sid, request_id=payload.get('request_id'), payload=payload)
+
+
+@vendor_bp.route('/assistant/history')
+@_vendor_login_required
+def vendor_assistant_history():
+    import vendor_conversations
+    from conversation_tokens import mint
+    sid = vendor_conversations.resolve_sid(session, session['vendor_id'])
+    return jsonify(session_id=sid, conversation_token=mint(sid,'vendor'),
+                   messages=vendor_conversations.load(vendor_conversations.owner(session['vendor_id']),sid))
+
+
+@vendor_bp.route('/assistant/reset',methods=['POST'])
+@_vendor_login_required
+def vendor_assistant_reset():
+    import vendor_conversations
+    from conversation_tokens import mint
+    sid = vendor_conversations.new_sid(session['vendor_id'])
+    session['vendor_chat_session_id'] = sid
+    vendor_conversations.set_active(vendor_conversations.owner(session['vendor_id']),sid)
+    return jsonify(success=True,session_id=sid,conversation_token=mint(sid,'vendor'))

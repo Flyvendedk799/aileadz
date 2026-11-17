@@ -224,25 +224,12 @@ def register_learner_order_routes(bp):
         if not session.get("user"):
             return redirect(url_for("auth.login"))
         row, actors, _ = _load(order_id)
-        if not row or "owner" not in actors or not row.get("variant_date"):
+        if not row or "owner" not in actors:
             abort(404)
         try:
-            from calendar_service import build_ics
+            from order_calendar import build
             import order_fulfillment
-            import MySQLdb.cursors
-            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-            try:
-                booking = order_fulfillment.details(cur,order_id).get('booking_json') or {}
-            finally:
-                cur.close()
-            ics = build_ics(
-                title="Kursus: %s" % (row.get("product_title") or "Uddannelse"),
-                start=booking.get('start_at') or row.get("variant_date"),
-                end=booking.get('end_at') or None,
-                location=booking.get('location') or booking.get('join_url') or row.get("variant_location") or "",
-                description="\n".join(filter(None,["Bestilt kursus (ordre %s)." % str(order_id)[:8],booking.get('reference'),booking.get('instructions'),booking.get('join_url')])) ,
-                url=request.url_root.rstrip("/") + url_for("futurematch.my_order", order_id=order_id),
-            )
+            _, ics = build(row, order_fulfillment.booking_for(order_id))
         except Exception as e:
             logger.warning("learner_orders: ics failed: %s", e)
             abort(404)

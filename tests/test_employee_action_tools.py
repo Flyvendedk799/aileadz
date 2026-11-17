@@ -51,7 +51,7 @@ class ManageMyOrderTests(unittest.TestCase):
     def test_preview_without_confirm(self):
         with mock.patch("order_service.OrderContext.from_session", return_value=self._ctx()), \
                 mock.patch("order_service.get_order",
-                           return_value={"success": True, "order": {"product_title": "Python", "order_id": "o1"}}), \
+                           return_value={"product_title":"Python","order_id":"o1","user_id":7,"company_id":42}), \
                 mock.patch("order_service.cancel_order") as cancel:
             out = json.loads(tools._execute_manage_my_order({"order_id": "o1"}, username="eva"))
         self.assertTrue(out.get("needs_confirmation"))
@@ -60,14 +60,14 @@ class ManageMyOrderTests(unittest.TestCase):
 
     def test_foreign_order_not_found(self):
         with mock.patch("order_service.OrderContext.from_session", return_value=self._ctx()), \
-                mock.patch("order_service.get_order", return_value={"success": False, "error": "not_found"}):
+                mock.patch("order_service.get_order", return_value=None):
             out = json.loads(tools._execute_manage_my_order({"order_id": "foreign", "confirm": True}, username="eva"))
         self.assertEqual(out.get("status"), "error")
 
     def test_confirm_cancels(self):
         with mock.patch("order_service.OrderContext.from_session", return_value=self._ctx()), \
                 mock.patch("order_service.get_order",
-                           return_value={"success": True, "order": {"product_title": "Python", "order_id": "o1"}}), \
+                           return_value={"product_title":"Python","order_id":"o1","user_id":7,"company_id":42}), \
                 mock.patch("order_service.cancel_order",
                            return_value={"success": True, "refunded": True}) as cancel:
             out = json.loads(tools._execute_manage_my_order({"order_id": "o1", "confirm": True}, username="eva"))
@@ -86,14 +86,14 @@ class RequestManagerApprovalTests(unittest.TestCase):
                 mock.patch("flask.session", sess), \
                 mock.patch("order_service.OrderContext.from_session", return_value=self._ctx()), \
                 mock.patch("order_service.get_order",
-                           return_value={"success": True, "order": {"product_title": "Lederkursus", "order_id": "o1"}}):
+                           return_value={"product_title":"Lederkursus","order_id":"o1","user_id":7,"company_id":42,"status":"pending_approval"}):
             preview = json.loads(tools._execute_request_manager_approval({"order_id": "o1"}, username="eva"))
             self.assertTrue(preview.get("needs_confirmation"))
             with mock.patch("order_service._manager_recipient_emails", return_value=["m@x.dk", "n@x.dk"]), \
-                    mock.patch("email_service.send_branded_email", return_value=True) as send:
+                    mock.patch("mail_delivery.enqueue", return_value=True) as send:
                 out = json.loads(tools._execute_request_manager_approval({"order_id": "o1", "confirm": True}, username="eva"))
         self.assertEqual(out.get("status"), "success")
-        self.assertEqual(out.get("sent"), 2)
+        self.assertEqual(out.get("queued"), 2)
         self.assertEqual(send.call_count, 2)
 
 

@@ -608,7 +608,7 @@ _MUTATION_CONFIRM_MARKERS = (
 _MUTATION_TOOLS = frozenset({
     "schedule_recurring_report", "recheck_compliance",
     "send_company_email", "send_deadline_reminders", "create_order_for_employee",
-    "manage_my_order", "request_manager_approval",
+    "manage_my_order", "request_manager_approval", "share_learning_goal",
     "approve_order_from_chat", "reject_order_from_chat",
 })
 

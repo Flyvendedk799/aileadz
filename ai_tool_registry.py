@@ -193,6 +193,17 @@ _EMPLOYEE_META = {
         "update_learning_goal", auth_required=True, side_effect=True, parallel_safe=False,
         toolset_tags=("profile", "goals"),
     ),
+    # Own goal visibility: private until the owner shares it with their company's HR.
+    "share_learning_goal": ToolMeta(
+        "share_learning_goal", auth_required=True, company_required=True,
+        side_effect=True, parallel_safe=False, confirm_required=True,
+        toolset_tags=("profile", "goals", "mutation"),
+    ),
+    # Read-only: own role readiness, development goals, internal opportunities and applications.
+    "get_my_development": ToolMeta(
+        "get_my_development", auth_required=True, company_required=True,
+        toolset_tags=("profile", "goals", "talent"), cache_ttl=20,
+    ),
     # --- Specialised employee tools (keyword-gated, NOT in core seed) ---
     "get_my_course_status": ToolMeta(
         "get_my_course_status", auth_required=True, toolset_tags=("course", "status"), cache_ttl=30,
@@ -410,6 +421,8 @@ _TOOL_LABELS = {
     "update_learning_path": "Opdater læringssti",
     "set_learning_goal": "Opret mål",
     "get_learning_goals": "Hent mål",
+    "share_learning_goal": "Del mål med HR",
+    "get_my_development": "Min udvikling",
     "update_learning_goal": "Opdater mål",
     "get_my_course_status": "Kursusstatus",
     "get_negotiated_discount": "Aftalepris",
@@ -1138,6 +1151,8 @@ def get_employee_tool_selection(
             "forget_about_user", "show_mindmap_preview",
             "resolve_checkin", "record_learning_outcome",
         })
+        if company_id:
+            names.add("get_my_development")
 
     # Pure small-talk fast-path: only for genuine greetings/thanks with NO substantive
     # signal. Anything mentioning the catalog OR the user's own background falls through
@@ -1255,6 +1270,21 @@ def get_employee_tool_selection(
                 "vil gerne lære", "vil gerne laere", "vil gerne blive", "karriere", "udvikle mig",
                 "lære at", "laere at", "sæt et mål", "saet et maal", "mit mål", "mine mål")):
             names.update({"set_learning_goal", "get_learning_goals", "update_learning_goal", "recommend_for_profile", "catalog_search", "show_skill_gaps"})
+        # Own development in the company: role readiness, development goals, internal
+        # opportunities, applications. Read-only, so it may ride along on career talk.
+        if company_id and _has_any(query, (
+                "min rolle", "min nuværende rolle", "for at blive", "næste rolle", "naeste rolle", "næste skridt",
+                "naeste skridt", "min udvikling", "udvikle mig", "karriere", "interne muligheder", "intern mulighed",
+                "internt job", "interne stillinger", "min ansøgning", "min ansoegning", "ansøgning", "ansoegning",
+                "kompetencekrav", "klar til", "rollebeskrivelse")):
+            names.add("get_my_development")
+        # Goal visibility is the owner's call: the share tool only shows a confirm card.
+        if company_id and _has_any(query, (
+                "del mit mål", "del mit maal", "del målet", "del maalet", "dele mit mål", "dele målet", "del med hr",
+                "dele med hr", "må hr se", "maa hr se", "kan hr se", "kan min leder se", "min leder må gerne se",
+                "gør målet privat", "goer maalet privat", "gør mit mål privat", "privat igen", "hvem kan se mine mål",
+                "hvem kan se mit mål", "stop deling")):
+            names.update({"get_learning_goals", "share_learning_goal"})
         # Dedicated gap gate: "hvad mangler jeg / hvilke kompetencer skal jeg
         # udvikle / what should I learn" → the gap card + a gap-closing rec.
         if _has_any(query, (
@@ -1377,7 +1407,7 @@ def get_employee_tool_selection(
                 "create_course_order", "update_user_profile", "mark_course_complete", "remember_about_user",
                 # AI Tooler 2 (Phase 7): self-scoped, confirm-gated employee writes — reach
                 # the menu on their keyword so the model can surface a confirm card.
-                "manage_my_order", "request_manager_approval",
+                "manage_my_order", "request_manager_approval", "share_learning_goal",
                 # Learning-path lifecycle: user-scoped writes that modify the user's
                 # own learning plan. Needed in profiler mode on every turn.
                 "save_learning_path", "update_learning_path",
@@ -1480,6 +1510,11 @@ def get_hr_tool_selection(
         forced_candidates.append("get_company_skill_gaps")
     if _has_any(query, ("træning", "training", "status", "gennemført", "igang", "medarbejder")):
         names.update({"get_team_training_status", "get_employee_overview"})
+    # One person's goals and role readiness live on the employee lookup.
+    if _has_any(query, ("udviklingsmål", "udviklingsmaal", "delt mål", "delte mål", "hans mål", "hendes mål",
+                        "deres mål", "mål for ", "udviklingssamtale", "mus-samtale", "mus samtale",
+                        "klar til rollen", "dækker rollen", "rollekrav", "kompetencekrav")):
+        names.add("get_employee_overview")
     if _has_any(query, ("rapport", "roi", "spend", "udgifter", "effekt")):
         names.add("get_training_report")
     if _has_any(query, ("kursus", "kurser", "anbefal", "plan", "uddannelse")):

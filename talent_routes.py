@@ -41,6 +41,16 @@ def required(cur, cid, module):
         abort(404)
 
 
+def _profile_schema():
+    """Goal visibility lives on the profile's goal table; make sure its columns exist
+    before a transaction starts (cached after the first call in a process)."""
+    try:
+        from app1.user_profile_db import ensure_tables
+        ensure_tables()
+    except Exception:
+        current_app.logger.debug("profile schema step unavailable", exc_info=True)
+
+
 def hr_access():
     if not can('company.employees'):
         abort(403)
@@ -197,6 +207,7 @@ def hr():
 @login_required
 def action(action):
     f = request.form
+    _profile_schema()
     hr_actions = {'settings', 'role', 'publish_role', 'assign_role', 'manager_assessment', 'opportunity', 'publish_opportunity', 'close_opportunity', 'placement', 'scenario', 'publish_scenario'}
     cur, cid, user_id = context(management=action in hr_actions or action == 'transition')
     dest = 'talent.hr' if action in hr_actions or f.get('return_to') == 'hr' and can('company.employees') else 'talent.workspace'

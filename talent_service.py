@@ -447,3 +447,53 @@ def cohort_states(cur, company_id, people):
         if row['employee_id'] in ids:
             matrix[row['employee_id']].append(row)
     return [snapshot(profiles[user_id], matrix[user_id]) for user_id in ids]
+
+
+def _readiness_brief(r):  # also used by hr_tools for one employee
+    """Readiness without internals: what is covered, what is missing, what is unknown."""
+    if not r:
+        return None
+    if not r.get('available'):
+        return dict(available=False)
+    return dict(available=True, covered=r['counts']['satisfied'], total=r['total'], self_assessed_only=r['counts']['provisional'],
+                requirements=[dict(skill=i['skill'], level=i['current_level'], target=i['target_level'], status=i['status'],
+                                   self_assessed=bool(i['provisional'])) for i in r['requirements']])
+
+
+def overview(cur, company_id, user_id, explore_role=None):
+    """One person's own development picture for the assistant: role readiness,
+    development goals with their steps, and (when the company uses internal
+    mobility) open opportunities and the person's applications.
+
+    Read-only and private to the person: exploring a role stores nothing."""
+    state = employee_state(cur, company_id, user_id)
+    settings = flags(cur, company_id)
+    out = dict(workspace_url='/udvikling', current_role=None, goals=[], roles=[], explored_role=None,
+               opportunities=[], applications=[])
+    if state.get('current_role'):
+        out['current_role'] = dict(title=state['current_role']['title'], readiness=_readiness_brief(state['readiness']))
+    for link in goals(cur, company_id, user_id):
+        out['goals'].append(dict(goal_id=link['goal_id'], title=link['title'], shared_with_hr=bool(link['shared']),
+                                 review_date=str(link['review_date']) if link.get('review_date') else None,
+                                 readiness=_readiness_brief(evaluate(state, link['requirements'])),
+                                 steps=[dict(title=s['title'], kind=s['kind'], done=bool(s.get('done'))) for s in link['actions']]))
+    if settings.get('roles_enabled'):
+        published = roles(cur, company_id)
+        out['roles'] = sorted({r['title'] for r in published})[:25]
+        wanted = (explore_role or '').strip().casefold()
+        if wanted:
+            match = next((r for r in published if r['title'].casefold() == wanted), None) \
+                or next((r for r in published if wanted in r['title'].casefold()), None)
+            if match:
+                out['explored_role'] = dict(title=match['title'], readiness=_readiness_brief(
+                    evaluate(state, match['requirements'], version=match['id'])))
+    if settings.get('mobility_enabled'):
+        cur.execute("SELECT id,title,kind,department,location,deadline FROM talent_opportunities "
+                    "WHERE company_id=%s AND status='published' AND deadline>=CURRENT_DATE ORDER BY deadline,title", (company_id,))
+        out['opportunities'] = [dict(title=o['title'], kind=o['kind'], department=o.get('department') or '',
+                                     location=o.get('location') or '', deadline=str(o['deadline']), url='/muligheder')
+                                for o in cur.fetchall()][:15]
+        cur.execute('SELECT a.status,o.title FROM talent_applications a JOIN talent_opportunities o ON o.id=a.opportunity_id '
+                    'AND o.company_id=a.company_id WHERE a.company_id=%s AND a.user_id=%s ORDER BY a.created_at DESC', (company_id, user_id))
+        out['applications'] = [dict(title=a['title'], stage=STAGE_LABELS.get(a['status'], a['status'])) for a in cur.fetchall()]
+    return out

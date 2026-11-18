@@ -1032,6 +1032,42 @@
         "fluent": true,
         "expect_confirmation_before_order": true
       }
+    },
+    {
+      "id": "talent_explore_role",
+      "query": "Hvad mangler jeg for at blive teamleder hos os?",
+      "intent": "profile",
+      "expect": {
+        "tool_any_of": [
+          "get_my_development",
+          "show_skill_gaps",
+          "analyze_skill_gaps"
+        ],
+        "fluent": true
+      }
+    },
+    {
+      "id": "talent_internal_opportunities",
+      "query": "Er der nogen interne muligheder, jeg kunne søge?",
+      "intent": "profile",
+      "expect": {
+        "tool_any_of": [
+          "get_my_development"
+        ],
+        "fluent": true
+      }
+    },
+    {
+      "id": "goal_share_with_hr",
+      "query": "Del mit mål om at blive teamleder med HR",
+      "intent": "employee_action",
+      "expect": {
+        "tool_any_of": [
+          "share_learning_goal",
+          "get_learning_goals"
+        ],
+        "expect_confirmation_before_mutation": true
+      }
     }
   ]
 }

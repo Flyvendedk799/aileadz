@@ -846,6 +846,8 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
     get_learning_path: "Hent læringssti",
     open_in_app: "Åbn i appen",
     set_learning_goal: "Opret mål",
+    share_learning_goal: "Del mål med HR",
+    get_my_development: "Min udvikling",
     get_learning_goals: "Hent mål",
     update_learning_goal: "Opdater mål",
     get_my_course_status: "Kursusstatus",

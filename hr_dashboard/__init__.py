@@ -2766,6 +2766,8 @@ def create_hr_dashboard_blueprint():
             from_employee = []
             try:
                 import goal_service
+                from app1.user_profile_db import ensure_tables
+                ensure_tables()  # adds the sharing columns on first use in this process
                 from_employee = goal_service.for_hr(cur, company['id'], user_id)['shared_by_employee']
             except Exception:
                 current_app.logger.warning("employee-shared goals unavailable", exc_info=True)

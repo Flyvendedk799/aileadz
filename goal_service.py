@@ -22,6 +22,9 @@ unshared own goal. New HR-facing code (pages, HR assistant tools, reports,
 exports) must read goals through ``for_hr``, never from the tables.
 
 Callers pass a DictCursor, authorize the actor, own the transaction and commit.
+The sharing columns on ``user_learning_goals`` are added by the profile schema
+step (``app1.user_profile_db.ensure_tables``); an entry point (route, tool) calls
+it before opening its transaction, never this module in the middle of one.
 The talent workspace's development links (``talent_goal_links.shared``) mirror
 the goal's flag: ``share_own_goal`` keeps them in step.
 """
@@ -37,16 +40,6 @@ _HR_STATUS = {"active": "active", "in_progress": "active", "completed": "done", 
               "paused": "paused", "on_hold": "paused"}
 # What HR may set on a goal it wrote (canonical -> stored value).
 HR_STATUS_VALUES = {"active": "active", "done": "completed", "paused": "paused"}
-
-
-def _ready():
-    """The sharing columns on ``user_learning_goals`` are added by the profile
-    schema step; make sure it has run in this process (cached after the first call)."""
-    try:
-        from app1.user_profile_db import ensure_tables
-        ensure_tables()
-    except Exception:
-        logger.debug("profile schema step unavailable", exc_info=True)
 
 
 def _record(owner, row, status, shared, shared_at=None):
@@ -85,7 +78,6 @@ def _username(cur, company_id, user_id):
 
 def for_learner(cur, username, company_id=None, user_id=None):
     """Everything the person may see: all their own goals, and the HR goals shared with them."""
-    _ready()
     cur.execute("SELECT id,title,description,target_date,status,shared_with_hr,shared_company_id,shared_at "
                 "FROM user_learning_goals WHERE username=%s ORDER BY (status='aktiv') DESC, updated_at DESC", (username,))
     own = [_own(r, company_id) for r in cur.fetchall()]
@@ -104,7 +96,6 @@ def for_hr(cur, company_id, user_id):
     ``shared_by_employee``: the person's own goals they chose to share with this
     company, nothing else of theirs. ``shared_with_employee`` / ``hr_only``: the
     goals HR wrote."""
-    _ready()
     out = {"shared_by_employee": [], "shared_with_employee": [], "hr_only": []}
     username = _username(cur, company_id, user_id)
     if not username:
@@ -128,7 +119,6 @@ def share_own_goal(cur, company_id, user_id, goal_id, shared):
     Returns the goal title, or None when the goal is not theirs. HR is told the
     first time a goal becomes shared; unsharing is silent and immediate, also for
     the goal's development links in the talent workspace."""
-    _ready()
     username = _username(cur, company_id, user_id)
     if not username:
         return None
@@ -175,7 +165,6 @@ def _mirror_links(cur, company_id, user_id, goal_id, shared):
 
 
 def own_goal_is_shared(cur, company_id, username, goal_id):
-    _ready()
     cur.execute("SELECT 1 AS x FROM user_learning_goals WHERE id=%s AND username=%s AND shared_with_hr=1 AND shared_company_id=%s",
                 (goal_id, username, company_id))
     return bool(cur.fetchone())

@@ -95,7 +95,7 @@ share one profile and one memory, and hand the user to each other with context:
   for the first message (or the profiler's own opener, which no longer fires on top of a
   handoff: `bootChat` resolves `true` when it sent something).
 - **Vocabulary** (`app1/surface_context.py`): `from` in `SURFACES` (`chat, profiler,
-  mind_map, profile, cv_upload, my_learning, goals, timeline`); `focus` is `section:<key>`
+  mind_map, profile, cv_upload, my_learning, goals, development, timeline`); `focus` is `section:<key>`
   (`SECTIONS`) or a Mind-Map node id (`skill:42`, `exp:7`, `edu:`, `cert:`, `lang:`,
   `goal:`, `link:`, `path:`, `course:`, `mem:`), the same ids as `open_mind_map` and
   `#n=`. `normalize_context` whitelists in `ask()`; `resolve_focus` looks the ref up in
@@ -427,6 +427,19 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
   read-only cards; reach the menu by keywords + semantic fallback.
   `show_skill_gaps` = `compute_skill_gaps` (1-5 scale) -> `skill_gaps_card`; its JSON is
   the data the model reasons over (chains to `recommend_for_profile`).
+- **`get_my_development`** (company members only, read-only): the person's own picture from
+  `talent_service.overview` - current role and how its competency requirements are covered,
+  development goals with their steps, and, when the company enabled mobility, open internal
+  opportunities and the person's applications. `explore_role` evaluates them against another
+  published role and stores nothing. Reaches the menu on career/role/opportunity wording, in
+  assistant mode, and on a handoff from `/udvikling` (`from=development`).
+- **`share_learning_goal`** (company members only, confirm-gated): the owner shares one own goal
+  with their company's HR or takes it back (`goal_service.share_own_goal`). `get_learning_goals`
+  returns each goal's `visibility` and, when the company lets the AI use them, the goals the
+  manager shared (`from_manager`).
+- **HR `get_employee_overview`** for one employee adds `development`: goals through
+  `goal_service.for_hr` (the employee's own goals only when shared) and role readiness when
+  role frameworks are on. HR tools never read the goal tables directly.
 - **`get_my_agenda`** (profile-gated): cross-silo "what's on my plate" - course
   deadlines + pending approvals (`course_orders`, `order_approvals`), expiring
   certifications (`user_certifications`, `cert_expiry_service.parse_expiry`), dated

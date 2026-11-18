@@ -46,6 +46,7 @@ SURFACES = {
     "checkin": "en opfølgning",
     "order": "bestillingen",
     "goals": "Mine mål",
+    "development": "Min udvikling (rolle, kompetencekrav, udviklingsmål og interne muligheder)",
     "timeline": "tidslinjen med frister",
 }
 
@@ -78,6 +79,7 @@ _ORIGIN_TOOLS = {
     "cv": ("show_cv_summary", "show_skill_gaps", "recommend_for_profile"),
     "my_learning": ("get_my_agenda",),
     "goals": ("get_learning_goals", "track_goal_progress"),
+    "development": ("get_my_development", "get_learning_goals", "recommend_for_profile"),
     "timeline": ("get_my_agenda",),
 }
 _FOCUS_TOOLS = {
@@ -316,6 +318,9 @@ def build_layer(ctx, resolved=None, mode="default"):
                     "show_cv_summary viser, hvad der løfter det mest.")
     elif origin == "mind_map":
         head.append("Der ser de alt det, AI'en ved om dem, så rettelser og 'glem det' er naturlige her.")
+    elif origin == "development":
+        head.append("De har lige set på deres rolle, kompetencekrav og udviklingsmål; get_my_development "
+                    "viser det samme billede, så svar ud fra det i stedet for at spørge om det, der står der.")
     return " ".join(head), "", False
 
 

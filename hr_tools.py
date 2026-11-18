@@ -141,7 +141,7 @@ HR_TOOLS = [
         "type": "function",
         "function": {
             "name": "get_employee_overview",
-            "description": "Get details about a specific employee or list employees. Shows training history, skills, activity, and department.",
+            "description": "Get details about a specific employee or list employees. Shows training history, skills, activity, and department. For one employee (username given) it also shows their development goals (the ones HR wrote, and the employee's own goals only if the employee shared them) and, when the company uses role frameworks, how well they cover their current role's competency requirements.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -1345,6 +1345,49 @@ def _execute_get_budget_overview(args):
     return json.dumps(result, default=str)
 
 
+def _employee_development(cur, company_id, username):
+    """Goals and role readiness for ONE employee, as HR may see them.
+
+    Goals come from ``goal_service.for_hr``: the goals HR wrote, and of the
+    employee's own goals only the ones they chose to share. Never read the goal
+    tables here. Each part is optional: a missing module leaves it out."""
+    cur.execute("SELECT u.id FROM users u JOIN company_users cu ON cu.user_id=u.id "
+                "WHERE cu.company_id=%s AND u.username=%s AND cu.status='active'", (company_id, username))
+    row = cur.fetchone()
+    if not row:
+        return None
+    user_id, out = row['id'], {}
+    try:
+        import goal_service
+
+        def brief(goals):
+            return [{"title": g["title"], "status": g["status_label"], "target_date": g["target_date"] or None}
+                    for g in goals]
+
+        goals = goal_service.for_hr(cur, company_id, user_id)
+        out["goals"] = {
+            "written_by_hr_shared_with_employee": brief(goals["shared_with_employee"]),
+            "written_by_hr_not_shared": brief(goals["hr_only"]),
+            "shared_by_employee": brief(goals["shared_by_employee"]),
+            "note": "Medarbejderens egne mål vises kun, når medarbejderen har delt dem. Øvrige egne mål er private.",
+            "url": "/hr/employee/%s/goals" % user_id,
+        }
+    except Exception:
+        import logging
+        logging.getLogger(__name__).debug("employee goals unavailable", exc_info=True)
+    try:
+        import talent_service
+        if talent_service.flags(cur, company_id).get('roles_enabled'):
+            state = talent_service.employee_state(cur, company_id, user_id)
+            if state.get('current_role'):
+                out["role"] = {"title": state['current_role']['title'],
+                               "readiness": talent_service._readiness_brief(state['readiness'])}
+    except Exception:
+        import logging
+        logging.getLogger(__name__).debug("employee role readiness unavailable", exc_info=True)
+    return out or None
+
+
 def _execute_get_employee_overview(args):
     company_id = session.get('company_id')
     if not company_id:
@@ -1397,6 +1440,7 @@ def _execute_get_employee_overview(args):
         """, (username, company_id))
         skills = cur.fetchall()
         employees[0]['skills'] = skills
+        employees[0]['development'] = _employee_development(cur, company_id, username)
 
     cur.close()
 
@@ -1411,7 +1455,8 @@ def _execute_get_employee_overview(args):
         "completed_orders": e['completed_orders'] or 0,
         "chatbot_queries": e['chatbot_queries'] or 0,
         "last_chatbot_use": e['last_chatbot_use'].isoformat() if e.get('last_chatbot_use') else None,
-        "skills": e.get('skills', [])
+        "skills": e.get('skills', []),
+        **({"development": e['development']} if e.get('development') else {}),
     } for e in employees]
 
     return json.dumps({"employees": result, "count": len(result)}, default=str)

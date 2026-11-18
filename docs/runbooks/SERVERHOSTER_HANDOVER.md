@@ -19,6 +19,30 @@ Two services built from this repository, same branch, same environment variables
 
 Never set `SANDBOX=1` on either. Never print or paste secret values into a report.
 
+## 0. What the branch `claude/zealous-cannon-iqva1c` changes on deploy
+
+Nothing here needs a manual step; it is what to expect and check after the deploy.
+
+- **New tables and columns are created by the app** on the web service's first request
+  (`company_documents`, `company_document_chunks`, three sharing columns on
+  `user_learning_goals`, `company_settings.ai_checkin_notifications_enabled`). All additive.
+  Take a backup first (section 5) and check Admin, Systemstatus afterwards: no missing
+  tables or columns.
+- **No new required environment variables.** Optional ones, with safe defaults:
+  `AI_RATE_TURNS_5MIN` (30) and `AI_RATE_TURNS_HOUR` (200) limit how many assistant
+  messages one person can send; `WEB_*` are described in section 1.
+- **More mail goes through the queue** (compliance alerts, weekly digest, vendor
+  catalogue review, GDPR notices). They are sent by the worker, so section 2 matters
+  more than before: without a running worker they wait in "Mail og leveringer".
+- **Fewer outside hosts.** Charts, the chat renderer and the 2FA QR code are now served
+  by the app. Nothing to configure.
+- **Dependency added:** `Pillow` in `requirements.txt` (logo processing). The deploy
+  installs it with the rest.
+
+After the deploy, as a platform admin: open `/admin/system-health`, then
+Virksomhedsindstillinger and the new tab "Dokumenter til AI"; as any user, press the
+search button in the top bar and search for a course.
+
 ## 1. Change the web start command
 
 **Why:** the web service was started with bare `gunicorn wsgi:application --bind 0.0.0.0:$PORT`.

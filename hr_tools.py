@@ -1005,7 +1005,7 @@ HR_TOOLS.append({
                              "approval_policies", "budgets", "roi", "funnel", "retention",
                              "learning_analytics", "benchmarking", "skill_gaps", "training_plan",
                              "learning_paths", "internal_courses", "compliance", "suppliers",
-                             "procurement", "engagement", "ai_quality", "reports",
+                             "procurement", "engagement", "ai_quality", "reports", "talent",
                              "view_product", "open_catalog"],
                     "description": "Hvilken HR-side (eller katalogside) der skal åbnes.",
                 },

@@ -1469,6 +1469,7 @@ _HR_PAGE_TOOLS = {
     "dashboard": ("get_pending_actions", "hr_explain_insights"),
     "team": ("get_team_training_status", "get_team_non_starters"),
     "employees": ("get_employee_overview", "hr_inactive_employees"),
+    "talent": ("get_employee_overview", "get_company_skill_gaps"),
     "departments": ("get_team_training_status", "get_budget_overview"),
     "approvals": ("get_pending_actions", "get_training_report"),
     "approval_policies": ("get_pending_actions",),

@@ -123,6 +123,7 @@ HR_DESTINATIONS = {
     "engagement":         ("hr_ext.engagement", "/hr/engagement", "Engagement"),
     "ai_quality":         ("hr_ext.ai_quality", "/hr/ai-quality", "AI-kvalitet"),
     "reports":            ("hr_dashboard.reports", "/hr/reports", "Rapporter & eksport"),
+    "talent":             ("talent.hr", "/hr/talent", "Talent og udvikling"),
 }
 
 # The HR advisor may also send the manager to a catalog surface (public routes,

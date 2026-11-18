@@ -987,6 +987,7 @@
     return cur;
   }
   var BABEL_URL = "https://unpkg.com/@babel/standalone@7.26.4/babel.min.js";
+  var BABEL_SRI = "sha384-x/ilTFv/u/eu6YSmkFDZl5V5Mm/pkxxcVv2cVJOrr1J0rvILhMvRBCy6yA75wYBj";
   var GLOBAL_POLL_INTERVAL_MS = 50;
   var GLOBAL_POLL_TIMEOUT_MS = 3e4;
   function createExternalModules(onResolved) {
@@ -1000,6 +1001,7 @@
       babelLoading = new Promise((res, rej) => {
         const s = document.createElement("script");
         s.src = BABEL_URL;
+        s.integrity = BABEL_SRI;
         s.crossOrigin = "anonymous";
         s.onload = () => res();
         s.onerror = rej;

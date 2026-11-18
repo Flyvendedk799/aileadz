@@ -19,8 +19,21 @@ def order_focus(order_id, *, manager=False):
     try:
         cur.execute("SELECT id,kind,status FROM course_order_changes WHERE order_id=%s AND status='pending'", (order_id,))
         data['pending_changes'] = cur.fetchall() or []
+        cur.execute("SELECT completion_state FROM course_order_details WHERE order_id=%s", (order_id,))
+        detail = cur.fetchone() or {}
+        cur.execute("SELECT 1 AS x FROM learning_outcome_reviews WHERE order_id=%s AND status<>'completed' LIMIT 1", (order_id,))
+        outcome_pending = bool(cur.fetchone())
+    except Exception:
+        detail, outcome_pending = {}, False
     finally:
         cur.close()
+    # Where it stands and whose move it is: the same reading for every role (order_lifecycle.case_state).
+    import order_lifecycle
+    import order_timing
+    data['case'] = order_lifecycle.case_state(
+        row.get('status'), pending_change=bool(data.get('pending_changes')),
+        taken_place=order_timing.has_taken_place(row, data.get('booking')),
+        attendance_reported=detail.get('completion_state') == 'reported', outcome_pending=outcome_pending)
     return {'kind':'order', 'lines':[json.dumps(data, ensure_ascii=False, default=str)]}
 
 

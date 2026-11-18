@@ -1158,14 +1158,20 @@ def vendor_booking_work(args, vendor_name):
         if args.get('order_id'):
             clause += ' AND co.order_id=%s'
             values.append(str(args['order_id']))
-        cur.execute('SELECT co.order_id,co.product_title,co.status,cc.kind AS pending_change '
+        cur.execute('SELECT co.order_id,co.product_title,co.status,cc.kind AS pending_change,d.completion_state '
                     'FROM course_orders co LEFT JOIN course_order_changes cc ON cc.order_id=co.order_id AND cc.status=\'pending\' '
+                    'LEFT JOIN course_order_details d ON d.order_id=co.order_id '
                     'WHERE ' + clause + " AND co.status <> 'pending_approval' ORDER BY co.created_at DESC LIMIT 25", tuple(values))
         rows = cur.fetchall() or []
         explanations = {'cancel':'Kunden ønsker afbestilling. Afgør gebyr og svar på bestillingen.',
                         'reschedule':'Kunden ønsker et andet hold. Gennemgå hold og pris før accept.',
                         'substitute':'Kunden ønsker en anden deltager. Gennemgå og svar på bestillingen.'}
-        return {'orders':[dict(r, explanation=explanations.get(r.get('pending_change'), ''),
+        import order_lifecycle as lc
+        return {'orders':[dict({k: v for k, v in r.items() if k != 'completion_state'},
+                               explanation=explanations.get(r.get('pending_change'), ''),
+                               # the same reading the learner's and HR's assistants give
+                               case=lc.case_state(r.get('status'), pending_change=bool(r.get('pending_change')),
+                                                  attendance_reported=r.get('completion_state') == 'reported'),
                                url=url_for('vendor.vendor_booking', order_id=r['order_id'])) for r in rows]}
     finally:
         cur.close()

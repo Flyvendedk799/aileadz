@@ -60,3 +60,25 @@ def test_queries_use_exactly_the_canonical_text():
             seen += 1
             assert m.group(0) in canon, m.group(0)
     assert seen > 40
+
+
+def test_one_reading_of_where_an_order_stands_for_every_role():
+    cases = {
+        ("pending_approval", ()): ("approver", "lederen eller HR"),
+        ("approved", ()): ("booker", "HR eller udbyderen"),
+        ("booked", ()): ("course", None),
+        ("booked", ("pending_change",)): ("change", "HR eller udbyderen"),
+        ("booked", ("taken_place",)): ("learner", "deltageren"),
+        ("booked", ("taken_place", "attendance_reported")): ("verifier", "HR eller udbyderen"),
+        ("completed", ("outcome_pending",)): ("outcome", "nærmeste leder"),
+        ("completed", ()): ("done", None),
+        ("rejected", ()): ("rejected", None),
+        ("cancelled", ()): ("cancelled", None),
+        ("confirmed", ()): ("course", None),   # a legacy status reads as booked
+    }
+    for (status, flags), (stage, who) in cases.items():
+        state = lc.case_state(status, **{f: True for f in flags})
+        assert (state["stage"], state["waiting_on_label"]) == (stage, who), (status, flags)
+        assert state["next_step"] and state["status_label"]
+    # An open change request outranks everything else on a booked order: the booking stands until it is answered.
+    assert lc.case_state("booked", pending_change=True, taken_place=True, attendance_reported=True)["stage"] == "change"

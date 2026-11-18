@@ -446,6 +446,10 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
   company-scoped). Each passage is fenced as untrusted data and carries its document title;
   the result tells the model to cite it and to say so when the answer is not there. Reaches the
   menu on "what applies here" wording (handbook, policy, leave, home working ...).
+- **Where an order stands** (`order_lifecycle.case_state`): one reading of an order (status, the
+  party whose move it is, the next step) in wording that fits any reader. It rides along with an
+  order in focus for the learner and HR assistants and in `vendor_booking_work`, so the three say
+  the same thing about the same request.
 - **Help per audience**: `search_platform_help` (employee), `hr_search_platform_help` (HR) and
   `vendor_search_help` (vendor) search only the articles whose front matter names that audience
   (`help_kb.search_help(..., audience=)`), so nobody is told how a page they cannot open works.

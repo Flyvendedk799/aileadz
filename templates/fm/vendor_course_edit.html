@@ -5,11 +5,12 @@
         <meta name="viewport" content="width=device-width,initial-scale=1">
         <title>Ret kursus og hold</title>
         <link rel="stylesheet"
-              href="{{ url_for('static',filename='futurematch/assets/fm.css') }}">
+              href="{{ url_for('static',filename='futurematch/assets/fm.css') }}?v={{ asset_version('futurematch/assets/fm.css') }}">
         <link rel="stylesheet"
-              href="{{ url_for('static',filename='futurematch/assets/fm-pages.css') }}">
+              href="{{ url_for('static',filename='futurematch/assets/fm-pages.css') }}?v={{ asset_version('futurematch/assets/fm-pages.css') }}">
     </head>
     <body>
+        {% set vendor_tab = 'submit' %}{% include 'fm/_vendor_nav.html' %}
         <main style="max-width:1000px;margin:30px auto;padding:20px">
             <a href="{{ url_for('vendor.vendor_dashboard') }}">Tilbage til leverandøroversigt</a>
             <h1>{{ product.title }}</h1>

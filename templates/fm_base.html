@@ -59,6 +59,7 @@
 <script>try { localStorage.removeItem('fm-brand'); } catch (e) {}</script>
 {% endif %}
 
+<a class="fm-skip" href="#fmContent">Gå til indhold</a>
 <div class="fm-shell{% if not session.get('user') %} fm-shell-public{% endif %}">
   {% if session.get('user') %}
   <aside class="fm-side" id="fmSide" aria-label="Primær navigation">
@@ -74,9 +75,12 @@
           <span class="fm-brand-sub">{{ platform_tagline }}</span>
         </span>
       </a>
-      <button class="fm-side-toggle" id="fmSideToggle" aria-label="Fold panel"><i class="fa-solid fa-bars"></i></button>
+      <button class="fm-side-toggle" id="fmSideToggle" aria-controls="fmSide" aria-label="Fold panel"><i class="fa-solid fa-bars"></i></button>
     </div>
 
+    <button type="button" class="fm-nav-search" data-command-open aria-label="Søg i arbejdsområdet" aria-haspopup="dialog">
+      <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span>Søg i arbejdsområdet</span>
+    </button>
     <div class="fm-side-scroll">
       {% set page = self.page_id()|trim %}
       {% set _ai_pages = ['chat', 'mindmap'] %}
@@ -223,7 +227,7 @@
     </header>
     {% endif %}
     <header class="fm-top">
-      {% if session.get('user') %}<button class="fm-icon-btn fm-menu-btn" data-side-open aria-label="Menu"><i class="fa-solid fa-bars"></i></button>{% endif %}
+      {% if session.get('user') %}<button class="fm-icon-btn fm-menu-btn" data-side-open aria-controls="fmSide" aria-expanded="false" aria-label="Åbn menu"><i class="fa-solid fa-bars"></i></button>{% endif %}
       <div class="fm-top-lead">{% block topbar_lead %}{% endblock %}</div>
       <div class="fm-top-titles">
         <div class="fm-top-title">{% block topbar_title %}{% endblock %}</div>
@@ -244,7 +248,7 @@
     {# Conversation history for the AI pages: a floating panel opened from the header (see ai-sidebar.js). #}
     {% if _in_ai and session.get('user') %}{% include 'fm/_ai_sidebar.html' %}{% endif %}
 
-    <main class="fm-content">
+    <main class="fm-content" id="fmContent" tabindex="-1">
       {% if session.get('admin_acting_company_id') %}
       <div class="fm-wrap" style="padding-bottom:0">
         <div role="status" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;border-radius:var(--r-md);margin-bottom:12px;border:1px solid color-mix(in srgb,var(--fm-clay) 40%,var(--fm-line));background:color-mix(in srgb,var(--fm-clay) 12%,var(--fm-surface));color:var(--fm-ink)">

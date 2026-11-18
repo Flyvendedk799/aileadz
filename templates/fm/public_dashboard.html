@@ -3,17 +3,23 @@
 {% block title %}Futurematch – find det rigtige kursus{% endblock %}
 {% block extra_head %}
 <style>
+  body[data-page="public-home"] .fm-shell-public .fm-top { display: none; }
   .pd-wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 48px; display: grid; gap: 28px; }
-  .pd-hero { padding: 36px 28px; border-radius: var(--r-card); border: 1px solid var(--fm-line); background: var(--fm-surface); box-shadow: var(--sh-sm); position: relative; overflow: hidden; }
-  .pd-hero::after { content: ""; position: absolute; inset: 0; background: radial-gradient(80% 120% at 100% 0%, var(--fm-primary-tint), transparent 60%); pointer-events: none; }
-  .pd-hero > * { position: relative; }
-  .pd-hero h1 { font-size: clamp(26px, 4vw, 40px); letter-spacing: -.03em; margin: 8px 0 10px; max-width: 22ch; }
-  .pd-hero p { color: var(--fm-ink-2); max-width: 56ch; }
-  .pd-search { display: flex; gap: 8px; margin-top: 20px; max-width: 560px; }
+  .pd-hero { padding: clamp(24px,4vw,54px); border-radius: var(--r-card); border: 1px solid var(--fm-line); background: var(--fm-surface); box-shadow: var(--sh-sm); position: relative; overflow: hidden; }
+  .pd-hero::after { content: ""; position: absolute; inset: 0 0 0 62%; background: var(--fm-primary-tint) url("{{ url_for('static', filename='futurematch/assets/coast.webp') }}") 65% center / cover; }
+  .pd-hero > * { position: relative; max-width: 58%; }
+  @media (max-width: 740px) {
+    .pd-hero { padding-top: 150px; }
+    .pd-hero::after { inset: 0 0 auto; height: 128px; background-position: center 56%; }
+    .pd-hero > * { max-width: 100%; }
+  }
+  .pd-hero h1 { font-size: clamp(30px, 4vw, 54px); line-height: 1.03; letter-spacing: -.045em; margin: 12px 0 16px; text-wrap: balance; }
+  .pd-hero p { color: var(--fm-ink-2); }
+  .pd-search { display: flex; gap: 8px; margin-top: 20px; }
   .pd-search .fm-input { flex: 1; min-width: 0; height: 44px; }
   .pd-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
   .pd-sec h2 { font-size: 20px; letter-spacing: -.02em; margin-bottom: 12px; }
-  .pd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+  .pd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 14px; }
   .pd-card { display: flex; flex-direction: column; gap: 6px; padding: 16px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-sm); text-decoration: none; color: inherit; }
   .pd-card:hover { border-color: var(--fm-line-2); box-shadow: var(--sh-md); }
   .pd-kick { font-family: var(--ff-mono); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--fm-ink-3); }
@@ -22,7 +28,7 @@
   .pd-chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .pd-chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 999px; background: var(--fm-surface-3); color: var(--fm-ink-2); font-size: 13px; font-weight: 600; text-decoration: none; }
   .pd-chip:hover { color: var(--fm-ink); }
-  .pd-duo { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .pd-duo { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 14px; }
   .pd-panel { padding: 22px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); }
   .pd-panel p { color: var(--fm-ink-2); margin: 6px 0 14px; }
 </style>
@@ -32,7 +38,7 @@
 <div class="pd-wrap">
   <section class="pd-hero">
     <p class="fm-eyebrow">Kurser og kompetenceudvikling</p>
-    <h1>Find det rigtige kursus – og få det godkendt hurtigere</h1>
+    <h1>Find det rigtige kursus</h1>
     <p>Søg i kataloget, få sparring af AI-rådgiveren, og bed om en plads. Er din virksomhed med, følger godkendelse og booking automatisk.</p>
     <form class="pd-search" action="{{ url_for('catalog.catalog_index') }}" method="get" role="search">
       <input class="fm-input" type="search" name="q" placeholder="Søg efter kursus, emne eller leverandør" aria-label="Søg i kursuskataloget">
@@ -40,8 +46,6 @@
     </form>
     <div class="pd-actions">
       <a class="btn btn-ghost" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comment-dots"></i> Spørg AI-rådgiveren</a>
-      <a class="btn btn-ghost" href="{{ url_for('auth.login') }}">Log ind</a>
-      <a class="btn btn-ghost" href="{{ url_for('auth.register') }}">Opret konto</a>
     </div>
   </section>
 

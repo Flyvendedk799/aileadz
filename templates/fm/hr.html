@@ -8,21 +8,21 @@
 <style>
   .hr-kpis { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 18px; }
   .hr-kpi { display: flex; gap: 14px; padding: 18px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-sm); transition: transform var(--t), box-shadow var(--t); }
-  .hr-kpi:hover { transform: translateY(-2px); box-shadow: var(--sh-md); }
+  a.hr-kpi:hover { transform: translateY(-2px); box-shadow: var(--sh-md); }
   .hr-kpi .ic { width: 46px; height: 46px; flex: 0 0 46px; border-radius: 13px; display: grid; place-items: center; font-size: 18px; }
   .hr-kpi.teal .ic { background: var(--fm-primary-tint); color: var(--fm-primary); }
   .hr-kpi.green .ic { background: color-mix(in srgb,var(--fm-success) 14%,transparent); color: var(--fm-success); }
   .hr-kpi.indigo .ic { background: color-mix(in srgb,var(--fm-indigo) 13%,transparent); color: var(--fm-indigo); }
   .hr-kpi.clay .ic { background: var(--fm-clay-tint); color: var(--fm-clay); }
   .hr-kpi .lab { font-size: 12.5px; color: var(--fm-ink-2); font-weight: 600; }
-  .hr-kpi .val { font-family: var(--ff-display); font-size: 26px; font-weight: 700; letter-spacing: -.03em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .hr-kpi .val { font-family: var(--ff-display); font-size: clamp(28px, 2.4vw, 36px); font-weight: 700; letter-spacing: -.03em; line-height: 1.1; font-variant-numeric: tabular-nums; }
   .hr-kpi .det { font-size: 11.5px; color: var(--fm-ink-3); margin-top: 3px; }
   a.hr-kpi { text-decoration: none; color: inherit; }
-  a.hr-kpi .lab i.fa-arrow-right { font-size: 10px; opacity: 0; margin-left: 5px; transition: var(--t); }
+  a.hr-kpi .lab i.fa-arrow-right { font-size: 10px; opacity: .65; margin-left: 5px; transition: var(--t); }
   a.hr-kpi:hover .lab i.fa-arrow-right { opacity: .65; }
 
   .signal-strip { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 18px; }
-  .signal { padding: 16px 18px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-xs); }
+  .signal { padding: 16px 18px; border: 1px solid var(--fm-line); border-top: 3px solid var(--fm-primary-300); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-xs); }
   .signal .lab { font-family: var(--ff-mono); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--fm-ink-3); }
   .signal .val { font-family: var(--ff-display); font-size: 22px; font-weight: 700; margin: 4px 0; }
   .signal .det { font-size: 11.5px; color: var(--fm-ink-2); margin-bottom: 10px; line-height: 1.4; }
@@ -48,7 +48,11 @@
   .hr-chart-card p { font-size: 12px; color: var(--fm-ink-2); margin: 0 0 12px; }
   .hr-chart-wrap { position: relative; height: 280px; }
   @media (max-width: 1200px) { .hr-kpis, .signal-strip { grid-template-columns: repeat(2,1fr); } .hr-cols, .hr-charts { grid-template-columns: 1fr; } .skill-tiles { grid-template-columns: repeat(3,1fr); } }
-  @media (max-width: 680px) { .hr-kpis, .signal-strip { grid-template-columns: 1fr; } .skill-tiles { grid-template-columns: repeat(2,1fr); } }
+  @media (max-width: 680px) { .hr-kpis, .signal-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .hr-kpi { flex-direction: column; gap: 8px; padding: 14px; }
+    .hr-kpi .ic { width: 32px; height: 32px; flex-basis: 32px; font-size: 14px; }
+    .hr-kpi .val, .signal .val { overflow-wrap: anywhere; }
+    .signal { padding: 14px; } .skill-tiles { grid-template-columns: repeat(2,1fr); } }
 </style>
 {% endblock %}
 {% block content %}
@@ -59,6 +63,7 @@
 
         {% set m = hr_metrics or {} %}
         {% set lm = learning_metrics or {} %}
+        <h1 class="workspace-heading">{{ company.company_name if company and company.company_name else 'Virksomhedsoverblik' }}</h1>
         <!-- KPIs -->
         <section class="hr-kpis">
           <article class="hr-kpi teal" data-reveal data-d="1"><span class="ic"><i class="fa-solid fa-users"></i></span><div><div class="lab">Medarbejdere</div><div class="val tnum">{{ m.total_employees or 0 }}</div><div class="det">{{ m.active_employees or 0 }} aktive · {{ m.new_hires_30_days or 0 }} nye (30 d)</div></div></article>

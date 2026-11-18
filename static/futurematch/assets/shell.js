@@ -53,17 +53,7 @@
   window.fmApplyBrand = applyBrand;
 
   function init() {
-    // Server-rendered sidebar (Flask): wire collapse + restore state.
-    const side = document.getElementById("fmSide");
-    const toggle = document.getElementById("fmSideToggle");
-    if (side) {
-      if (localStorage.getItem("fm-collapsed") === "1") side.classList.add("collapsed");
-      if (toggle) toggle.addEventListener("click", () => {
-        if (window.innerWidth <= 1080) { side.classList.toggle("open"); return; }
-        side.classList.toggle("collapsed");
-        localStorage.setItem("fm-collapsed", side.classList.contains("collapsed") ? "1" : "0");
-      });
-    }
+    initSidebar();
 
     // theme — smart default: stored pref → else system preference
     const stored = localStorage.getItem("fm-theme");
@@ -81,28 +71,64 @@
       localStorage.setItem("fm-theme", next);
     });
 
-    // mobile menu button + scrim
-    let scrim = document.querySelector(".fm-scrim");
-    if (!scrim) { scrim = document.createElement("div"); scrim.className = "fm-scrim"; document.body.appendChild(scrim); }
-    function setDrawer(open) {
-      document.getElementById("fmSide")?.classList.toggle("open", open);
-      scrim.classList.toggle("show", open);
-    }
-    document.addEventListener("click", (e) => {
-      if (e.target.closest("[data-side-open]")) { setDrawer(!document.getElementById("fmSide")?.classList.contains("open")); }
-    });
-    scrim.addEventListener("click", () => setDrawer(false));
-    // close drawer after tapping a nav link on mobile
-    document.addEventListener("click", (e) => {
-      if (window.innerWidth <= 1080 && e.target.closest(".fm-side .fm-nav-link")) setDrawer(false);
-    });
-
     initMotion();
     initNavSections();
     initCmdK();
     initTooltips();
     initNotifBadge();
     applyBrand();
+  }
+
+  function initSidebar() {
+    const side = document.getElementById("fmSide");
+    if (!side) return;
+    const toggle = document.getElementById("fmSideToggle");
+    const opener = document.querySelector("[data-side-open]");
+    const main = document.querySelector(".fm-main");
+    const mobile = window.matchMedia("(max-width: 1080px)");
+    const scrim = document.createElement("div");
+    scrim.className = "fm-scrim";
+    document.body.appendChild(scrim);
+
+    let collapsed = localStorage.getItem("fm-collapsed") === "1";
+    function paint(open) {
+      const drawer = mobile.matches && open;
+      const compact = !mobile.matches && collapsed;
+      side.classList.toggle("open", drawer);
+      side.classList.toggle("collapsed", compact);
+      scrim.classList.toggle("show", drawer);
+      side.inert = mobile.matches && !drawer;
+      main.inert = drawer;
+      opener.setAttribute("aria-expanded", String(drawer));
+      toggle.setAttribute("aria-expanded", String(mobile.matches ? drawer : !compact));
+      toggle.setAttribute("aria-label", mobile.matches ? "Luk menu" : compact ? "Udvid menu" : "Fold menu sammen");
+      toggle.firstElementChild.className = "fa-solid " + (mobile.matches ? "fa-xmark" : "fa-bars");
+    }
+    function closeDrawer() {
+      paint(false);
+      opener.focus();
+    }
+    opener.addEventListener("click", () => { paint(true); toggle.focus(); });
+    toggle.addEventListener("click", () => {
+      if (mobile.matches) { closeDrawer(); return; }
+      collapsed = !collapsed;
+      localStorage.setItem("fm-collapsed", collapsed ? "1" : "0");
+      paint(false);
+    });
+    scrim.addEventListener("click", closeDrawer);
+    document.addEventListener("keydown", e => {
+      if (e.key === "Escape" && !document.querySelector("#cmdkBack[open]") && side.classList.contains("open")) closeDrawer();
+    });
+    side.addEventListener("click", e => {
+      if (mobile.matches && e.target.closest("a[href]")) closeDrawer();
+    });
+    side.querySelectorAll(".fm-nav-link").forEach(link => {
+      const name = link.querySelector("span")?.textContent;
+      if (name) { link.setAttribute("aria-label", name); link.title = name; }
+      if (link.classList.contains("active")) link.setAttribute("aria-current", "location");
+    });
+    mobile.addEventListener("change", () => paint(false));
+    paint(false);
   }
 
   /* ---- Collapsible sidebar sections ----
@@ -290,19 +316,20 @@
       { icon: "fa-comment-dots", title: "Spørg AI-assistenten", sub: "Kurser og karriere", href: "/chat", group: "Handlinger" },
       { icon: "fa-bullseye", title: "Opret udviklingsmål", sub: "Udviklingsmål", href: "/mine-maal", group: "Handlinger" },
       { icon: "fa-bell", title: "Mine notifikationer", sub: "Konto", href: "/notifications", group: "Handlinger" },
-      { icon: "fa-graduation-cap", title: "Browse katalog", sub: "Katalog", href: "/catalog", group: "Handlinger" },
+      { icon: "fa-graduation-cap", title: "Åbn kursuskataloget", sub: "Katalog", href: "/catalog", group: "Handlinger" },
       { icon: "fa-receipt", title: "Mine bestillinger", sub: "Min tidslinje", href: "/min-tidslinje", group: "Handlinger" },
       { icon: "fa-circle-half-stroke", title: "Skift tema (lys/mørk)", sub: "Udseende", act: "theme", group: "Handlinger" },
       { icon: "fa-circle-question", title: "Support & hjælp", sub: "Konto", href: "/support", group: "Handlinger" },
     ];
     const all = items.concat(actions);
 
-    const back = document.createElement("div");
+    const back = document.createElement("dialog");
+    back.setAttribute("aria-label", "Søg i arbejdsområdet");
     back.className = "cmdk-back"; back.id = "cmdkBack";
     back.innerHTML = `
-      <div class="cmdk" role="dialog" aria-label="Kommandopalet">
-        <div class="cmdk-in"><i class="fa-solid fa-magnifying-glass"></i><input id="cmdkInput" type="text" placeholder="Søg sider, handlinger…" autocomplete="off" /><span class="fm-kbd">Esc</span></div>
-        <div class="cmdk-list" id="cmdkList"></div>
+      <div class="cmdk">
+        <div class="cmdk-in"><i class="fa-solid fa-magnifying-glass"></i><input id="cmdkInput" type="text" role="combobox" aria-label="Søg sider og handlinger" aria-controls="cmdkList" aria-expanded="true" aria-autocomplete="list" placeholder="Søg sider, handlinger…" autocomplete="off" /><button class="fm-kbd" type="button" data-command-close aria-label="Luk søgning">Esc</button></div>
+        <div class="cmdk-list" id="cmdkList" role="listbox" aria-label="Søgeresultater"></div>
         <div class="cmdk-foot"><span><span class="fm-kbd">↑</span><span class="fm-kbd">↓</span> Naviger</span><span><span class="fm-kbd">↵</span> Vælg</span><span><span class="fm-kbd">⌘K</span> Åbn</span></div>
       </div>`;
     document.body.appendChild(back);
@@ -315,18 +342,44 @@
       return all.filter(it => !ql || it.title.toLowerCase().includes(ql) || it.sub.toLowerCase().includes(ql));
     }
     function drawList(q) {
-      if (!results.length) { list.innerHTML = `<div class="cmdk-empty">Ingen resultater for “${q}”</div>`; return; }
-      const groups = {};
-      results.forEach((r, i) => { (groups[r.group] = groups[r.group] || []).push({ r, i }); });
-      list.innerHTML = Object.keys(groups).map(g =>
-        `<div class="cmdk-group">${g}</div>` + groups[g].map(({ r, i }) =>
-          `<div class="cmdk-item" data-i="${i}"><i class="fa-solid ${r.icon}"></i><span class="cmdk-t">${r.title}</span><span class="cmdk-s">${r.sub}</span><span class="cmdk-go"><i class="fa-solid fa-arrow-turn-down" style="transform:rotate(90deg)"></i></span></div>`
-        ).join("")).join("");
-      paintActive();
-      list.querySelectorAll(".cmdk-item").forEach(el => {
-        el.addEventListener("mouseenter", () => { active = +el.dataset.i; paintActive(); });
-        el.addEventListener("click", () => choose(+el.dataset.i));
+      list.replaceChildren();
+      input.removeAttribute("aria-activedescendant");
+      if (!results.length) {
+        const empty = document.createElement("div");
+        empty.className = "cmdk-empty";
+        empty.setAttribute("role", "status");
+        empty.textContent = "Ingen resultater for “" + q + "”";
+        list.append(empty);
+        return;
+      }
+      let previousGroup;
+      results.forEach((result, index) => {
+        if (result.group !== previousGroup) {
+          const heading = document.createElement("div");
+          heading.className = "cmdk-group";
+          heading.textContent = result.group;
+          list.append(heading);
+          previousGroup = result.group;
+        }
+        const option = document.createElement("div");
+        option.className = "cmdk-item";
+        option.id = "cmdk-option-" + index;
+        option.dataset.i = index;
+        option.setAttribute("role", "option");
+        const icon = document.createElement("i");
+        icon.className = "fa-solid " + result.icon;
+        const title = document.createElement("span");
+        title.className = "cmdk-t";
+        title.textContent = result.title;
+        const detail = document.createElement("span");
+        detail.className = "cmdk-s";
+        detail.textContent = result.sub;
+        option.append(icon, title, detail);
+        option.addEventListener("mouseenter", () => { active = index; paintActive(); });
+        option.addEventListener("click", () => choose(index));
+        list.append(option);
       });
+      paintActive();
     }
 
     function render(q) {
@@ -337,8 +390,8 @@
       // Live entity search (employees / companies / users) via the backend,
       // debounced; live hits are shown first, static nav/actions after.
       if (debounceT) clearTimeout(debounceT);
+      const seq = ++searchSeq;
       if (ql.length >= 2) {
-        const seq = ++searchSeq;
         debounceT = setTimeout(() => {
           fetch(SEARCH_URL + "?q=" + encodeURIComponent(q.trim()), { headers: { "Accept": "application/json" } })
             .then(r => r.ok ? r.json() : null)
@@ -356,9 +409,13 @@
       }
     }
     function paintActive() {
-      list.querySelectorAll(".cmdk-item").forEach(el => el.classList.toggle("active", +el.dataset.i === active));
+      list.querySelectorAll(".cmdk-item").forEach(el => {
+        const selected = +el.dataset.i === active;
+        el.classList.toggle("active", selected);
+        el.setAttribute("aria-selected", String(selected));
+      });
       const el = list.querySelector(".cmdk-item.active");
-      if (el) el.scrollIntoView({ block: "nearest" });
+      if (el) { input.setAttribute("aria-activedescendant", el.id); el.scrollIntoView({ block: "nearest" }); }
     }
     function choose(i) {
       const r = results[i]; if (!r) return;
@@ -366,8 +423,18 @@
       if (r.act === "theme") { document.querySelector("[data-theme-toggle]")?.click(); return; }
       if (r.href) window.location.href = r.href;
     }
-    function open() { back.classList.add("open"); input.value = ""; render(""); setTimeout(() => input.focus(), 30); }
-    function close() { back.classList.remove("open"); }
+    let returnFocus;
+    function open(event) {
+      returnFocus = event?.currentTarget || document.activeElement;
+      back.showModal();
+      input.value = "";
+      render("");
+      input.focus();
+    }
+    back.addEventListener("close", () => returnFocus?.focus());
+    function close() { back.close(); }
+    back.querySelector("[data-command-close]").addEventListener("click", close);
+    document.querySelector("[data-command-open]")?.addEventListener("click", open);
     window.fmCmdK = open;
 
     input.addEventListener("input", () => render(input.value));
@@ -378,8 +445,7 @@
     });
     back.addEventListener("click", (e) => { if (e.target === back) close(); });
     document.addEventListener("keydown", (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); back.classList.contains("open") ? close() : open(); }
-      else if (e.key === "Escape" && back.classList.contains("open")) close();
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); back.open ? close() : open(); }
     });
     // ONLY the global topbar search opens the palette; in-page filters stay functional
     document.querySelectorAll(".fm-top .fm-search input").forEach(inp => {

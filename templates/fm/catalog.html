@@ -5,14 +5,18 @@
 {% block topbar_sub %}{{ page_subtitle or 'Find kurser, leverandører og kategorier direkte.' }}{% endblock %}
 {% block extra_head %}
 <style>
-  .cat-hero { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 18px; align-items: end; padding: 26px 28px; border-radius: var(--r-card); border: 1px solid var(--fm-line); background: var(--fm-surface); box-shadow: var(--sh-sm); position: relative; overflow: hidden; margin-bottom: 22px; }
-  .cat-hero::after { content: ""; position: absolute; inset: 0; background: radial-gradient(80% 120% at 100% 0%, var(--fm-primary-tint), transparent 60%); pointer-events: none; }
-  .cat-hero > * { position: relative; }
-  .cat-hero h1 { font-size: clamp(24px,3vw,34px); letter-spacing: -.03em; margin: 10px 0 8px; }
-  .cat-hero p { color: var(--fm-ink-2); font-size: 14.5px; max-width: 54ch; }
-  .cat-stat { display: flex; gap: 26px; margin-top: 16px; }
-  .cat-stat .s .n { font-family: var(--ff-display); font-size: 22px; font-weight: 700; }
-  .cat-stat .s .l { font-size: 12px; color: var(--fm-ink-3); }
+  .cat-hero {
+    display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(220px, 1fr);
+    align-items: center; gap: 24px; padding: clamp(22px, 3vw, 40px); margin-bottom: 20px;
+    background: color-mix(in srgb, var(--fm-primary) 8%, var(--fm-surface));
+    border: 1px solid var(--fm-line); border-radius: var(--r-card);
+  }
+  .cat-hero h1 { font-size: clamp(30px, 3.4vw, 46px); line-height: 1.1; margin: 9px 0; }
+  .cat-hero p { color: var(--fm-ink-2); max-width: 52ch; margin: 0 0 16px; }
+  .cat-stat { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-self: stretch; align-items: center; gap: 8px; }
+  .cat-stat .s { border-left: 1px solid var(--fm-line-2); padding-left: clamp(6px, 1vw, 16px); }
+  .cat-stat .n { font: 700 clamp(24px, 2.4vw, 36px)/1.25 var(--ff-display); }
+  .cat-stat .l { color: var(--fm-ink-2); font-size: 12px; overflow-wrap: anywhere; }
 
   .cat-filter { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; align-items: end; padding: 18px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-sm); margin-bottom: 20px; }
   .cat-filter .ff { display: flex; flex-direction: column; gap: 5px; }
@@ -56,6 +60,8 @@
   .ccard { display: flex; flex-direction: column; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-sm); overflow: hidden; transition: transform var(--t), box-shadow var(--t), border-color var(--t); text-decoration: none; color: inherit; }
   .ccard:hover { transform: translateY(-3px); box-shadow: var(--sh-md); border-color: var(--fm-line-2); }
   .ccard-media { height: 130px; display: grid; place-items: center; font-size: 30px; color: var(--fm-primary); background: #fff; border-bottom: 1px solid var(--fm-line); position: relative; overflow: hidden; }
+  .ccard-media:has(> i) { background: repeating-linear-gradient(-45deg, transparent 0 14px, var(--fm-primary-tint) 14px 15px), var(--fm-surface-2); }
+  .ccard-media > i { border-radius: 50%; padding: 18px; background: var(--fm-primary-tint); }
   .ccard-media img { position: absolute; inset: 14px; width: calc(100% - 28px); height: calc(100% - 28px); object-fit: contain; }
   .ccard-body { padding: 16px; display: flex; flex-direction: column; gap: 11px; flex: 1; }
   .ccard-kick { font-family: var(--ff-mono); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--fm-ink-3); }
@@ -91,13 +97,13 @@
             <span class="fm-eyebrow"><i class="fa-solid fa-graduation-cap"></i> Futurematch katalog</span>
             <h1>{{ page_title or 'Kursuskatalog' }}</h1>
             <p>{{ page_subtitle or 'Kuraterede kurser, certificeringer og forløb — klar til at bestille til dig selv eller dit team.' }}</p>
-            <div class="cat-stat">
-              <div class="s"><div class="n tnum">{{ pagination.total if pagination else 0 }}</div><div class="l">Kurser</div></div>
-              <div class="s"><div class="n tnum">{{ (filter_options.vendors|length) if filter_options and filter_options.vendors else 0 }}</div><div class="l">Leverandører</div></div>
-              <div class="s"><div class="n tnum">{{ (filter_options.categories|length) if filter_options and filter_options.categories else 0 }}</div><div class="l">Kategorier</div></div>
-            </div>
+            <a class="btn btn-ghost" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comments"></i> Spørg AI</a>
           </div>
-          <a class="btn btn-ghost" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comments"></i> Spørg AI</a>
+          <div class="cat-stat">
+            <div class="s"><div class="n tnum">{{ pagination.total if pagination else 0 }}</div><div class="l">Kurser</div></div>
+            <div class="s"><div class="n tnum">{{ (filter_options.vendors|length) if filter_options and filter_options.vendors else 0 }}</div><div class="l">Leverandører</div></div>
+            <div class="s"><div class="n tnum">{{ (filter_options.categories|length) if filter_options and filter_options.categories else 0 }}</div><div class="l">Kategorier</div></div>
+          </div>
         </section>
 
         <div class="pg-subnav">

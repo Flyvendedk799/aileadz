@@ -1792,12 +1792,12 @@ body.chat-page .fm-main { background: var(--fm-surface); }
 /* ----- composer: a floating, softly blurred field ----- */
 .chatx .input-wrap { padding: 6px 20px 14px; border-top: 0; background: linear-gradient(to top, var(--fm-surface) 62%, transparent); }
 .chatx .composer {
-  max-width: 672px; padding: 6px 6px 6px 20px; border-radius: 26px; border: 0;
+  max-width: 672px; padding: 8px 8px 8px 18px; border-radius: var(--r-card); border: 0;
   background: color-mix(in srgb, var(--fm-surface) 86%, transparent); backdrop-filter: blur(18px) saturate(1.5);
   box-shadow: var(--cx-float), 0 0 0 1px var(--cx-hair); transition: box-shadow .2s;
 }
-.chatx .composer:focus-within { border: 0; box-shadow: var(--cx-float), 0 0 0 1px color-mix(in srgb, var(--cx-accent) 45%, transparent); }
-.chatx .composer textarea { font-size: 15.5px; padding: 10px 0; font-family: inherit; letter-spacing: inherit; }
+.chatx .composer:focus-within { border: 0; box-shadow: var(--cx-float), 0 0 0 2px var(--cx-accent); }
+.chatx .composer textarea { min-width: 0; font-size: 16px; padding: 10px 0; font-family: inherit; letter-spacing: inherit; }
 .chatx .composer textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chatx .send { width: 36px; height: 36px; flex-basis: 36px; border-radius: 999px; background: var(--cx-accent); color: #fff; }
 .chatx .send.on:hover { background: var(--fm-primary-700); transform: none; }
@@ -1856,3 +1856,5 @@ body.chat-page .fm-main { background: var(--fm-surface); }
 @media (prefers-reduced-motion: reduce) {
   .chatx .msg, .chatx .course, .chatx .pcard, .chatx .tool-run.live .tr-dot { animation: none; }
 }
+
+[data-theme="dark"] .chatx :is(.send, .bubble) { color: #102a20; }

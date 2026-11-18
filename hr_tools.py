@@ -1008,7 +1008,7 @@ HR_TOOLS.append({
         "description": (
             "Vis status på virksomhedens udsendte mails: hvor mange der er sendt, venter, er fejlet eller er usikre, "
             "og de seneste, der kræver handling (modtager, emne, fejl). Brug det ved 'fik de mailen', 'hvorfor har "
-            "ingen fået besked', 'er der mails der fejler'. 'Sendt' betyder afleveret til mailserveren, ikke læst. "
+            "ingen fået besked', 'er der mails der fejler'. 'Afsendt' betyder afleveret til mailserveren, ikke læst. "
             "Gensendelse sker på siden Mail og leveringer, ikke her."
         ),
         "parameters": {"type": "object", "properties": {}, "required": []},
@@ -1109,15 +1109,16 @@ def _execute_hr_mail_delivery_status(args):
         waiting_long = int((cur.fetchone() or {}).get('n') or 0)
     finally:
         cur.close()
-    labels = {"sent": "sendt", "pending": "venter", "sending": "sender", "failed": "fejlet",
-              "uncertain": "usikker", "skipped": "sprunget over (modtageren har fravalgt mail)"}
+    # The same words as the "Mail og leveringer" page, so the answer matches what HR sees there.
+    labels = {"pending": "I kø", "sending": "Afsender", "sent": "Afsendt", "failed": "Kræver handling",
+              "uncertain": "Ukendt modtagelse", "skipped": "Fravalgt af modtager"}
     return json.dumps({
         "counts": {labels.get(k, k): v for k, v in counts.items()},
         "waiting_more_than_10_minutes": waiting_long,
         "needs_attention": [{"to": r['to_email'], "subject": r['subject'], "state": labels.get(r['state'], r['state']),
                              "error": r.get('last_error') or "", "created": r['created_at']} for r in attention],
-        "note": ("'Sendt' betyder afleveret til mailserveren. Venter mails længe, kører baggrundstjenesten "
-                 "måske ikke, eller mail er ikke sat op."),
+        "note": ("'Afsendt' betyder afleveret til mailserveren, ikke læst. Står mails længe 'I kø', kører "
+                 "baggrundstjenesten måske ikke, eller mail er ikke sat op."),
         "page": "/hr/leveringer",
     }, ensure_ascii=False, default=str)
 

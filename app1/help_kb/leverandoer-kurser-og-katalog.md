@@ -6,7 +6,7 @@ keywords: katalog, indsend katalog, ret kursus, hold, pris, ledige pladser, godk
 audience: vendor
 ---
 ## Ret et kursus eller et hold
-1. Åbn kurset fra "Oversigt", og vælg at rette det.
+1. Find kurset på "Oversigt", og klik "Ret hold og priser".
 2. Ret titel, kort beskrivelse, hold, priser og ledige pladser. Et eksisterende hold beholder sit id, når du retter det, så slet ikke et hold for at ændre en pris.
 3. Klik "Indsend ændringer til godkendelse".
 

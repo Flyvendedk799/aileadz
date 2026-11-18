@@ -187,7 +187,7 @@ def test_hr_assistant_reads_onboarding_and_mail_state_for_its_own_company(env):
         from flask import session
         session.update(user='hr', user_id=3, company_id=7, company_role='hr_manager')
         mail = json.loads(hr_tools._execute_hr_mail_delivery_status({}))
-    assert mail['counts'] == {'sendt': 1, 'fejlet': 1}
+    assert mail['counts'] == {'Afsendt': 1, 'Kræver handling': 1}
     assert [m['to'] for m in mail['needs_attention']] == ['x7@firma.dk'] and mail['page'] == '/hr/leveringer'
     hr_selection, _ = registry.get_hr_tool_selection(company_id=7, user_query='er vi klar til at komme i gang?')
     assert 'hr_onboarding_readiness' in {t['function']['name'] for t in hr_selection}

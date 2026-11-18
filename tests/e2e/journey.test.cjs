@@ -171,6 +171,43 @@ test('a goal stays private until the employee shares it, and HR sees only the sh
   await hr.close_();
 });
 
+test('cancelling a booked course is a request until HR accepts it, with the agreed fee kept', async () => {
+  // The seeded booked order: Ada, "Salgstræning i praksis", reference DEMO-2041, 8.500 kr.
+  const ada = await as('ada');
+  await ada.go('/min-tidslinje');
+  const href = await ada.locator('a[href*="/min-ordre/"]', { hasText: 'Salgstræning i praksis' }).first().getAttribute('href');
+  const seeded = /min-ordre\/([^#?]+)/.exec(href)[1];
+  await ada.go('/min-ordre/' + seeded);
+  const request = ada.locator('form[data-change-form]');
+  await request.locator('[name="kind"]').selectOption('cancel');
+  await request.locator('[name="note"]').fill('Kan ikke deltage alligevel');
+  await submit(ada, request.getByRole('button', { name: 'Send ændringsønske' }));
+  await ada.go('/min-ordre/' + seeded);
+  await assert.doesNotReject(ada.getByText('DEMO-2041').first().waitFor(), 'the booking stands while the request is open');
+  assert.equal(await ada.getByText('Annulleret', { exact: true }).count(), 0, 'a request is not a cancellation');
+  await ada.close_();
+
+  const hr = await as('hr');
+  await hr.go('/hr/budgets');
+  const before = await hr.locator('body').innerText();
+  await hr.go('/hr/order/' + seeded + '/details');
+  const resolve = hr.locator('form:has([name="action"][value="resolve"])');
+  await resolve.locator('[name="note"]').fill('Aftalt med udbyderen: gebyr 1.000 kr.');
+  await resolve.locator('[name="fee"]').fill('1000');
+  await submit(hr, resolve.getByRole('button', { name: 'Accepter ændring' }));
+  await hr.go('/hr/order/' + seeded + '/details');
+  await assert.doesNotReject(hr.getByText('Annulleret').first().waitFor());
+  await hr.go('/hr/budgets');
+  const after = await hr.locator('body').innerText();
+  assert.notEqual(after, before, 'the released amount shows on the budget page');
+  await hr.close_();
+
+  const again = await as('ada');
+  await again.go('/min-ordre/' + seeded);
+  await assert.doesNotReject(again.getByText('Annulleret').first().waitFor());
+  await again.close_();
+});
+
 test('search finds a course, the person\'s own order and own goal, and the skip link comes first', async () => {
   const page = await as('ada');
   await page.go('/min-laering');

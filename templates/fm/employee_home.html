@@ -229,6 +229,7 @@
         {{ related([
             ('Min udvikling', url_for('talent.workspace') if has_endpoint('talent.workspace') and session.get('company_id') else '', 'fa-seedling'),
             ('Interne muligheder', url_for('talent.opportunities') if has_endpoint('talent.opportunities') and session.get('company_id') and talent_modules is defined and talent_modules().get('mobility_enabled') else '', 'fa-arrow-up-right-dots'),
+            ('Mine læringsforløb', url_for('learning.my_paths') if has_endpoint('learning.my_paths') else '', 'fa-route'),
             ('Udviklingsmål', url_for('futurematch.learning_goals'), 'fa-bullseye'),
             ('Mit CV', url_for('futurematch.my_cv'), 'fa-file-lines'),
             ('Mind-Map', url_for('futurematch.mind_map'), 'fa-brain'),

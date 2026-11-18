@@ -189,6 +189,7 @@ SIDEBAR_BY_ENDPOINT = {
     'talent.application': 'opportunities',
     'talent.hiring': 'opportunities',
     'learning.assignment': 'emphome',
+    'learning.my_paths': 'emphome',
     'futurematch.my_cv': 'cv',
     'futurematch.my_cv_print': 'cv',
     'catalog.catalog_index': 'catalog',

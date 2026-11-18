@@ -594,6 +594,41 @@ def assignments_for_learner(cur, user_id, company_id):
     return rows
 
 
+def paths_for_learner(cur, username, user_id=None, company_id=None):
+    """Every learning path a person has, in one shape: the paths HR assigned
+    ("læringsforløb", company-scoped, each step following its order) and the
+    personal ones they built with the assistant ("læringsstier").
+
+    ``[{kind: 'assigned'|'personal', id, title, done, total, completed, due_date, url, steps}]``
+    with ``steps`` = ``[{title, done}]``. The two kinds still live in different tables
+    (ROADMAP T1-7); this is the one reader pages and tools should use to list them."""
+    out = []
+    for a in assignments_for_learner(cur, user_id, company_id):
+        steps = [{"title": s.get("title") or "", "done": s.get("status") in ("completed", "skipped")} for s in a.get("steps") or []]
+        out.append({
+            "kind": "assigned", "id": a["id"], "title": a.get("path_name") or "Læringsforløb",
+            "done": sum(1 for s in steps if s["done"]), "total": len(steps),
+            "completed": a.get("status") == "completed", "due_date": a.get("due_date"),
+            "url": "/min-laering/forloeb/%s" % a["id"], "steps": steps,
+        })
+    try:
+        from app1.user_profile_db import get_learning_paths
+        personal = get_learning_paths(username) if username else []
+    except Exception as e:
+        logger.warning("learning_path_service: personal paths unavailable: %s", e)
+        personal = []
+    for p in personal:
+        steps = [{"title": (s.get("title") or s.get("course_title") or s.get("handle") or "") if isinstance(s, dict) else str(s),
+                  "done": bool(isinstance(s, dict) and (s.get("completed") or s.get("done")))} for s in p.get("steps") or []]
+        out.append({
+            "kind": "personal", "id": p["id"], "title": p.get("title") or "Din læringssti",
+            "done": sum(1 for s in steps if s["done"]), "total": len(steps),
+            "completed": p.get("status") == "fuldfoert", "due_date": None,
+            "url": "/profil#paths", "steps": steps,
+        })
+    return out
+
+
 def assignment_detail(cur, company_id, user_id, progress_id):
     cur.execute(
         "SELECT * FROM employee_learning_progress WHERE id = %s AND company_id = %s AND user_id = %s", (progress_id, company_id, user_id)

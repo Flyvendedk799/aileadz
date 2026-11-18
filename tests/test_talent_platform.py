@@ -431,3 +431,15 @@ def test_a_confirmed_placement_is_published_to_integrations_after_commit(env):
     assert payload['user_id']==1 and payload['job_title']=='Udvikler' and payload['kind']=='role'
     from enterprise_company_settings import WEBHOOK_EVENT_CHOICES
     assert {'employee.placed','order.change_requested','order.change_resolved'} <= {n for n,_ in WEBHOOK_EVENT_CHOICES}
+
+
+def test_one_reader_lists_assigned_and_personal_paths(env):
+    import learning_path_service as lps
+    db,app=env
+    assigned=[dict(id=5,learning_path_id=2,path_name='Ny i salg',due_date=None,status='in_progress',progress_percentage=50,
+                   steps=[dict(title='Kursus A',status='completed'),dict(title='Kursus B',status='not_started')])]
+    personal=[dict(id=9,title='Mod teamleder',status='aktiv',steps=[dict(title='Ledelse 1',completed=True),'Fri tekst'])]
+    with mock.patch.object(lps,'assignments_for_learner',return_value=assigned), mock.patch('app1.user_profile_db.get_learning_paths',return_value=personal):
+        items=lps.paths_for_learner(db.connection.cursor(),'ada',1,7)
+    assert [(i['kind'],i['title'],i['done'],i['total']) for i in items]==[('assigned','Ny i salg',1,2),('personal','Mod teamleder',1,2)]
+    assert items[0]['url']=='/min-laering/forloeb/5' and items[1]['steps'][1]=={'title':'Fri tekst','done':False}

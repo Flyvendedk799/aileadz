@@ -213,6 +213,13 @@ def _learning(cur, conn, company_id, ids):
         ], actor_user_id=ids["hr"], ordering_mode="sequential")
         if not result.get("success"):
             raise RuntimeError("demo learning path: %s" % result)
+        conn.commit()
+        # Mette gets the path: a sequential one, so only its first course is ordered now.
+        assigned = learning_path_service.assign_path(
+            cur, _ctx(company_id, ids, "hr"), company_id, path_id, [ids["medarbejder"]],
+            due_date=str(datetime.date.today() + datetime.timedelta(days=120)), sender_id=ids["hr"])
+        if not assigned.get("assigned"):
+            raise RuntimeError("demo path assignment: %s" % assigned)
     conn.commit()
 
 

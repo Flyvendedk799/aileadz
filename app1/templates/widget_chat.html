@@ -367,15 +367,15 @@
     {% endif %}
 
     <!-- Input -->
-    <div class="chat-input-area">
+    <form class="chat-input-area" id="chatForm">
         <textarea class="chat-input" id="chatInput" aria-label="Besked til rådgiveren" placeholder="Skriv en besked..." rows="1"></textarea>
-        <button class="send-btn" id="sendBtn" aria-label="Send besked" title="Send">
+        <button class="send-btn" type="submit" id="sendBtn" disabled aria-label="Send besked" title="Send">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="22" y1="2" x2="11" y2="13"></line>
                 <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
             </svg>
         </button>
-    </div>
+    </form>
 
     <div class="branding">
       <button type="button" data-chat-id-copy data-chat-scope="widget" disabled><span data-chat-id-label>Kopiér chat-id</span></button>
@@ -458,12 +458,17 @@
         }
 
         function updateSendBtn() {
-            sendBtn.classList.toggle('active', chatInput.value.trim().length > 0);
+            sendBtn.disabled = isSending || !chatInput.value.trim();
+            sendBtn.classList.toggle('active', !sendBtn.disabled);
         }
 
         chatInput.addEventListener('input', () => { autoResize(); updateSendBtn(); });
+        chatInput.form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            sendMessage();
+        });
         chatInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
                 e.preventDefault();
                 sendMessage();
             }
@@ -572,11 +577,9 @@
                 chip.className = 'suggestion-chip';
                 chip.textContent = s;
                 chip.addEventListener('click', () => {
-                    // Remove chips after click
+                    if (isSending) return;
                     chipsDiv.remove();
-                    chatInput.value = s;
-                    updateSendBtn();
-                    sendMessage();
+                    sendMessage(s);
                 });
                 chipsDiv.appendChild(chip);
             });
@@ -585,14 +588,16 @@
         }
 
         // ── Send message ──
-        async function sendMessage() {
-            const query = chatInput.value.trim();
+        async function sendMessage(suggestion) {
+            const query = (suggestion || chatInput.value).trim();
             if (!query || isSending) return;
             isSending = true;
 
             addUserMsg(query);
-            chatInput.value = '';
-            chatInput.style.height = 'auto';
+            if (!suggestion) {
+                chatInput.value = '';
+                autoResize();
+            }
             updateSendBtn();
 
             const botContent = addBotRow();
@@ -614,6 +619,7 @@
             }, {headers:{'X-Widget-Session':WIDGET_SESSION}});
 
             isSending = false;
+            updateSendBtn();
         }
 
         // ── Focus input on load ──

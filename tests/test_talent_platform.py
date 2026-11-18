@@ -453,3 +453,14 @@ def test_a_course_is_matched_to_the_gaps_it_is_about():
     assert competency.gaps_matched_by(gaps,'Ledelse: grundforløb','')[0]['skill']=='Ledelse'
     assert competency.gaps_matched_by(gaps,'NoSQL i dybden','')==[], 'a word that merely contains the skill is not a match'
     assert competency.gaps_matched_by(gaps,'','')==[]
+
+
+def test_an_empty_workspace_offers_ways_in_and_a_filled_one_does_not(env):
+    db,app=env
+    page=client(app).get('/udvikling').get_data(as_text=True)
+    assert 'Her samler du det, du kan, og det, du vil' in page and 'Importér dit CV' in page
+    cur=db.connection.cursor()
+    with app.test_request_context():
+        svc.assess(cur,7,1,'Python',3,'self',1,'first-run')
+    db.connection.commit()
+    assert 'Her samler du det, du kan, og det, du vil' not in client(app).get('/udvikling').get_data(as_text=True)

@@ -38,6 +38,15 @@ Nothing here needs a manual step; it is what to expect and check after the deplo
   by the app. Nothing to configure.
 - **Dependency added:** `Pillow` in `requirements.txt` (logo processing). The deploy
   installs it with the rest.
+- **Numbers on HR pages change, on purpose.** Overdue and in-progress course counts
+  were always zero (they tested a column that is empty until a course is completed) and
+  now show real figures; spend and revenue no longer include rejected orders. If someone
+  asks why a KPI moved after the deploy, this is why.
+- **New webhook events** (`order.change_requested`, `order.change_resolved`,
+  `employee.placed`) and two read endpoints in `/api/v1`. Existing subscriptions are
+  unaffected; a webhook subscribed to `*` starts receiving the new events.
+- **Managers and admins get a "Forside" entry** in the sidebar, and the old `/brands`
+  pages now lead to the profile.
 
 After the deploy, as a platform admin: open `/admin/system-health`, then
 Virksomhedsindstillinger and the new tab "Dokumenter til AI"; as any user, press the

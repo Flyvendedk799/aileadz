@@ -5,6 +5,18 @@
 <h1>Fra det, du kan, til det, du vil</h1><p>Kompetencer, mål og næste skridt samlet. Dine personlige mål deles kun, når du vælger det.</p>
 {% if settings.mobility_enabled %}<p><a class="btn btn-primary" href="{{ url_for('talent.opportunities') }}">Udforsk interne muligheder</a> <a href="{{ url_for('talent.hiring') }}">Mit ansættelsesteam</a></p>{% endif %}
 <p><a class="btn btn-soft" href="{{ url_for('futurematch.chat') }}?from=development&amp;intent={{ 'Hvad er mit bedste næste skridt i min udvikling?'|urlencode }}"><i class="fa-solid fa-comment-dots"></i> Tal med AI-assistenten om din udvikling</a></p>
+{# First visit: nothing assessed, no role, no goals. Say where one can begin, as three ways in, not as steps to complete. #}
+{% if not state.skills and not state.current_role and not goals %}
+<section class="talent-first-run" aria-label="Sådan kommer du i gang">
+  <h2>Her samler du det, du kan, og det, du vil</h2>
+  <p>Begynd dér, hvor det giver mest mening for dig. Intet her deles med HR, før du selv vælger det.</p>
+  <ul>
+    <li><a href="#kompetencer">Vurdér en kompetence</a>, så kan du se, hvad der skal til for en rolle.</li>
+    <li><a href="{{ url_for('futurematch.my_cv') }}#import">Importér dit CV</a>, så står dine kompetencer her med det samme.</li>
+    <li><a href="{{ url_for('futurematch.learning_goals') }}">Sæt et udviklingsmål</a>, og forbind det med de kompetencer, det kræver.</li>
+  </ul>
+</section>
+{% endif %}
 {% if state.current_role %}<section><h2>Din nuværende rolle: {{ state.current_role.title }}</h2>{{ t.readiness(state.readiness, links=true) }}</section>{% endif %}
 <div class="talent-grid"><section id="kompetencer"><h2>Dine kompetencer</h2>
 {% for skill in state.skills %}<div><h3>{{ skill.name }} <span class="badge">{{ skill.level }}/5</span></h3><p>{% if skill.manager %}Ledervurdering: {{ skill.manager.level }}/5{% else %}Foreløbig selvvurdering{% endif %}{% if skill.self %} · Din vurdering: {{ skill.self.level }}/5{% endif %}</p>{% if skill.disagreement %}<p class="notice">Vurderingerne er forskellige. Brug næste udviklingssamtale til at afklare dem.</p>{% endif %}</div>{% else %}<p>Begynd med at vurdere en kompetence eller importere dit CV.</p>{% endfor %}

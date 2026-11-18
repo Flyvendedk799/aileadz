@@ -16,7 +16,6 @@ The work below came out of a four-part audit (UX cohesion, domain/data seams, AI
 Owner decisions that shape the tracks:
 
 - **Company documents** may be uploaded by HR and used by the assistants for that company only.
-- **Proactive check-ins** may be delivered as notifications, per company opt-in and per-user mute.
 
 ## Track 0: safety net
 
@@ -63,7 +62,6 @@ Read the "AI changes" section of `CLAUDE.md` first: every item must hold on both
 | T3-3 | **Coverage of the remaining surfaces:** reports, mail recovery, onboarding readiness, billing and credits hints; contextual entry on talent, settings and admin pages; help articles for HR and vendors (all 13 are for employees). | `hr_tools.py`, `hr_dashboard` (`_HR_PAGE_TOOLS`), `app1/sse_events.py`, `app1/help_kb/` | the assistant on any page can explain and act on that page |
 | T3-4 | **Answers that match the tools.** The November probe found a confirm card described as saved, prices not in tool output, and "I can't see results" after a search ran. Add a verification pass against the turn's tool results. | `grounding.py`, `ai_runtime.py`; [reviews/2026-11-chat-probe/README.md](reviews/2026-11-chat-probe/README.md) | those probe cases pass on both providers |
 | T3-5 | **Company documents.** HR uploads policies and handbooks; indexed per company; retrieved only for that company; answers cite the document; text is fenced as untrusted; tables covered by GDPR and retention; HR page to upload, replace and remove. | new `company_documents` service; `app1/rag.py`, `upload_guard.py`, `gdpr_service.py` | a learner asks about their own company's policy and gets a cited answer; a cross-tenant eval case passes |
-| T3-6 | **Proactive check-ins as notifications**, opt-in per company (same pattern as `learning_deadline_reminders_enabled`), mute per user. Today they wait in a queue until the user opens the chat. | `profile_checkins.py`, `notification_service.py`, `scheduler.py` | an opted-in learner gets one relevant nudge that opens the chat on that topic |
 | T3-7 | **Cross-role case.** Learner request, HR approval and vendor booking are joined only by data; give each assistant the same view of where a request stands and who acts next. | `ai_entity_context.py`, `ai_followups.py` | any of the three can answer "hvor er den?" identically |
 | T3-8 | **Evals that gate.** Golden set: employee 66, HR 4, vendor 3. Grow HR and vendor, run both providers, and turn reviewed thumbs-down turns into cases (`set_feedback_reviewed` feeds nothing today). | `ai_eval/` | a quality regression fails a build |
 | T3-9 | **Guardrails.** `AI_MAX_RUN_COST`/`AI_MAX_RUN_TOKENS` default to unlimited; logged-in `/app1/ask` and the HR/vendor assistants have no request rate limit. | `ai_runtime.py`, `rate_limit.py` | a runaway loop or a script cannot drain a company's credits |

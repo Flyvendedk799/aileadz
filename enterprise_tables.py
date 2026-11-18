@@ -764,6 +764,7 @@ def enterprise_table_ddls():
                     timezone VARCHAR(50) DEFAULT 'Europe/Copenhagen',
                     currency VARCHAR(10) DEFAULT 'DKK',
                     learning_deadline_reminders_enabled TINYINT DEFAULT 0,
+                    ai_checkin_notifications_enabled TINYINT DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     INDEX idx_company (company_id)

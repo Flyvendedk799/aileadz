@@ -353,3 +353,49 @@ class ChipEventTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NotificationOptInTests(unittest.TestCase):
+    """A weekly card only for members of a company whose HR switched it on."""
+
+    def setUp(self):
+        from tests.sqlite_platform import PlatformDB, make_app
+        self.db = PlatformDB()
+        self.db.raw.execute("ALTER TABLE company_settings ADD COLUMN ai_checkin_notifications_enabled INTEGER DEFAULT 0")
+        self.db.execute("INSERT INTO users (id,username) VALUES (1,'ada')")
+        self.db.execute("INSERT INTO company_users (company_id,user_id,username,role) VALUES (7,1,'ada','employee')")
+        self.db.execute("INSERT INTO company_settings (company_id) VALUES (7)")
+        self.app = make_app(self.db)
+
+    def cards(self):
+        return self.db.query("SELECT title,message,action_url FROM notifications WHERE user_id='ada'")
+
+    def test_off_by_default_then_one_card_a_week(self):
+        import datetime
+        import profile_checkins as pc
+        now = datetime.datetime(2026, 11, 18, 9, 0)
+        with self.app.app_context():
+            self.assertFalse(pc.notify_checkin("ada", "Hej", now=now))
+            self.assertEqual(self.cards(), [])
+            self.db.execute("UPDATE company_settings SET ai_checkin_notifications_enabled=1 WHERE company_id=7")
+            self.assertTrue(pc.notify_checkin("ada", "Dit mål har ligget stille.", now=now))
+            self.assertFalse(pc.notify_checkin("ada", "Igen samme uge.", now=now))
+        cards = self.cards()
+        self.assertEqual(len(cards), 1)
+        self.assertEqual(cards[0]["action_url"], "/chat?from=checkin")
+        self.assertIn("ligget stille", cards[0]["message"])
+
+    def test_a_person_outside_an_opted_in_company_gets_nothing(self):
+        import profile_checkins as pc
+        self.db.execute("INSERT INTO users (id,username) VALUES (2,'solo')")
+        with self.app.app_context():
+            self.assertFalse(pc.notify_checkin("solo", "Hej"))
+
+    def test_profile_gap_items_never_carry_a_nudge(self):
+        import profile_checkins as pc
+        found = pc.build_candidates(
+            goals=[], completed_courses=[], target_role="Leder", has_profile_depth=True,
+            completeness={"sections": [{"key": "skills", "label": "Kompetencer", "strength": 0.1}]})
+        gaps = [c for c in found if c["kind"] == pc.KIND_GAP]
+        self.assertTrue(gaps)
+        self.assertTrue(all("nudge" not in c for c in gaps))

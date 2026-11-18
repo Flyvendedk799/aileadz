@@ -1591,7 +1591,9 @@ OPENAI_TOOLS.append({
             "åbn sammenligningsvisning, åbn profil/CV, åbn kataloget (evt. filtreret), åbn mind-map, "
             "åbn brugerens Futurematch-CV (open_my_cv), eller start en tilmelding. Du kan også åbne brugerens egne sider: "
             "open_my_learning (læringsoverblikket), open_goals (udviklingsmål) og open_timeline "
-            "(Mine bestillinger med status, frister og godkendelser). Det opretter IKKE en ordre — start_order "
+            "(Mine bestillinger med status, frister og godkendelser). I en virksomhed også open_development "
+            "(Min udvikling: rolle, kompetencekrav, selvvurdering og udviklingsmål) og open_opportunities "
+            "(interne muligheder, hvor brugeren selv ser sin ansøgning igennem og sender den). Det opretter IKKE en ordre — start_order "
             "åbner kun tilmeldingsflowet. Foretræk dette frem for at skrive rå URL'er i teksten."
         ),
         "parameters": {
@@ -1601,7 +1603,8 @@ OPENAI_TOOLS.append({
                     "type": "string",
                     "enum": ["view_product", "open_compare", "open_profile", "open_mind_map",
                              "open_cv_upload", "open_my_cv", "open_learning_path", "open_catalog", "start_order", "open_profiler",
-                             "open_advisor", "open_my_learning", "open_goals", "open_timeline"],
+                             "open_advisor", "open_my_learning", "open_goals", "open_timeline",
+                             "open_development", "open_opportunities"],
                     "description": "Hvilken handling/navigation der skal udføres i UI'et."
                 },
                 "handle": {"type": "string", "description": "Kursets handle (view_product / start_order)."},
@@ -4927,7 +4930,10 @@ PROFILE_TOOLS.append({
             "udviklingsmål med næste skridt, og, hvis virksomheden bruger det, interne muligheder og brugerens ansøgninger. "
             "Med explore_role vurderes brugeren mod en anden offentliggjort rolle; det er privat og gemmes ikke. "
             "Brug ved 'hvad mangler jeg for at blive ...', 'hvordan står jeg i min rolle', 'er der interne muligheder', "
-            "'hvad er status på min ansøgning', 'hvad er mit næste skridt'."
+            "'hvad er status på min ansøgning', 'hvad er mit næste skridt'. Vil brugeren vurdere en kompetence, "
+            "forbinde et mål med kompetencekrav eller søge en mulighed, så åbn siden med open_in_app "
+            "(open_development / open_opportunities): de ting gør brugeren selv dér, en ansøgning først efter at "
+            "have set, hvad der sendes."
         ),
         "parameters": {
             "type": "object",
@@ -7255,6 +7261,14 @@ def _execute_open_in_app(args, username=None):
     elif action == "open_timeline":
         out["target"] = "/min-tidslinje"
         out["label"] = label or "Se mine bestillinger"
+
+    elif action == "open_development":
+        out["target"] = "/udvikling"
+        out["label"] = label or "Åbn Min udvikling"
+
+    elif action == "open_opportunities":
+        out["target"] = "/muligheder"
+        out["label"] = label or "Se interne muligheder"
 
     return _model_tool_json(**out)
 

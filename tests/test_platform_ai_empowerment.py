@@ -375,7 +375,9 @@ class OpenInAppSurfaceTests(unittest.TestCase):
     def test_new_actions_resolve_to_real_routes(self):
         for action, target in (("open_my_learning", "/min-laering"),
                                ("open_goals", "/mine-maal"),
-                               ("open_timeline", "/min-tidslinje")):
+                               ("open_timeline", "/min-tidslinje"),
+                               ("open_development", "/udvikling"),
+                               ("open_opportunities", "/muligheder")):
             out = json.loads(tools._execute_open_in_app({"action": action}))
             self.assertEqual(out.get("status"), "success", action)
             self.assertEqual(out.get("target"), target)

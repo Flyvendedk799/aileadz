@@ -92,6 +92,8 @@ UI_ACTIONS = frozenset({
     "open_my_learning", # open the employee learning home (/min-laering)
     "open_goals",       # open the development-goals dashboard (/mine-maal)
     "open_timeline",    # open the personal deadline/approval timeline (/min-tidslinje)
+    "open_development",    # open the development workspace (/udvikling): role, competencies, goals
+    "open_opportunities",  # open internal opportunities (/muligheder), where a person applies
 })
 
 

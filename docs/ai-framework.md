@@ -419,7 +419,8 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
   `sse_events.UI_ACTIONS` (a test pins the tool enum to it both ways); includes
   `open_cv_upload` (`/profil/cv#import`, the import in the CV studio), `open_my_cv` (`/profil/cv`, the
   CV studio), `open_mind_map`, `open_my_learning`
-  (`/min-laering`), `open_goals` (`/mine-maal`), `open_timeline` (`/min-tidslinje`).
+  (`/min-laering`), `open_goals` (`/mine-maal`), `open_timeline` (`/min-tidslinje`), `open_development`
+  (`/udvikling`), `open_opportunities` (`/muligheder`).
   `open_profiler` / `open_advisor` take `section` or `node` + `intent` and build a
   handoff URL (1b); `open_catalog` URL-encodes its query; `open_profile` anchors only to ids that exist
   on the profile page (`_PROFILE_PAGE_SECTIONS`, test-pinned to the template).

@@ -3,15 +3,6 @@ from flask import Blueprint, render_template, session, current_app, redirect, ur
 dashboard_bp = Blueprint('dashboard', __name__, template_folder='templates')
 
 
-_ROLE_LABELS_DA = {
-    'admin': 'Administrator',
-    'company_admin': 'Virksomhedsadministrator',
-    'hr_manager': 'HR-leder',
-    'department_head': 'Afdelingsleder',
-    'employee': 'Medarbejder',
-}
-
-
 @dashboard_bp.app_template_filter('dknum')
 def dknum(value, decimals=None):
     """Danish number format: '.' as thousands separator, ',' as decimal mark.
@@ -93,8 +84,9 @@ def _fetch_dashboard_kpis():
         'role_label': 'Bruger',
     }
     try:
+        import capabilities
         from capabilities import effective_role
-        kpis['role_label'] = _ROLE_LABELS_DA.get(effective_role(), 'Bruger')
+        kpis['role_label'] = capabilities.role_label(effective_role())
     except Exception:
         kpis['role_label'] = 'Bruger'
 

@@ -32,6 +32,22 @@ def effective_role(session=None) -> str:
     return role if role in auth_decorators.ROLE_RANK else EMPLOYEE
 
 
+# The one Danish name for each role, for every place a person reads their own or a
+# colleague's role (sidebar, dashboards, lists). Templates use ``role_label(role)``.
+ROLE_LABELS = {
+    "admin": "Administrator",
+    "company_admin": "Virksomhedsadministrator",
+    "hr_manager": "HR-leder",
+    "department_head": "Afdelingsleder",
+    "team_lead": "Teamleder",
+    "employee": "Medarbejder",
+}
+
+
+def role_label(role, default="Bruger") -> str:
+    return ROLE_LABELS.get((role or "").strip().lower(), default)
+
+
 def can(capability: str, session=None) -> bool:
     """True when the acting user holds ``capability`` (fail closed if unknown)."""
     try:
@@ -55,4 +71,4 @@ def register_jinja(app) -> None:
     def has_endpoint(name):
         return name in app.view_functions
 
-    app.jinja_env.globals.update(can=can, has_endpoint=has_endpoint)
+    app.jinja_env.globals.update(can=can, has_endpoint=has_endpoint, role_label=role_label)

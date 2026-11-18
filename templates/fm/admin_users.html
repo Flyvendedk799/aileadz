@@ -6,7 +6,7 @@
 {% block content %}
 {# Display labels for the stored role values (data about OTHER users; not an access check). #}
 {% set _platform_roles = {'admin': 'Platformadmin', 'user': 'Bruger'} %}
-{% set _company_roles = {'company_admin': 'Virksomhedsadmin', 'hr_manager': 'HR-manager', 'department_head': 'Afdelingsleder', 'team_lead': 'Teamleder', 'employee': 'Medarbejder'} %}
+{% set _company_roles = {'company_admin': role_label('company_admin'), 'hr_manager': role_label('hr_manager'), 'department_head': role_label('department_head'), 'team_lead': role_label('team_lead'), 'employee': role_label('employee')} %}
 <div class="fm-wrap">
 {% set active_admin_page = 'users' %}{% include 'fm/_admin_subnav.html' %}
 

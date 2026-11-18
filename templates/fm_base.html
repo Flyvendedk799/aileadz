@@ -35,7 +35,7 @@
 {% set platform_tagline = company_branding.tagline if white_label_active and company_branding.tagline else 'Læring & HR' %}
 {% set _uname = session.get('user') or 'Gæst' %}
 {% set _initials = (_uname[:2] | upper) if _uname else 'FM' %}
-{% set _usermeta = (session.get('company_name') ~ ' · ' ~ (session.get('company_role') or 'Bruger')) if session.get('company_name') else 'Futurematch' %}
+{% set _usermeta = (session.get('company_name') ~ ' · ' ~ role_label(session.get('company_role'))) if session.get('company_name') else 'Futurematch' %}
 <body data-page="{% block page_id %}{% endblock %}" data-role="{{ _role }}" data-auth="{{ '1' if session.get('user') else '0' }}" data-brand-server="1" class="{% block body_class %}{% endblock %}">
 
 {# The server decides the brand. A white-label tenant pushes its brand into the

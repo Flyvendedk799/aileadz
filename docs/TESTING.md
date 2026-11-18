@@ -68,3 +68,11 @@ budget; it runs only against the explicitly named disposable `futurematch_sandbo
 Offline route tests render the actual Jinja templates but cannot establish visual
 quality or live SMTP/supplier delivery. Use the launch runbook for browser and
 real-recipient acceptance.
+
+## Browser journey (not part of pytest)
+
+`tests/e2e/journey.test.cjs` drives the real app in Chromium against the sandbox demo tenant on
+MySQL: request, approval, booking, attendance, completion, and goal privacy. It needs the sandbox
+server and Node with Playwright, so it stays outside the offline suite. How to run it and the rules
+for adding steps: [../tests/e2e/README.md](../tests/e2e/README.md). The tenant it runs on is
+`sandbox/demo_seed.py` ([../sandbox/README.md](../sandbox/README.md)).

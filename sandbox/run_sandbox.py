@@ -3,6 +3,7 @@
 
 Usage:
   python run_sandbox.py init    # create every table + seed a test company
+  python run_sandbox.py demo    # init + a full demo tenant (people, catalogue, orders, talent)
   python run_sandbox.py run     # run the dev server (http://127.0.0.1:5001)
   python run_sandbox.py smoke   # boot, log in as 'test', exercise profile + chat
 
@@ -16,6 +17,7 @@ import pathlib
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(HERE))
 os.chdir(ROOT)
 
 
@@ -145,6 +147,12 @@ def main():
     if cmd == "init":
         ensure_schema(app)
         seed(app)
+    elif cmd == "demo":
+        ensure_schema(app)
+        seed(app)
+        import demo_seed
+        if not demo_seed.seed_demo(app):
+            sys.exit(1)
     elif cmd == "smoke":
         ensure_schema(app)
         seed(app)
@@ -153,7 +161,7 @@ def main():
         ensure_schema(app)
         run_server(app)
     else:
-        print(f"Unknown command: {cmd}. Use: init | run | smoke")
+        print(f"Unknown command: {cmd}. Use: init | demo | run | smoke")
         sys.exit(2)
 
 

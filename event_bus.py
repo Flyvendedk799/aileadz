@@ -36,7 +36,8 @@ Conventions (matching the rest of the codebase)
 -----------------------------------------------
   * ``current_app.mysql.connection`` for DB access, ``DictCursor`` reads.
   * ``autocommit=False`` -> we ``commit()`` explicitly.
-  * Schema is idempotent ``CREATE TABLE IF NOT EXISTS``.
+  * The table is defined once, in ``enterprise_tables``; this module can create it
+    from that definition if it runs before the boot sync.
   * Every query is scoped by ``company_id`` (no FKs in this codebase).
 """
 
@@ -55,23 +56,10 @@ DELIVERY_TIMEOUT_SECONDS = 5
 # Default batch size for a single drain pass.
 DEFAULT_DRAIN_LIMIT = 50
 
-# The single canonical outbox DDL. enterprise_tables.ensure_enterprise_tables
-# also creates this (it owns the authoritative table list); event_bus keeps an
-# identical copy so it can lazily self-heal if called before that runs.
-EVENT_OUTBOX_DDL = """CREATE TABLE IF NOT EXISTS event_outbox (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    company_id INT NOT NULL,
-    event_type VARCHAR(120) NOT NULL,
-    payload TEXT,
-    status ENUM('pending', 'delivered', 'failed') NOT NULL DEFAULT 'pending',
-    attempts INT NOT NULL DEFAULT 0,
-    last_error TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    delivered_at DATETIME NULL,
-    INDEX idx_status (status),
-    INDEX idx_company (company_id),
-    INDEX idx_status_created (status, created_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
+def _outbox_ddl():
+    """The outbox definition lives in ``enterprise_tables`` with every other table."""
+    import enterprise_tables
+    return enterprise_tables.table_ddl("event_outbox")
 
 
 def _get_conn():
@@ -100,7 +88,7 @@ def ensure_outbox_table(conn=None):
             return False
         cur = conn.cursor()
         try:
-            cur.execute(EVENT_OUTBOX_DDL)
+            cur.execute(_outbox_ddl())
             conn.commit()
         finally:
             try:

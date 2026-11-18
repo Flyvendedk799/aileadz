@@ -269,6 +269,16 @@ def _seed_theme_templates(conn):
         logging.warning("Theme template seed skipped: %s", e)
 
 
+def table_ddl(name):
+    """The ONE definition of table ``name`` (or None). For a module that must be
+    able to create its own table before the boot sync has run: it asks here
+    instead of keeping a second copy of the statement."""
+    for ddl in enterprise_table_ddls():
+        if _parse_table_name(ddl) == name:
+            return ddl
+    return None
+
+
 def enterprise_table_ddls():
     """Every CREATE TABLE statement the platform owns, ONE definition per table.
 
@@ -694,8 +704,8 @@ def enterprise_table_ddls():
                 # The single durable store for integration events. emit_event()
                 # writes a 'pending' row (fast, network-free) and drain_outbox()
                 # later delivers it to company_webhooks subscriptions. Kept here
-                # so ensure_enterprise_tables creates it; event_bus also lazily
-                # ensures it. See event_bus.py for the authoritative copy.
+                # here with every other table; event_bus creates it from this
+                # definition (table_ddl) if it runs before the boot sync.
                 """CREATE TABLE IF NOT EXISTS event_outbox (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     company_id INT NOT NULL,

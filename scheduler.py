@@ -27,9 +27,8 @@ Design constraints (matching the rest of the codebase)
   * Everything is GUARDED: ``run_due_jobs`` and the table helper NEVER raise into
     their caller (request path / boot). The worst case is "a job stays not-yet-
     run and is retried on the next pass", never "the request/boot fails".
-  * Schema is idempotent ``CREATE TABLE IF NOT EXISTS``. This module keeps its
-    OWN tiny ``scheduled_job_runs`` table self-contained here (deliberately NOT
-    in enterprise_tables.py) so it can self-heal and not collide with that file.
+  * The ``scheduled_job_runs`` table is defined once, in ``schema_registry``; this
+    module creates it from that definition if it runs before the boot sync.
   * Jobs reuse existing, already-built functions — this module orchestrates the
     cadence; it does not reimplement the work.
 """
@@ -42,14 +41,11 @@ logger = logging.getLogger(__name__)
 # ── Bookkeeping table ────────────────────────────────────────────────────────
 # One row per registered job. ``last_run_at`` drives both the "is this due?"
 # check and the best-effort claim that stops two workers double-running a job in
-# the same window. Kept self-contained here (not in enterprise_tables.py).
-SCHEDULED_JOB_RUNS_DDL = """CREATE TABLE IF NOT EXISTS scheduled_job_runs (
-    job_name VARCHAR(120) PRIMARY KEY,
-    last_run_at DATETIME NULL,
-    last_status VARCHAR(20) NULL,
-    last_summary TEXT NULL,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
+# the same window.
+def scheduled_job_runs_ddl():
+    """Defined once, in schema_registry."""
+    import schema_registry
+    return schema_registry.ddl('scheduled_job_runs')
 
 # A single opportunistic/worker pass enumerates at most this many companies for
 # the per-company daily jobs, so one pass stays bounded even on a large tenant
@@ -93,7 +89,7 @@ def _ensure_table(app=None, conn=None):
             return False
         cur = conn.cursor()
         try:
-            cur.execute(SCHEDULED_JOB_RUNS_DDL)
+            cur.execute(scheduled_job_runs_ddl())
             conn.commit()
         finally:
             try:

@@ -22,13 +22,10 @@ _STORE: dict = {}
 _LOCK = threading.Lock()
 _TTL_S = 300  # 5 minutes — a parse + review fits comfortably inside this
 
-_TABLE_SQL = """CREATE TABLE IF NOT EXISTS ai_cv_parse_jobs (
-    session_id VARCHAR(128) PRIMARY KEY,
-    status VARCHAR(16) NOT NULL,
-    result_json LONGTEXT,
-    expires_at DOUBLE NOT NULL,
-    INDEX idx_expires (expires_at)
-) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"""
+def _table_sql():
+    """Defined once, in schema_registry."""
+    import schema_registry
+    return schema_registry.ddl('ai_cv_parse_jobs')
 
 _table_ready = False
 
@@ -57,7 +54,7 @@ def _ensure_table(mysql):
         return True
     try:
         cur = mysql.connection.cursor()
-        cur.execute(_TABLE_SQL)
+        cur.execute(_table_sql())
         mysql.connection.commit()
         cur.close()
         _table_ready = True

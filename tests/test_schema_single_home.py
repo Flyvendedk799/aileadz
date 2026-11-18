@@ -14,23 +14,14 @@ SKIP_DIRS = {".git", "__pycache__", "tests", "migrations", "sandbox", "scripts",
 
 # file -> number of CREATE TABLE statements it is still allowed to hold (ROADMAP T1-10)
 LEGACY = {
-    "ai_provider.py": 1,
     "ai_runtime.py": 2,
-    "ai_secrets.py": 1,
     "app1/__init__.py": 1,
     "app1/confirm_store.py": 1,
     "app1/memory_store.py": 5,
     "app1/user_profile_db.py": 17,
-    "cv_parse_store.py": 1,
-    "dsr_service.py": 1,
     "email_service.py": 1,
     "enterprise_api/__init__.py": 2,
-    "event_bus.py": 2,
     "gdpr_service.py": 2,
-    "login_guard.py": 1,
-    "password_tokens.py": 1,
-    "scheduler.py": 2,
-    "two_factor.py": 1,
 }
 
 

@@ -195,8 +195,85 @@ DOCUMENTS_DDL = [
     ) {_ENGINE}""",
 ]
 
+# Tables that security and operations modules create on first use (login lockout, reset
+# tokens, 2FA, data-subject requests, the job ledger, CV parse jobs, AI settings and
+# secrets). Each module asks ``ddl(name)`` for its statement; nothing else defines them.
+MODULE_DDL = [
+    """CREATE TABLE IF NOT EXISTS scheduled_job_runs (
+    job_name VARCHAR(120) PRIMARY KEY,
+    last_run_at DATETIME NULL,
+    last_status VARCHAR(20) NULL,
+    last_summary TEXT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    token_hash CHAR(64) NOT NULL,
+    account_type VARCHAR(10) NOT NULL,
+    account_id INT NOT NULL,
+    purpose VARCHAR(10) NOT NULL DEFAULT 'reset',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NOT NULL,
+    used_at DATETIME NULL,
+    UNIQUE KEY uk_token_hash (token_hash),
+    INDEX idx_account (account_type, account_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS user_2fa (
+    user_id INT NOT NULL PRIMARY KEY,
+    secret_enc TEXT NOT NULL,
+    enabled TINYINT(1) NOT NULL DEFAULT 0,
+    backup_codes TEXT NULL,
+    last_step BIGINT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    enabled_at DATETIME NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS dsr_requests (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    request_type VARCHAR(20) NOT NULL,
+    user_id INT NULL,
+    username VARCHAR(255) NULL,
+    email VARCHAR(255) NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'open',
+    reason TEXT NULL,
+    requested_at DATETIME NOT NULL,
+    due_at DATETIME NOT NULL,
+    handled_by VARCHAR(255) NULL,
+    handled_at DATETIME NULL,
+    note TEXT NULL,
+    INDEX idx_status_due (status, due_at),
+    INDEX idx_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS ai_cv_parse_jobs (
+    session_id VARCHAR(128) PRIMARY KEY,
+    status VARCHAR(16) NOT NULL,
+    result_json LONGTEXT,
+    expires_at DOUBLE NOT NULL,
+    INDEX idx_expires (expires_at)
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""",
+    """CREATE TABLE IF NOT EXISTS ai_secrets (
+    secret_name VARCHAR(100) NOT NULL PRIMARY KEY,
+    secret_value TEXT,
+    hint VARCHAR(16),
+    updated_by VARCHAR(255),
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS ai_settings (
+    setting_key VARCHAR(100) NOT NULL PRIMARY KEY,
+    setting_value TEXT,
+    updated_by VARCHAR(255),
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS auth_login_attempts (
+        key_hash VARCHAR(80) NOT NULL PRIMARY KEY,
+        failed_count INT NOT NULL DEFAULT 0,
+        first_failed_at BIGINT NOT NULL DEFAULT 0,
+        locked_until BIGINT NOT NULL DEFAULT 0
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+]
+
 REGISTRY_DDL = [
     *TALENT_DDL,
+    *MODULE_DDL,
     *DOCUMENTS_DDL,
     AI_ACTIONS_DDL,
     f"""CREATE TABLE IF NOT EXISTS customer_accounts (
@@ -643,6 +720,17 @@ REQUIRED_COLUMNS = {
     "notifications": ["user_id", "recipient_user_id", "action_url", "read"],
     "order_status_history": ["order_id", "kind", "to_value", "actor_kind"],
 }
+
+
+def ddl(name):
+    """The one CREATE TABLE statement for ``name`` among the tables this module owns
+    (``enterprise_tables.table_ddl`` also covers the core enterprise tables)."""
+    import re
+    for statement in REGISTRY_DDL:
+        found = re.search(r"CREATE TABLE IF NOT EXISTS\s+`?(\w+)`?", statement, re.IGNORECASE)
+        if found and found.group(1) == name:
+            return statement
+    return None
 
 
 def _rows(cur):

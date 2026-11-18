@@ -281,6 +281,9 @@ def request_change(ctx, order_id, kind, payload=None):
                       actor_user_id=ctx.user_id)
         orders._record_history(cur, row, kind="change", from_value=kind, to_value="requested", ctx=ctx, note=payload["note"])
         conn.commit()
+        orders._emit_event_safe(row.get("company_id"), "order.change_requested",
+                                {"order_id": order_id, "change_id": change_id, "kind": kind,
+                                 "product_title": row.get("product_title"), "user_email": row.get("user_email")})
         return {
             "success": True,
             "pending": True,
@@ -420,6 +423,9 @@ def resolve_change(ctx, order_id, change_id, accept, *, note="", fee=0, new_refe
             orders._emit_event_safe(
                 row.get("company_id"), "order.updated", {"order_id": order_id, "change": change["kind"], "accepted": accept}
             )
+        orders._emit_event_safe(row.get("company_id"), "order.change_resolved",
+                                {"order_id": order_id, "change_id": change_id, "kind": change["kind"], "accepted": bool(accept),
+                                 "product_title": row.get("product_title"), "user_email": row.get("user_email")})
         return {"success": True, "message": "Ændringen er bekræftet." if accept else "Ændringen er afvist; bookingen er uændret."}
     except ValueError as exc:
         conn.rollback()

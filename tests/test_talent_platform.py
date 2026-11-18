@@ -410,3 +410,24 @@ def test_an_unmet_requirement_links_to_learning_and_a_met_one_does_not(env):
         hr=render_template_string("{% import 'fm/_talent.html' as t %}{{ t.readiness(r) }}",r=r)
     assert learner.count('Find læring')==1 and 'q=Ledelse+%26+co' in learner
     assert 'Find læring' not in hr
+
+
+def test_a_confirmed_placement_is_published_to_integrations_after_commit(env):
+    db,app=env
+    rid=publish_role(db);oid=opportunity(db,rid)
+    cur=db.connection.cursor()
+    svc.apply(cur,7,1,oid,{})
+    application=db.one('SELECT * FROM talent_applications')
+    for revision,status in enumerate(('screening','interview','offer'),start=1):
+        svc.transition(cur,7,3,application['id'],status,revision)
+    svc.transition(cur,7,1,application['id'],'accepted',4)
+    db.connection.commit()
+    with mock.patch('event_bus.emit_event') as emit:
+        response=client(app,3,role='hr_manager').post('/talent/actions/placement',data=dict(id=application['id']))
+    assert response.status_code==302
+    assert emit.call_count==1
+    company,event,payload=emit.call_args.args
+    assert (company,event)==(7,'employee.placed')
+    assert payload['user_id']==1 and payload['job_title']=='Udvikler' and payload['kind']=='role'
+    from enterprise_company_settings import WEBHOOK_EVENT_CHOICES
+    assert {'employee.placed','order.change_requested','order.change_resolved'} <= {n for n,_ in WEBHOOK_EVENT_CHOICES}

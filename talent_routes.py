@@ -236,6 +236,7 @@ def action(action):
     _profile_schema()
     hr_actions = {'settings', 'role', 'publish_role', 'assign_role', 'manager_assessment', 'opportunity', 'publish_opportunity', 'close_opportunity', 'placement', 'scenario', 'publish_scenario'}
     cur, cid, user_id = context(management=action in hr_actions or action == 'transition')
+    placed = None
     dest = 'talent.hr' if action in hr_actions or f.get('return_to') == 'hr' and can('company.employees') else 'talent.workspace'
     if action == 'transition' and f.get('return_to') == 'hiring':
         dest = 'talent.hiring'
@@ -289,7 +290,7 @@ def action(action):
             service.transition(cur, cid, user_id, f['id'], f['status'], int(f['revision']))
         elif action == 'placement':
             required(cur, cid, 'mobility')
-            service.confirm_placement(cur, cid, f['id'])
+            placed = service.confirm_placement(cur, cid, f['id'])
         elif action in ('scenario', 'publish_scenario'):
             required(cur, cid, 'planning')
             if action == 'scenario':
@@ -305,6 +306,10 @@ def action(action):
         else:
             abort(404)
         current_app.mysql.connection.commit()
+        if placed:
+            # After the commit: an integration (HR system) can follow the move.
+            import event_bus
+            event_bus.emit_event(cid, 'employee.placed', placed)
         from security_audit import audit
         audit('talent.' + action, resource_type='talent', resource_id=f.get('id', ''), company_id=cid)
         flash('Ændringen er gemt.', 'success')

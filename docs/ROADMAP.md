@@ -68,7 +68,7 @@ Read the "AI changes" section of `CLAUDE.md` first: every item must hold on both
 | T4-2 | **Split the largest files.** `hr_dashboard/__init__.py` holds 91 routes as closures in one factory; `hr_tools.py` holds domain logic eight modules import (`SKILL_LEVEL_MAP`, compliance derivation). | those files | domain logic lives in service modules; route groups are separate files |
 | T4-3 | **Data access.** 600+ raw `cursor()` sites; `db_tx.py` has no production caller. Adopt it in new and touched code. | `db_tx.py` | services use the context managers |
 | T4-4 | **Types on service contracts.** The lint gate now runs all of pyflakes, pylint's error class and the bugbear checks that find real mistakes (`ruff.toml`). Open: type hints on the service modules' public functions and a type check in CI; the string-built-SQL rule (155 hits, all identifiers or placeholders so far) needs triage before it can gate. | `ruff.toml`, service modules | CI type-checks the service layer |
-| T4-5 | **API and webhooks for the newer domains:** talent, learning paths, fulfilment changes, goals, certifications. | `enterprise_api/`, `enterprise_company_settings.WEBHOOK_EVENT_CHOICES` | an integration can follow a booking change and a placement |
+| T4-5 | **API endpoints for the newer domains.** Webhooks now cover booking changes and internal placements (event list in [WEBHOOK_VERIFICATION.md](WEBHOOK_VERIFICATION.md)). The key-authenticated API (`/api/v1`) still has no endpoints for learning-path assignments, booking changes, certifications or role frameworks. | `enterprise_api/` | an integration can read what the webhooks announce |
 
 ## Identity
 

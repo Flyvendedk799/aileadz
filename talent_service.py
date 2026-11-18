@@ -387,6 +387,10 @@ def confirm_placement(cur, company_id, application_id):
     cur.execute('UPDATE talent_applications SET placement_confirmed=1 WHERE company_id=%s AND id=%s', (company_id, application_id))
     _tell(cur, company_id, app['user_id'], 'Din placering er bekræftet',
           'HR har bekræftet din plads i "%s".' % opp['title'], '/udvikling', key='talent-placement:%s' % application_id)
+    # For the caller to emit AFTER it has committed (event_bus commits its own row).
+    who = member(cur, company_id, app['user_id'])
+    return dict(user_id=app['user_id'], username=who['username'], kind=opp['kind'], opportunity=opp['title'],
+                job_title=who.get('job_title'), department=who.get('department'))
 
 
 def coverage(states, reqs, k):

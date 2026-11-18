@@ -180,7 +180,8 @@ class CalendarFeedRouteTests(unittest.TestCase):
         self.assertIn("Kursusstart: Lederuddannelse", body)
         # The feed is whole-company (no user_ids), so the query carries only the
         # company scope — confirm we passed company_id 42 and no IN clause.
-        sql, params = cur.executed[0]
+        # (Once-per-process startup queries may run first, depending on test order.)
+        sql, params = next((q, p) for q, p in cur.executed if "course_orders" in q)
         self.assertIn("company_id = %s", sql)
         self.assertNotIn("user_id IN", sql)
         self.assertEqual(params[0], 42)

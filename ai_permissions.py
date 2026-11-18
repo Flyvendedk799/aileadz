@@ -9,6 +9,8 @@ HR_CAPABILITIES = {
     'approve_order_from_chat': 'hr.approvals',
     'hr_open_in_app': 'hr.view',
     'hr_search_company_documents': 'hr.view',
+    'hr_onboarding_readiness': 'company.employees',
+    'hr_mail_delivery_status': 'company.employees',
     'search_courses_for_team': 'hr.view',
     'assign_learning_path_to_team': 'company.learning_paths',
     'set_skill_target': 'hr.manage',

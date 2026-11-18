@@ -171,3 +171,25 @@ def test_coming_from_the_development_workspace_brings_its_read_tools():
     assert 'get_my_development' in origin_tool_names(ctx)
     header, body, fenced = build_layer(ctx)
     assert 'Min udvikling' in header and not fenced
+
+
+def test_hr_assistant_reads_onboarding_and_mail_state_for_its_own_company(env):
+    import hr_tools
+    db, app = env
+    db.raw.executescript("""
+        CREATE TABLE IF NOT EXISTS mail_outbox (id TEXT PRIMARY KEY, company_id INTEGER, to_email TEXT, subject TEXT,
+            state TEXT, last_error TEXT, available_at TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+    """)
+    for i, (cid, state) in enumerate(((7, 'sent'), (7, 'failed'), (8, 'failed'))):
+        db.execute("INSERT INTO mail_outbox (id,company_id,to_email,subject,state,last_error,available_at) "
+                   "VALUES (%s,%s,%s,'Din bestilling',%s,'SMTP afviste','2020-01-01')", ('m%d' % i, cid, 'x%d@firma.dk' % cid, state))
+    with app.test_request_context():
+        from flask import session
+        session.update(user='hr', user_id=3, company_id=7, company_role='hr_manager')
+        mail = json.loads(hr_tools._execute_hr_mail_delivery_status({}))
+    assert mail['counts'] == {'sendt': 1, 'fejlet': 1}
+    assert [m['to'] for m in mail['needs_attention']] == ['x7@firma.dk'] and mail['page'] == '/hr/leveringer'
+    hr_selection, _ = registry.get_hr_tool_selection(company_id=7, user_query='er vi klar til at komme i gang?')
+    assert 'hr_onboarding_readiness' in {t['function']['name'] for t in hr_selection}
+    hr_selection, _ = registry.get_hr_tool_selection(company_id=7, user_query='fik de mailen?')
+    assert 'hr_mail_delivery_status' in {t['function']['name'] for t in hr_selection}

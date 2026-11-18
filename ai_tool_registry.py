@@ -341,6 +341,8 @@ _HR_META = {
     ),
     # AI empowerment pass: read-only cross-surface navigation for the HR panel.
     # No company scope required — it navigates, it never reads tenant data.
+    "hr_onboarding_readiness": ToolMeta("hr_onboarding_readiness", "hr", company_required=True, cache_ttl=60, toolset_tags=("onboarding",)),
+    "hr_mail_delivery_status": ToolMeta("hr_mail_delivery_status", "hr", company_required=True, cache_ttl=30, toolset_tags=("mail",)),
     "hr_search_company_documents": ToolMeta(
         "hr_search_company_documents", "hr", company_required=True, cache_ttl=60,
         toolset_tags=("company", "documents"),
@@ -485,6 +487,8 @@ _TOOL_LABELS = {
     "create_order_for_employee": "Bestil for medarbejder",
     "hr_open_in_app": "Åbn HR-side",
     "hr_search_company_documents": "Virksomhedens dokumenter",
+    "hr_onboarding_readiness": "Kom i gang",
+    "hr_mail_delivery_status": "Mail og leveringer",
     # Vendor tools
     "vendor_performance_summary": "Salgsperformance",
     "get_demand_by_category": "Markedsefterspørgsel",
@@ -1470,6 +1474,8 @@ _HR_PAGE_TOOLS = {
     "team": ("get_team_training_status", "get_team_non_starters"),
     "employees": ("get_employee_overview", "hr_inactive_employees"),
     "talent": ("get_employee_overview", "get_company_skill_gaps"),
+    "onboarding": ("hr_onboarding_readiness",),
+    "mail": ("hr_mail_delivery_status",),
     "departments": ("get_team_training_status", "get_budget_overview"),
     "approvals": ("get_pending_actions", "get_training_report"),
     "approval_policies": ("get_pending_actions",),
@@ -1535,6 +1541,12 @@ def get_hr_tool_selection(
             "uddannelsespolitik", "kursuspolitik", "har jeg ret til", "må jeg", "maa jeg", "hvem skal jeg spørge",
             "står der i", "staar der i", "dokument")):
         names.add("hr_search_company_documents")
+    if _has_any(query, ("kom i gang", "komme i gang", "er vi klar", "hvad mangler vi", "opsætning", "opsaetning",
+                        "onboarding", "sat op", "næste skridt for os", "pilot")):
+        names.add("hr_onboarding_readiness")
+    if _has_any(query, ("mail", "e-mail", "email", "fik de", "fået besked", "faaet besked", "ikke modtaget",
+                        "leveringer", "levering", "ikke sendt", "fejler")):
+        names.add("hr_mail_delivery_status")
     # One person's goals and role readiness live on the employee lookup.
     if _has_any(query, ("udviklingsmål", "udviklingsmaal", "delt mål", "delte mål", "hans mål", "hendes mål",
                         "deres mål", "mål for ", "udviklingssamtale", "mus-samtale", "mus samtale",

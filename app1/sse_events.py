@@ -126,6 +126,8 @@ HR_DESTINATIONS = {
     "ai_quality":         ("hr_ext.ai_quality", "/hr/ai-quality", "AI-kvalitet"),
     "reports":            ("hr_dashboard.reports", "/hr/reports", "Rapporter & eksport"),
     "talent":             ("talent.hr", "/hr/talent", "Talent og udvikling"),
+    "onboarding":         ("customer_success.readiness", "/hr/kom-i-gang", "Kom i gang"),
+    "mail":               ("mail_delivery.deliveries", "/hr/leveringer", "Mail og leveringer"),
 }
 
 # The HR advisor may also send the manager to a catalog surface (public routes,

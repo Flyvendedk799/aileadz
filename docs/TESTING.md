@@ -13,7 +13,7 @@ SANDBOX=1 AI_WARMUP_ON_IMPORT=0 py -c "from run import create_app; create_app()"
 
 `tests/conftest.py` sets the env for you (`SANDBOX=1`, `AI_WARMUP_ON_IMPORT=0`, `SCHEDULER_OPPORTUNISTIC=0`, `AI_MEMORY_BACKEND=sqlite`, `ENTERPRISE_TABLE_SYNC_SKIP=1`, `CATALOG_AUTO_EMBED=0`). If no MySQL answers on `MYSQL_HOST:MYSQL_PORT`, it makes `pymysql.connect` fail instantly so best-effort DB writes never hang a test. It also treats every session as an active membership and resets the confirm store between tests.
 
-CI (`.survhub/ci.yml`, on ServerHoster) additionally starts a real MySQL 8 inside the job; `tests/test_schema_baseline.py` and the disposable-sandbox concurrency regression in `tests/test_launch_mysql.py` need it (builds every table from scratch and asserts `verify_schema` finds nothing missing). A handful of tests skip when the real Shopify export or MySQL is absent (`test_catalog_service.py`, `test_ask_sse_offline.py`).
+CI (`.survhub/ci.yml`, on ServerHoster) additionally starts a real MySQL 8 inside the job; `tests/test_schema_baseline.py` and `tests/test_launch_mysql.py` (a concurrency regression and the legacy data migrations on legacy-shaped rows) need it (builds every table from scratch and asserts `verify_schema` finds nothing missing). A handful of tests skip when the real Shopify export or MySQL is absent (`test_catalog_service.py`, `test_ask_sse_offline.py`).
 
 ## Browser chat transport regressions
 

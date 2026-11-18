@@ -427,7 +427,7 @@ _HELP_STOP_WORDS = frozenset({
     "mine", "din", "dit", "dine", "man", "hvordan", "hvor", "hvorfor", "hvilke", "hvilken",
     "skal", "gør", "gøre", "får", "få", "finder", "finde", "se", "ser", "hen", "lige",
     "nu", "noget", "ud", "op", "sådan", "bare", "hvis", "virker", "platformen", "siden",
-    "the", "and", "of", "to", "in", "a", "an", "is", "for", "on", "with", "how", "do",
+    "the", "and", "of", "to", "in", "a", "an", "is", "on", "with", "how", "do",
     "does", "can", "where", "what", "my", "me", "it", "that", "this", "about", "are",
 })
 

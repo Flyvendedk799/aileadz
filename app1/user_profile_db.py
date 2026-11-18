@@ -961,7 +961,7 @@ _MEMORY_STOPWORDS = {
     "om", "vi", "min", "havde", "ham", "hun", "nu", "over", "da", "fra", "du",
     "ud", "sin", "dem", "os", "op", "man", "hans", "hvor", "eller", "hvad", "skal",
     "kan", "vil", "være", "blev", "her", "dig", "din", "the", "a", "to", "of",
-    "and", "is", "in", "it", "you", "my", "me", "we", "for", "on", "with",
+    "and", "is", "in", "it", "you", "my", "me", "we", "on", "with",
 }
 
 

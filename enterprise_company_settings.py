@@ -346,7 +346,7 @@ class EnterpriseSettingsManager:
                     self.log_settings_change(
                         company_id, field, 
                         str(current_settings[field]), str(value),
-                        f"Updated via settings panel"
+                        "Updated via settings panel"
                     )
                     
                     update_fields.append(f"{field} = %s")

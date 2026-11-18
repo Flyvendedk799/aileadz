@@ -568,7 +568,7 @@ _DIFFICULTY_LABELS_DA = {
 _REASON_STOPWORDS = {
     "kursus", "kurser", "uddannelse", "course", "training", "og", "i", "at", "er",
     "en", "et", "den", "det", "de", "til", "på", "med", "for", "af", "som", "om",
-    "the", "and", "to", "of", "a", "in", "noget", "med",
+    "the", "and", "to", "of", "a", "in", "noget",
 }
 
 
@@ -2081,8 +2081,8 @@ _PROFILE_GOAL_STOPWORDS = {
     "og", "i", "at", "er", "en", "et", "den", "det", "de", "til", "på", "med",
     "for", "af", "fra", "som", "om", "kan", "har", "vil", "der", "ikke", "sig",
     "var", "ved", "så", "også", "efter", "eller", "blive", "bedre", "lære",
-    "lære", "mere", "min", "mine", "mit", "jeg", "vi", "du", "the", "and", "to",
-    "of", "a", "in", "inden", "indenfor", "vil", "gerne", "skal", "være",
+    "mere", "min", "mine", "mit", "jeg", "vi", "du", "the", "and", "to",
+    "of", "a", "in", "inden", "indenfor", "gerne", "skal", "være",
 }
 
 

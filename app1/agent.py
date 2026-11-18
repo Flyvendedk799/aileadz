@@ -87,10 +87,10 @@ _TOPIC_KEYWORDS = {
     "løn", "ansættelse", "opsigelse", "personalejura", "mub",
     # Project methods
     "agil", "agile", "scrum", "kanban", "prince", "prince2", "pmp",
-    "certificering", "certifikat", "safe", "devops",
+    "certificering", "certifikat", "safe",
     # Health & safety
     "førstehjælp", "brand", "brandslukker", "hjertestart", "aed",
-    "arbejdsmiljø", "ergonomi", "sikkerhedskultur",
+    "ergonomi", "sikkerhedskultur",
     # Languages
     "engelsk", "tysk", "fransk", "spansk", "dansk",
     # Misc

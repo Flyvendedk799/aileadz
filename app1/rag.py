@@ -36,7 +36,7 @@ _STOP_WORDS = {
     "for", "af", "fra", "som", "om", "kan", "har", "vil", "der", "ikke", "sig",
     "var", "ved", "så", "også", "efter", "eller", "mange", "alle", "hvad",
     "når", "hun", "han", "vi", "du", "jeg", "dig", "mig", "os", "dem",
-    "the", "and", "of", "to", "in", "a", "is", "for", "on", "with",
+    "the", "and", "of", "to", "in", "a", "is", "on", "with",
 }
 
 _GENERIC_QUERY_TOKENS = {

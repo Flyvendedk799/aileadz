@@ -99,6 +99,6 @@ Find a symbol with Grep, then read only that range. Module docstrings at the top
 
 ## Tooling
 
-- Lint: `ruff check .` (gate in CI: syntax, undefined names, redefinitions, unused imports/variables; see `ruff.toml`).
+- Lint: `ruff check .` (gate in CI: syntax, all of pyflakes, pylint's error class and a set of bugbear checks; see `ruff.toml`).
 - CI: `.survhub/ci.yml` runs on ServerHoster for pushes to `main` and pull requests (gitleaks on new commits, ruff, boot smoke, pytest against MySQL 8, the Node transport tests). Two GitHub Actions workflows remain: `.github/workflows/security.yml` (weekly full-history gitleaks, pip-audit) and `ai-eval-nightly.yml` (not a gate; ROADMAP T0-3).
 - Local MySQL sandbox: [../sandbox/README.md](../sandbox/README.md).

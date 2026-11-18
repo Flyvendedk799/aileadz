@@ -1,5 +1,5 @@
-# Lint gate for CI. Deliberately narrow: real bugs (syntax errors, undefined names,
-# invalid comparisons, redefinitions) plus dead code (unused imports/variables).
+# Lint gate for CI. Real bugs (syntax errors, everything pyflakes and pylint's error
+# class report, a set of bugbear checks) plus dead code (unused imports/variables).
 # Style rules are NOT enforced - the code base predates the linter. Widen the rule
 # set as the backlog is worked off.
 line-length = 140
@@ -7,4 +7,9 @@ target-version = "py312"
 extend-exclude = ["node_modules", "sandbox", ".claude", "migrations/versions/0001_baseline.py"]
 
 [lint]
-select = ["E9", "F63", "F7", "F82", "F811", "F401", "F841"]
+# F = all of pyflakes; PLE = pylint errors; the B rules are the bugbear checks that
+# flag real mistakes and are clean here (mutable defaults, calls in defaults, useless
+# expressions, loop-variable shadowing, duplicate except/set entries, star-arg order,
+# positional re flags). B023 (closure over a loop variable) is left out: every hit is a
+# lambda used inside the same iteration.
+select = ["E9", "F", "PLE", "B006", "B008", "B018", "B020", "B025", "B026", "B033", "B034"]

@@ -694,7 +694,7 @@ def create_hr_dashboard_blueprint():
                 level_map_sql = "CASE skill_level WHEN 'begynder' THEN 1 WHEN 'mellem' THEN 2 WHEN 'avanceret' THEN 4 WHEN 'ekspert' THEN 5 ELSE 2 END)"
 
                 # Unified skill count: enterprise + chatbot
-                cur.execute(f"""
+                cur.execute("""
                     SELECT COUNT(DISTINCT skill_name) as total_skills,
                            COUNT(DISTINCT source_user) as employees_with_skills
                     FROM (
@@ -3376,7 +3376,7 @@ def create_hr_dashboard_blueprint():
                     "icon": "fa-wallet",
                     "color": "warning",
                     "title": f"{b['department']}: {b['pct']}% budget brugt",
-                    "message": f"Afdelingens uddannelsesbudget er naesten opbrugt.",
+                    "message": "Afdelingens uddannelsesbudget er næsten opbrugt.",
                     "action_url": url_for('hr_dashboard.department_budgets'),
                     "priority": 2
                 })

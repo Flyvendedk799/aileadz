@@ -4,7 +4,7 @@ Contract
 --------
 * A document belongs to ONE company. Every read and write takes ``company_id``
   and filters on it; there is no cross-company lookup and no global search.
-* HR uploads a PDF or a plain-text/Markdown file. The text is extracted once,
+* HR uploads a PDF, a Word document (.docx) or a plain-text/Markdown file. The text is extracted once,
   split into passages and stored (``company_documents`` / ``company_document_chunks``
   in ``schema_registry``). The original file is NOT kept: only the text.
 * ``search`` ranks the company's own passages against a question with a small
@@ -32,7 +32,8 @@ MAX_CHARS = 400_000
 CHUNK_CHARS = 1100
 CHUNK_OVERLAP = 150
 MAX_CHUNKS_SCANNED = 4000
-ALLOWED_EXT = (".pdf", ".txt", ".md")
+ALLOWED_EXT = (".pdf", ".docx", ".txt", ".md")
+MAX_DOCX_XML_BYTES = 30 * 1024 * 1024      # uncompressed size cap of the document part (zip-bomb guard)
 
 _WORD = re.compile(r"[a-zA-ZæøåÆØÅéÉüÜäÄöÖ0-9]{3,}")
 _STOP = frozenset("""
@@ -75,20 +76,62 @@ def _matches(term, terms):
     return term in terms or any(same_word(term, t) for t in terms)
 
 
+def _docx_text(data):
+    """Text of a Word document: the paragraphs of ``word/document.xml``.
+
+    A .docx is a zip of XML. Only the main document part is read, its
+    uncompressed size is capped, and the XML is parsed with ``defusedxml`` (no
+    entity expansion, no external references)."""
+    import io
+    import zipfile
+    from defusedxml import ElementTree
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            info = archive.getinfo("word/document.xml")
+            if info.file_size > MAX_DOCX_XML_BYTES:
+                raise DocumentError("Dokumentet er for stort til at blive læst.")
+            xml = archive.read(info)
+    except (zipfile.BadZipFile, KeyError):
+        raise DocumentError("Filen er ikke et gyldigt Word-dokument (.docx).") from None
+    ns = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    try:
+        root = ElementTree.fromstring(xml)
+    except Exception:
+        raise DocumentError("Word-dokumentet kunne ikke læses.") from None
+    paragraphs = []
+    for paragraph in root.iter(ns + "p"):
+        parts = []
+        for node in paragraph.iter():
+            if node.tag == ns + "t" and node.text:
+                parts.append(node.text)
+            elif node.tag in (ns + "tab",):
+                parts.append(" ")
+            elif node.tag in (ns + "br", ns + "cr"):
+                parts.append("\n")
+        line = "".join(parts).strip()
+        if line:
+            paragraphs.append(line)
+    return "\n\n".join(paragraphs)
+
+
 def extract_text(filename, data):
     """Plain text from an upload. Raises ``DocumentError`` with a Danish reason."""
     import upload_guard
     name = (filename or "").strip()
     ext = ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
     if ext not in ALLOWED_EXT:
-        raise DocumentError("Upload en PDF eller en tekstfil (.txt eller .md).")
+        raise DocumentError("Upload en PDF, et Word-dokument (.docx) eller en tekstfil (.txt eller .md).")
     if not data:
         raise DocumentError("Filen er tom.")
     if len(data) > MAX_BYTES:
         raise DocumentError("Filen er for stor (maks %d MB)." % (MAX_BYTES // (1024 * 1024)))
-    if not upload_guard.looks_like(data, ext if ext == ".pdf" else ".txt"):
+    if ext == ".docx":
+        if not data.startswith(b"PK"):
+            raise DocumentError("Filens indhold passer ikke til filtypen.")
+        text = _docx_text(data)
+    elif not upload_guard.looks_like(data, ext if ext == ".pdf" else ".txt"):
         raise DocumentError("Filens indhold passer ikke til filtypen.")
-    if ext == ".pdf":
+    elif ext == ".pdf":
         from cv_ingest import _extract_pdf_text
         text, hint = _extract_pdf_text(data)
         if not (text or "").strip():

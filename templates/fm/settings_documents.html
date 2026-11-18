@@ -45,11 +45,11 @@
       <label class="fm-field" style="margin:0"><span>Titel (valgfri)</span>
         <input class="fm-input" name="title" maxlength="255" placeholder="F.eks. Personalehåndbog 2026"></label>
       <label class="fm-field" style="margin:0"><span>Fil</span>
-        <input class="fm-input" type="file" name="file" accept=".pdf,.txt,.md" required></label>
+        <input class="fm-input" type="file" name="file" accept=".pdf,.docx,.txt,.md" required></label>
       <div><button class="btn btn-primary btn-sm" type="submit"><i class="fa-solid fa-upload"></i> Upload</button></div>
     </form>
     <ul class="muted" style="font-size:12.5px;margin:14px 0 0;padding-left:18px;line-height:1.6">
-      <li>PDF eller tekstfil (.txt, .md), højst {{ max_mb }} MB. En scannet PDF uden tekst kan ikke læses.</li>
+      <li>PDF, Word (.docx) eller tekstfil (.txt, .md), højst {{ max_mb }} MB. En scannet PDF uden tekst og ældre Word-filer (.doc) kan ikke læses.</li>
       <li>Vi gemmer kun teksten, ikke selve filen.</li>
       <li>Dokumenterne bruges kun for jeres virksomhed og kun af jeres egne medarbejdere og HR.</li>
       <li>Upload ikke dokumenter med personoplysninger om enkeltpersoner: alle medarbejdere kan få svar ud fra indholdet.</li>

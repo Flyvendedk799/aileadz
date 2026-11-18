@@ -10,10 +10,10 @@ audience: hr
 
 ## Dokumenter til AI
 1. Åbn "Virksomhedsindstillinger" og fanen "Dokumenter til AI".
-2. Upload en PDF eller tekstfil (.txt eller .md), fx personalehåndbogen eller uddannelsespolitikken. Giv den en titel, medarbejderne kan genkende.
+2. Upload en PDF, et Word-dokument (.docx) eller en tekstfil (.txt eller .md), fx personalehåndbogen eller uddannelsespolitikken. Giv den en titel, medarbejderne kan genkende.
 3. AI-assistenten kan nu svare ud fra dokumentet og nævner, hvilket dokument svaret kommer fra.
 
-Godt at vide: kun teksten gemmes, ikke filen. Dokumenterne bruges kun for jeres virksomhed. Upload ikke dokumenter med oplysninger om enkeltpersoner, for alle medarbejdere kan få svar ud fra indholdet. En scannet PDF uden tekst og Word-filer kan ikke læses. Du erstatter et dokument ved at fjerne det og uploade det nye.
+Godt at vide: kun teksten gemmes, ikke filen. Dokumenterne bruges kun for jeres virksomhed. Upload ikke dokumenter med oplysninger om enkeltpersoner, for alle medarbejdere kan få svar ud fra indholdet. En scannet PDF uden tekst og ældre Word-filer (.doc) kan ikke læses. Du erstatter et dokument ved at fjerne det og uploade det nye.
 
 ## Opfølgning fra AI-assistenten
 Under "Indsigt", "Engagement" kan I slå "Opfølgning fra AI-assistenten" til. Så får hver medarbejder højst én notifikation om ugen om et kursus, de lige har gennemført, eller et mål, der har ligget stille. Indholdet er medarbejderens eget; HR ser det ikke, og medarbejderen kan selv slå opfølgning fra.

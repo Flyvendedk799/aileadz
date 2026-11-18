@@ -155,3 +155,36 @@ def test_danish_inflections_and_compounds_still_match(env):
     for question in ('Hvad er uddannelsesbudgettet?', 'hvor mange hjemmearbejdsdage har jeg', 'barselsorlov løn'):
         hits = docs.search(cur, 7, question)
         assert hits and hits[0]['title'] == 'Personalehåndbog', question
+
+
+def _docx(paragraphs):
+    import zipfile
+    body = "".join('<w:p><w:r><w:t xml:space="preserve">%s</w:t></w:r></w:p>' % p for p in paragraphs)
+    xml = ('<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+           '<w:body>%s</w:body></w:document>' % body)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("word/document.xml", xml)
+        archive.writestr("[Content_Types].xml", "<Types/>")
+    return buffer.getvalue()
+
+
+def test_word_documents_are_read_and_bad_ones_refused(env):
+    db, app = env
+    cur = db.connection.cursor()
+    data = _docx(["Rejsepolitik for Firma A.", "Flyrejser over fire timer må bestilles på business class efter godkendelse fra direktionen.",
+                  "Hotel bestilles via rejsebureauet."])
+    docs.add_document(cur, 7, 3, "Rejsepolitik", "rejsepolitik.docx", data)
+    hit = docs.search(cur, 7, "må jeg flyve business class?")[0]
+    assert hit["title"] == "Rejsepolitik" and "business class" in hit["content"]
+    for bad in (b"PK" + b"\\x00" * 200, b"ikke en zip-fil" * 20):
+        with pytest.raises(docs.DocumentError):
+            docs.add_document(cur, 7, 3, "", "x.docx", bad)
+    # An entity bomb in the XML is refused by the parser, not expanded.
+    import zipfile
+    bomb = io.BytesIO()
+    with zipfile.ZipFile(bomb, "w") as archive:
+        archive.writestr("word/document.xml", '<?xml version="1.0"?><!DOCTYPE d [<!ENTITY a "aaaaaaaaaa"><!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;">]>'
+                         '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>&b;</w:t></w:r></w:p></w:body></w:document>')
+    with pytest.raises(docs.DocumentError):
+        docs.add_document(cur, 7, 3, "", "bomb.docx", bomb.getvalue())

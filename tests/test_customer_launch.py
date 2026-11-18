@@ -151,6 +151,26 @@ class CustomerLaunchTests(unittest.TestCase):
         self.assertEqual(float(row["price"]), 250)
         self.assertEqual(row["product_title"], "Introduktion")
 
+    def test_api_lists_an_orders_changes_only_for_its_own_company(self):
+        import inspect
+        from flask import g
+        import enterprise_api
+
+        self.db.raw.execute("CREATE TABLE IF NOT EXISTS course_order_changes (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, "
+                            "order_id TEXT, company_id INTEGER, kind TEXT, requested_by INTEGER, requested_kind TEXT, payload_json TEXT, "
+                            "status TEXT DEFAULT 'pending', decision_note TEXT, resolved_by TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, resolved_at TEXT)")
+        self.db.execute("INSERT INTO course_orders(order_id,company_id,product_title,status) VALUES('mine',7,'Kursus','booked')")
+        self.db.execute("INSERT INTO course_orders(order_id,company_id,product_title,status) VALUES('theirs',8,'Andet','booked')")
+        for oid, cid in (("mine", 7), ("theirs", 8)):
+            self.db.execute("INSERT INTO course_order_changes(order_id,company_id,kind,requested_kind,payload_json) VALUES(%s,%s,'cancel','learner','{}')", (oid, cid))
+        view = inspect.unwrap(enterprise_api.get_order_changes)
+        with self.app.test_request_context("/api/v1/orders/mine/changes"):
+            g.company_id = 7
+            mine = view("mine")
+            theirs = view("theirs")
+        self.assertEqual([c["kind"] for c in mine.get_json()["data"]], ["cancel"])
+        self.assertEqual(theirs[1], 404, "another company's order does not exist for this key")
+
     def test_api_bulk_failure_is_not_reported_as_success(self):
         import inspect
         from flask import g

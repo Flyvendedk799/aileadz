@@ -1527,6 +1527,63 @@ def get_orders():
         return jsonify({'error': 'Ordrer kunne ikke hentes'}), 500
 
 
+@api_enterprise_bp.route('/api/v1/orders/<order_id>/changes')
+@require_api_auth('read:orders')
+def get_order_changes(order_id):
+    """Cancellation, reschedule and substitution requests on one of the company's orders
+    (what the order.change_requested / order.change_resolved webhooks announce)."""
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        try:
+            cur.execute("SELECT order_id FROM course_orders WHERE order_id = %s AND company_id = %s",
+                        (order_id, g.company_id))
+            if not cur.fetchone():
+                return jsonify({'error': 'Order not found'}), 404
+            cur.execute(
+                "SELECT id, kind, status, requested_kind AS requested_by, decision_note, created_at, resolved_at "
+                "FROM course_order_changes WHERE order_id = %s AND company_id = %s ORDER BY id",
+                (order_id, g.company_id))
+            changes = cur.fetchall()
+        finally:
+            cur.close()
+        return jsonify({'success': True, 'data': changes})
+    except Exception:
+        return jsonify({'error': 'Changes could not be fetched'}), 500
+
+
+@api_enterprise_bp.route('/api/v1/learning-paths/assignments')
+@require_api_auth('read:learning')
+def get_learning_path_assignments():
+    """Learning paths assigned to the company's employees, with progress."""
+    try:
+        page = max(1, int(request.args.get('page', 1)))
+        per_page = max(1, min(int(request.args.get('per_page', 50)), 100))
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        try:
+            cur.execute("SELECT COUNT(*) AS total FROM employee_learning_progress "
+                        "WHERE company_id = %s AND learning_path_id IS NOT NULL", (g.company_id,))
+            total = cur.fetchone()['total']
+            cur.execute(
+                "SELECT elp.id AS assignment_id, elp.user_id AS employee_id, elp.learning_path_id, lp.path_name, "
+                "elp.status, elp.progress_percentage, elp.due_date, elp.ordering_mode, elp.started_at, "
+                "(SELECT COUNT(*) FROM learning_assignment_steps s WHERE s.progress_id = elp.id AND s.company_id = elp.company_id) AS steps_total, "
+                "(SELECT COUNT(*) FROM learning_assignment_steps s WHERE s.progress_id = elp.id AND s.company_id = elp.company_id "
+                " AND s.status IN ('completed', 'skipped')) AS steps_done "
+                "FROM employee_learning_progress elp JOIN learning_paths lp ON lp.id = elp.learning_path_id AND lp.company_id = elp.company_id "
+                "WHERE elp.company_id = %s AND elp.learning_path_id IS NOT NULL ORDER BY elp.id DESC LIMIT %s OFFSET %s",
+                (g.company_id, per_page, (page - 1) * per_page))
+            rows = cur.fetchall()
+        finally:
+            cur.close()
+        return jsonify({'success': True, 'data': rows,
+                        'pagination': {'page': page, 'per_page': per_page, 'total': total,
+                                       'pages': (total + per_page - 1) // per_page}})
+    except ValueError:
+        return jsonify({'error': 'page and per_page must be integers'}), 400
+    except Exception:
+        return jsonify({'error': 'Assignments could not be fetched'}), 500
+
+
 @api_enterprise_bp.route('/api/v1/orders', methods=['POST'])
 @require_api_auth('write:orders')
 def create_order_api():
@@ -2407,6 +2464,36 @@ def _build_openapi_spec():
                     '400': _err('Invalid report type.'), **common_errors,
                 },
             }
+        },
+        '/api/v1/orders/{order_id}/changes': {
+            'get': {
+                'tags': ['Orders'], 'summary': 'List change requests on an order',
+                'description': ('Cancellation, reschedule and substitution requests and how each was resolved. '
+                                'A booking stays in force until its change is accepted.'),
+                'security': _scoped('read:orders'),
+                'parameters': [{'name': 'order_id', 'in': 'path', 'required': True, 'schema': {'type': 'string'}}],
+                'responses': {
+                    '200': _ok_object({'data': {'type': 'array', 'items': {'type': 'object', 'properties': {
+                        'id': {'type': 'integer'}, 'kind': {'type': 'string', 'enum': ['cancel', 'reschedule', 'substitute']},
+                        'status': {'type': 'string'}, 'requested_by': {'type': 'string'},
+                        'decision_note': {'type': 'string', 'nullable': True},
+                        'created_at': {'type': 'string'}, 'resolved_at': {'type': 'string', 'nullable': True}}}}}),
+                    '404': _err('Order not found.'), **common_errors,
+                },
+            },
+        },
+        '/api/v1/learning-paths/assignments': {
+            'get': {
+                'tags': ['Learning'], 'summary': 'List learning-path assignments',
+                'security': _scoped('read:learning'),
+                'parameters': [page_param, per_page_param],
+                'responses': {
+                    '200': _ok_object({
+                        'data': {'type': 'array', 'items': {'type': 'object'}},
+                        'pagination': {'$ref': '#/components/schemas/Pagination'},
+                    }), **common_errors,
+                },
+            },
         },
         '/api/v1/orders': {
             'get': {

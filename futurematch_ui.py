@@ -835,7 +835,7 @@ def timeline():
     other users' orders even within the same company.
     """
     if not session.get('user'):
-        flash('Log ind for at se din tidslinje.', 'danger')
+        flash('Log ind for at se dine bestillinger.', 'danger')
         return redirect(url_for('auth.login'))
 
     username = session.get('user')

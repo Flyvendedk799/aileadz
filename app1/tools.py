@@ -1591,7 +1591,7 @@ OPENAI_TOOLS.append({
             "åbn sammenligningsvisning, åbn profil/CV, åbn kataloget (evt. filtreret), åbn mind-map, "
             "åbn brugerens Futurematch-CV (open_my_cv), eller start en tilmelding. Du kan også åbne brugerens egne sider: "
             "open_my_learning (læringsoverblikket), open_goals (udviklingsmål) og open_timeline "
-            "(tidslinjen med frister og godkendelser). Det opretter IKKE en ordre — start_order "
+            "(Mine bestillinger med status, frister og godkendelser). Det opretter IKKE en ordre — start_order "
             "åbner kun tilmeldingsflowet. Foretræk dette frem for at skrive rå URL'er i teksten."
         ),
         "parameters": {
@@ -6606,7 +6606,7 @@ def _create_team_order(args, username, product, product_data, variant_selection,
         "status": "team_orders_created" if ok else "error", "policy": mode, "group_order_id": group_id,
         "created": len(ok), "failed": len(results) - len(ok), "orders": results,
         "message": (f"{len(ok)} af {len(results)} ordrer er oprettet." +
-                    (" De venter på godkendelse, så du kan følge dem på tidslinjen." if any(r["needs_approval"] for r in ok) else "")),
+                    (" De venter på godkendelse, så du kan følge dem under Mine bestillinger." if any(r["needs_approval"] for r in ok) else "")),
     }, ensure_ascii=False, default=str)
 
 
@@ -7194,7 +7194,7 @@ def _execute_open_in_app(args, username=None):
 
     elif action == "open_timeline":
         out["target"] = "/min-tidslinje"
-        out["label"] = label or "Se min tidslinje"
+        out["label"] = label or "Se mine bestillinger"
 
     return _model_tool_json(**out)
 

@@ -47,7 +47,7 @@ SURFACES = {
     "order": "bestillingen",
     "goals": "Mine mål",
     "development": "Min udvikling (rolle, kompetencekrav, udviklingsmål og interne muligheder)",
-    "timeline": "tidslinjen med frister",
+    "timeline": "Mine bestillinger (kurser, status og frister)",
 }
 
 # Profile sections a handoff may point at -> Danish label + profile key(s) counted.

@@ -1566,7 +1566,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
       </div>
       <div class="agc-rows">${rowsHtml}</div>
       <div class="csv-footer">
-        <button class="csv-btn primary" data-url="/min-tidslinje"><i class="fa-solid ${icon("fa-timeline")}"></i> Se hele tidslinjen</button>
+        <button class="csv-btn primary" data-url="/min-tidslinje"><i class="fa-solid ${icon("fa-timeline")}"></i> Se alle bestillinger</button>
       </div>`;
     card.querySelectorAll("[data-url]").forEach((b) =>
       b.addEventListener("click", () => window.open(b.getAttribute("data-url"), "_blank")));

@@ -633,7 +633,7 @@ SEARCH_PLATFORM_HELP_TOOL = {
         "description": (
             "Søg i Futurematchs hjælpeartikler om hvordan platformen virker: CV-upload, Mind-Map og "
             "hvad AI'en husker (og hvordan man sletter det), AI-assistenten, bestilling og godkendelse, "
-            "afdelingsbudget, læringsstier, udviklingsmål, obligatoriske kurser, Min læring/tidslinje, "
+            "afdelingsbudget, læringsstier, udviklingsmål, obligatoriske kurser, Min læring og Mine bestillinger, "
             "privatliv/GDPR, konto og support. Brug det til 'hvordan/hvor'-spørgsmål om platformen — "
             "IKKE til kursusanbefalinger. Svar ud fra artiklerne og henvis til deres url."
         ),

@@ -768,7 +768,7 @@ def _next_step_message(status, needs_approval):
     """Honest Danish copy about what happens next. No payment details, ever."""
     if needs_approval or status == lc.PENDING_APPROVAL:
         return ("Din bestilling er sendt til godkendelse. Du hører fra os, så snart den er "
-                "behandlet, og kan følge status på din tidslinje.")
+                "behandlet, og kan følge status under Mine bestillinger.")
     return ("Bestillingen er godkendt. Udbyderen bekræfter din plads, og du får besked, når den er "
             "booket. Fakturering sker uden for appen.")
 
@@ -916,7 +916,7 @@ def _create_order_once(ctx, *, product_handle, product_title, price,
                 "price": _to_float(dup.get("price")) if isinstance(dup,dict) else price_f,
                 "next_step": _next_step_message(dup_status, dup_status == lc.PENDING_APPROVAL),
                 "order_url": order_url(dup_id),
-                "message": "Du har allerede anmodet om dette kursus. Se status på din tidslinje.",
+                "message": "Du har allerede anmodet om dette kursus. Se status under Mine bestillinger.",
             }
 
         # --- 1. needs_approval (preserve current behaviour) ---------------

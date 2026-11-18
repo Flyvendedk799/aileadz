@@ -179,7 +179,7 @@
                   <i class="fa-solid fa-chevron-right" style="font-size:11px;color:var(--fm-ink-3)" aria-hidden="true"></i>
                 </a>
                 {% endfor %}
-                <div style="text-align:center;padding-top:12px"><a href="{{ url_for('futurematch.timeline') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-timeline"></i> Se alle på tidslinjen</a></div>
+                <div style="text-align:center;padding-top:12px"><a href="{{ url_for('futurematch.timeline') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-timeline"></i> Se alle bestillinger</a></div>
               {% else %}
               <div class="muted" style="text-align:center;font-size:13.5px;padding:24px 16px;color:var(--fm-ink-3)">Ingen bestillinger endnu. Find et kursus i kataloget, eller spørg AI-assistenten, hvad der passer til dig.
                 <div style="margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><a class="btn btn-primary btn-sm" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-graduation-cap"></i> Udforsk kataloget</a><a class="btn btn-ghost btn-sm" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comment-dots"></i> Spørg AI-assistenten</a></div>

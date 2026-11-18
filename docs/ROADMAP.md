@@ -15,7 +15,6 @@ The work below came out of a four-part audit (UX cohesion, domain/data seams, AI
 
 Owner decisions that shape the tracks:
 
-- **Vocabulary** is broad: natural synonyms stay (ordre/bestilling, mail/e-mail, leverandør/udbyder). Only words that mislead are fixed (DECISIONS.md, "Product vocabulary").
 - **Company documents** may be uploaded by HR and used by the assistants for that company only.
 - **Proactive check-ins** may be delivered as notifications, per company opt-in and per-user mute.
 
@@ -35,7 +34,6 @@ Owner decisions that shape the tracks:
 
 | ID | Item | Where | Done when |
 |---|---|---|---|
-| T1-2 | **Completion reaches certificates and compliance.** A completed order now ticks its development-goal step (`domain_reactions.py`), but it does not touch `user_certifications`, and compliance only refreshes on render or daily. Add both as `course.completed` subscribers. | `domain_reactions.py`, `cert_expiry_service`, `compliance_service` | completing one order visibly updates certificates and compliance with no manual step |
 | T1-5 | **One skills read model.** Self and manager levels are merged separately in `hr_dashboard`, `hr_tools`, `insights_engine`, `cv_service` and `app1/tools.py`; three label scales are in use (`competency.score_to_level`, `api._SKILL_LEVEL_MAP`, the 1-5 talent scale). | `competency_model.snapshot` as the only reader | one function answers "what level is this person at", one label set |
 | T1-6 | **Finish the one goal record.** `goal_service.py` is the read model with owner and visibility, sharing works in both directions and HR goals have a status writer. Open: the learner pages still read the two stores directly (`futurematch_ui.learning_goals`, `learner_context.py`, `app1/user_profile_db.get_learning_goals`) instead of `goal_service.for_learner`; free-text `user_profile_summary.goals` and goal-like AI memory facts are still separate from goal records; `user_learning_goals` has no `company_id` of its own. | `goal_service.py`, `futurematch_ui.py`, `learner_context.py`, `app1/user_profile_db.py` | every surface and assistant reads goals through `goal_service` |
 | T1-7 | **One learning-path model.** AI-built `user_learning_paths` run beside HR `learning_paths`/`employee_learning_progress`. | `app1/user_profile_db.py`, `learning_path_service.py` | a personal path and an assigned path are the same object with a different owner |
@@ -50,7 +48,6 @@ Owner decisions that shape the tracks:
 |---|---|---|---|
 | T2-1 | **The learner loop is linked end to end:** gap → course → order → completion → competency → CV → internal opportunity. Done: each unmet requirement in `/udvikling` links a catalog search, a completed order links back to the workspace, exploring a role offers the internal opportunities. Open: the learner home links none of talent, opportunities, mind map or colleague chat; the CV studio does not show role readiness or matching opportunities; a catalog course does not say which of the learner's gaps it closes. | `templates/fm/employee_home.html`, `my_cv.html`, `product_detail.html`, `cv_service.py` | each step offers the next one |
 | T2-2 | **One home per role, complete sidebar.** `/dashboard` (manager landing) has no sidebar entry; `/muligheder` is reachable only from inside the talent workspace (a sidebar entry needs the company's mobility flag in the nav context); learners have no learning-path list page. | `futurematch_ui.py` (`SIDEBAR_BY_ENDPOINT`, `nav_state`), `templates/fm_base.html` | every page is reachable in two clicks and lights one entry |
-| T2-3 | **Vocabulary collisions fixed** (rule in DECISIONS.md). | templates, `shell.js` palette labels, `app1/sse_events.py` | the lint test passes |
 | T2-4 | **Vendor portal on the shared shell.** Nine standalone pages without theme toggle, notifications or search; `vendor_course_edit.html` has no navigation. | `templates/fm/vendor_*.html`, `fm/_vendor_nav.html` | vendor pages extend one base |
 | T2-5 | **Legacy pages retired** (merged and redirected, per "complete, don't remove"): `/brands` (`templates/profile.html`, `add_brand.html`), the `app1` demo shell and its second `chat.css`, the duplicate admin log, the duplicate SSO login page. | `auth/__init__.py`, `app1/templates/`, `templates/sso_login.html` | one template per page |
 | T2-6 | **Search that finds things.** The palette has no visible trigger and `/api/search` covers only employees, companies and users. Add courses, own orders, goals and pages, permission-scoped. | `search_api.py`, `static/futurematch/assets/shell.js`, `templates/fm_base.html` | a learner finds a course and an order from the top bar |

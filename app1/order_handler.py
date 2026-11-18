@@ -344,7 +344,7 @@ class OrderHandler:
         confirmation += f"\n**Næste skridt:**\n{steps.get('message', '')}\n"
         if order.get('budget_warning'):
             confirmation += f"\n{order['budget_warning']}\n"
-        confirmation += "\nDu kan følge status på din tidslinje."
+        confirmation += "\nDu kan følge status under Mine bestillinger."
         return confirmation
 
     def _format_date(self, iso_date: str) -> str:

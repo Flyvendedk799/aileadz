@@ -654,7 +654,7 @@ def request_product(handle):
     # The product page shows one "Anmodningen er registreret" banner for ``order``, so a
     # success flash would only repeat it; a duplicate has no new order to announce.
     if result.get("duplicate"):
-        flash("Du har allerede anmodet om dette kursus. Se status på din tidslinje.", "info")
+        flash("Du har allerede anmodet om dette kursus. Se status under Mine bestillinger.", "info")
     return redirect(url_for("catalog.product_detail", handle=handle, order=order_id))
 
 

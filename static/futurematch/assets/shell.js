@@ -291,7 +291,7 @@
       { icon: "fa-bullseye", title: "Opret udviklingsmål", sub: "Udviklingsmål", href: "/mine-maal", group: "Handlinger" },
       { icon: "fa-bell", title: "Mine notifikationer", sub: "Konto", href: "/notifications", group: "Handlinger" },
       { icon: "fa-graduation-cap", title: "Browse katalog", sub: "Katalog", href: "/catalog", group: "Handlinger" },
-      { icon: "fa-receipt", title: "Mine bestillinger", sub: "Min tidslinje", href: "/min-tidslinje", group: "Handlinger" },
+      { icon: "fa-receipt", title: "Mine bestillinger", sub: "Status og frister", href: "/min-tidslinje", group: "Handlinger" },
       { icon: "fa-circle-half-stroke", title: "Skift tema (lys/mørk)", sub: "Udseende", act: "theme", group: "Handlinger" },
       { icon: "fa-circle-question", title: "Support & hjælp", sub: "Konto", href: "/support", group: "Handlinger" },
     ];

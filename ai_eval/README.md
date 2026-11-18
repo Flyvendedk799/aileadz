@@ -9,7 +9,7 @@ It touches no app code.
 ```
 ai_eval/
   __init__.py       import-safe package marker (never boots the app)
-  golden_set.json   73 Danish cases ({_meta, cases}); schema documented in _meta
+  golden_set.json   87 Danish cases ({_meta, cases}); schema documented in _meta
   scorers.py        pure-python heuristic scorers + optional gpt-4o-mini judge + score_live
   run_eval.py       boots app, runs cases, scores, scorecard, baseline gate
   last_run.json     full per-case detail of the last run        [generated, gitignored]

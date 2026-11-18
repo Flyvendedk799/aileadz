@@ -96,7 +96,26 @@ public git history. They must be treated as compromised.
 password); Admin, Katalog shows the Shopify sync working; the old Shopify token returns
 401 when tried against the Shopify API.
 
-## 5. Things to read off the host and report back
+## 5. Schedule backups and rehearse one restore
+
+**Why:** the database and some runtime files exist only on this server, and no backup
+is known to be running. Procedure: [BACKUP_RESTORE.md](BACKUP_RESTORE.md).
+
+**Do:**
+
+1. Confirm `mysqldump` is available to the app user. If not, report it and stop.
+2. Run `scripts/backup.sh <a directory outside the app checkout>` once by hand with the
+   production `MYSQL_*` values. Report the printed directory and the `MANIFEST` content
+   (it holds no secrets).
+3. Schedule the same command daily, and add a step that copies the new directory off the
+   server (the owner decides where).
+4. Rehearse section 4 of BACKUP_RESTORE.md: restore the newest dump into a scratch
+   database, compare row counts with production, drop the scratch database.
+
+**Check:** the manifest lists `instance`, `static/uploads` and `static/brand_assets` under
+`files` (or says which are missing); the rehearsal's row counts match.
+
+## 6. Things to read off the host and report back
 
 No change, just answers the repository cannot give:
 

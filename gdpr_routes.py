@@ -199,8 +199,8 @@ def _notify_admins_of_request(username):
         import os
         to = os.environ.get("DSR_NOTIFY_EMAIL") or os.environ.get("SUPPORT_EMAIL")
         if to:
-            from email_service import send_branded_email
-            send_branded_email(to, "Ny anmodning om sletning (GDPR)", "announcement", {},
+            from mail_delivery import enqueue
+            enqueue(to, "Ny anmodning om sletning (GDPR)", "announcement", {},
                                heading="Ny anmodning om sletning",
                                message="En bruger har anmodet om sletning. Åbn GDPR-konsollen for at behandle den "
                                        "inden for 30 dage.", recipient_name="")

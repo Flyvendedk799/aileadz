@@ -20,9 +20,9 @@ Design constraints (matching the rest of the codebase)
     purpose-built queries so the weekly job stays cheap and independent.
   * Everything is GUARDED: ``build_company_digest`` and ``send_company_digest``
     NEVER raise into the scheduler. The worst case is "no email this week".
-  * Rendered via ``email_service.send_branded_email`` (ops-gated: no-ops cleanly
-    when no MAIL backend is configured), reusing the same branded template
-    machinery as order_approval_needed.
+  * Queued in the durable mail outbox (``mail_delivery.enqueue``) and rendered by
+    the same branded template machinery as order_approval_needed; without a MAIL
+    backend it stays queued and visible on "Mail og leveringer".
 """
 
 import logging
@@ -326,7 +326,8 @@ def send_company_digest(company_id, *, force=False):
             return summary
 
         try:
-            from email_service import send_branded_email, _resolve_branding
+            from email_service import _resolve_branding
+            from mail_delivery import enqueue
         except Exception as e:
             logger.debug("digest_service: email_service unavailable: %s", e)
             summary["skipped"] = True
@@ -350,7 +351,8 @@ def send_company_digest(company_id, *, force=False):
         sent = 0
         for r in recipients:
             try:
-                ok = send_branded_email(
+                # Durable: queued in the mail outbox, so a stopped SMTP server loses nothing.
+                ok = enqueue(
                     r["email"],
                     subject,
                     "manager_weekly_digest",

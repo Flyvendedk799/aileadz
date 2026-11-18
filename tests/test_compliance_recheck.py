@@ -236,7 +236,7 @@ class EscalationTests(unittest.TestCase):
                                   return_value=[{"email": "a@acme.dk", "name": "Ann"},
                                                 {"email": "b@acme.dk", "name": "Bo"}]), \
                 mock.patch("email_service.email_recently_sent", return_value=False), \
-                mock.patch("email_service.send_branded_email",
+                mock.patch("mail_delivery.enqueue",
                            side_effect=lambda *a, **k: sent.append((a, k)) or True), \
                 mock.patch("email_service._resolve_branding", return_value={}):
             n = compliance_service._escalate_critical(7, gaps)
@@ -256,7 +256,7 @@ class EscalationTests(unittest.TestCase):
                 mock.patch.object(compliance_service, "_manager_recipients",
                                   return_value=[{"email": "a@acme.dk", "name": "Ann"}]), \
                 mock.patch("email_service.email_recently_sent", return_value=True), \
-                mock.patch("email_service.send_branded_email",
+                mock.patch("mail_delivery.enqueue",
                            side_effect=lambda *a, **k: sent.append(a) or True), \
                 mock.patch("email_service._resolve_branding", return_value={}):
             n = compliance_service._escalate_critical(
@@ -265,7 +265,7 @@ class EscalationTests(unittest.TestCase):
         self.assertEqual(sent, [])
 
     def test_no_critical_requirements_sends_nothing(self):
-        with mock.patch("email_service.send_branded_email") as send:
+        with mock.patch("mail_delivery.enqueue") as send:
             n = compliance_service._escalate_critical(
                 7, [_req(1, "X", missing=4, statutory=False)])
         self.assertEqual(n, 0)
@@ -277,7 +277,7 @@ class EscalationTests(unittest.TestCase):
                 mock.patch.object(compliance_service, "_manager_recipients",
                                   return_value=[]), \
                 mock.patch("email_service._resolve_branding", return_value={}), \
-                mock.patch("email_service.send_branded_email") as send:
+                mock.patch("mail_delivery.enqueue") as send:
             n = compliance_service._escalate_critical(
                 7, [_req(1, "Arbejdsmiljø", overdue=1, statutory=True)])
         self.assertEqual(n, 0)

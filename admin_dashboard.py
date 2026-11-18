@@ -774,8 +774,8 @@ def _email_vendor_submission_result_for_job(job_id, approved, note=None):
 def _send_submission_mail(row, approved, note):
     if not row or not row.get('contact_email'):
         return
-    from email_service import send_branded_email
-    send_branded_email(
+    from mail_delivery import enqueue
+    enqueue(
         row['contact_email'],
         "Dit katalog er godkendt og importeret" if approved else "Dit katalog blev ikke godkendt",
         'vendor_submission_result', {},

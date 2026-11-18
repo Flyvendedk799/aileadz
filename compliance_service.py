@@ -24,16 +24,16 @@ Design constraints (matching catalog_freshness / digest_service)
   * Recent-duplicate dedupe (mirrors ``catalog_freshness.notify_expiring_agreements``):
     a per-requirement marker embedded in the message means the same requirement
     is not re-nudged within ``_NOTIFY_DEDUPE_DAYS`` days, so HR is never spammed.
-  * Email escalation is strictly ops-gated (``email_service.send_branded_email``
-    no-ops cleanly when MAIL is not configured) AND email-dedupe-gated
-    (``email_recently_sent``), so it stays silent without SMTP and never re-sends
-    the same alert within the window.
+  * Email escalation goes through the durable mail outbox (``mail_delivery``):
+    without SMTP it stays queued and visible on "Mail og leveringer", and the
+    same alert is never queued twice within the dedupe window.
   * Fully GUARDED: every public function never raises into the scheduler — the
     worst case is "no nudge this pass, retried next pass". ``autocommit=False`` so
     the notification writer commits explicitly.
 """
 
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -184,10 +184,9 @@ def _escalate_critical(company_id, gaps):
     """Email managers for STATUTORY requirements with overdue (lapsed) coverage.
 
     Strictly the most urgent slice — a statutory recert that has actually lapsed.
-    Ops-gated (``send_branded_email`` no-ops without MAIL) and dedupe-gated
-    (``email_recently_sent`` per requirement) so a configured tenant gets at most
-    one escalation email per requirement per ``_EMAIL_DEDUPE_HOURS``. Returns the
-    number of emails actually sent. Never raises.
+    Queued in the durable mail outbox (``mail_delivery.enqueue``), at most one
+    escalation per requirement per ``_EMAIL_DEDUPE_HOURS`` (the window is part of
+    the outbox key). Returns the number of emails queued. Never raises.
     """
     critical = [r for r in gaps
                 if r.get("is_statutory") and int(r.get("overdue") or 0) > 0]
@@ -195,9 +194,8 @@ def _escalate_critical(company_id, gaps):
         return 0
 
     try:
-        from email_service import (
-            send_branded_email, email_recently_sent, _resolve_branding,
-        )
+        from email_service import email_recently_sent, _resolve_branding
+        from mail_delivery import enqueue
     except Exception as e:
         logger.debug("compliance_service: email_service unavailable: %s", e)
         return 0
@@ -244,13 +242,16 @@ def _escalate_critical(company_id, gaps):
 
         for r in recipients:
             try:
-                ok = send_branded_email(
+                # Durable: queued in the mail outbox, so a stopped SMTP server loses nothing.
+                ok = enqueue(
                     r["email"],
                     subject,
                     "compliance_recert_alert",
                     branding,
                     company_id=company_id,
-                    dedupe_key=dedupe_key,
+                    # The outbox never queues the same key twice, so the key carries the
+                    # dedupe window: one escalation per requirement per window, not per forever.
+                    dedupe_key="%s:%d" % (dedupe_key, time.time() // (_EMAIL_DEDUPE_HOURS * 3600)),
                     company_name=company_name,
                     recipient_name=r.get("name") or "",
                     requirement_title=req_title,

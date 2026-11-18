@@ -30,7 +30,12 @@ class AdminBase(unittest.TestCase):
         self.admin = client_as(self.app, user="root", user_id=1, role="admin")
 
     def mails(self):
+        """Auth mail (reset and invite links) is sent directly, never stored in the outbox."""
         return mock.patch("email_service.send_branded_email", return_value=True)
+
+    def queued_mails(self):
+        """Business mail goes through the durable outbox."""
+        return mock.patch("mail_delivery.enqueue", return_value=True)
 
 
 class SubmissionFlowTests(AdminBase):
@@ -47,7 +52,7 @@ class SubmissionFlowTests(AdminBase):
         self.assertEqual(self.db.one("SELECT status FROM vendor_submissions WHERE id=1")["status"], "pending")
 
     def test_confirming_the_import_approves_and_mails_the_vendor(self):
-        with mock.patch("catalog_service.confirm_import_draft", return_value={"job_id": "job1"}), self.mails() as mail:
+        with mock.patch("catalog_service.confirm_import_draft", return_value={"job_id": "job1"}), self.queued_mails() as mail:
             self.admin.post("/admin/catalog/import/job1/confirm")
         self.assertEqual(self.db.one("SELECT status FROM vendor_submissions WHERE id=1")["status"], "approved")
         self.assertEqual(mail.call_args.args[2], "vendor_submission_result")
@@ -55,7 +60,7 @@ class SubmissionFlowTests(AdminBase):
 
     def test_reject_marks_discards_draft_and_mails_with_note(self):
         with mock.patch("catalog_service.get_import_draft", return_value={"job_id": "job1"}), \
-                mock.patch("catalog_service.delete_import_draft") as drop, self.mails() as mail:
+                mock.patch("catalog_service.delete_import_draft") as drop, self.queued_mails() as mail:
             self.admin.post("/admin/vendors/submission/1/rejected", data={"note": "Priser mangler"})
         self.assertEqual(self.db.one("SELECT status FROM vendor_submissions WHERE id=1")["status"], "rejected")
         drop.assert_called_once_with("job1")

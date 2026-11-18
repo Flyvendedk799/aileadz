@@ -164,6 +164,20 @@ test('a goal stays private until the employee shares it, and HR sees only the sh
   await hr.close_();
 });
 
+test('search finds a course, the person\'s own order and own goal, and the skip link comes first', async () => {
+  const page = await as('ada');
+  await page.go('/min-laering');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.activeElement.textContent.trim()), 'Spring til indhold');
+  await page.getByRole('button', { name: 'Søg' }).click();
+  await page.fill('#cmdkInput', 'python');
+  await assert.doesNotReject(page.locator('#cmdkList .cmdk-group', { hasText: 'Kurser' }).waitFor());
+  await assert.doesNotReject(page.locator('#cmdkList .cmdk-group', { hasText: 'Mine bestillinger' }).waitFor());
+  await page.fill('#cmdkInput', 'E2E delt');
+  await assert.doesNotReject(page.locator('#cmdkList .cmdk-group', { hasText: 'Mine mål' }).waitFor());
+  await page.close_();
+});
+
 test('another employee cannot open the order, and nothing answered with a server error', async () => {
   const page = await as('medarbejder');
   const response = await page.go('/min-ordre/' + state.orderId);

@@ -37,6 +37,7 @@
 {% set _initials = (_uname[:2] | upper) if _uname else 'FM' %}
 {% set _usermeta = (session.get('company_name') ~ ' · ' ~ role_label(session.get('company_role'))) if session.get('company_name') else 'Futurematch' %}
 <body data-page="{% block page_id %}{% endblock %}" data-role="{{ _role }}" data-auth="{{ '1' if session.get('user') else '0' }}" data-brand-server="1" class="{% block body_class %}{% endblock %}">
+<a class="fm-skip" href="#fm-main">Spring til indhold</a>
 
 {# The server decides the brand. A white-label tenant pushes its brand into the
    browser (for the live preview in the branding editor); everyone else clears any
@@ -232,6 +233,7 @@
       <div class="fm-top-actions">
         {% block topbar_extra %}{% endblock %}
         {% if session.get('user') %}
+        <button class="fm-icon-btn" type="button" data-cmdk-open aria-label="Søg" title="Søg (Ctrl+K)"><i class="fa-solid fa-magnifying-glass"></i></button>
         <button class="fm-icon-btn" data-theme-toggle aria-label="Tema"><i class="fa-solid fa-moon"></i></button>
         <a class="fm-icon-btn" href="{{ url_for('pages.notifications') }}" aria-label="Notifikationer"><i class="fa-solid fa-bell"></i><span class="dot" data-notif-dot hidden></span><span class="fm-bell-count" data-notif-count hidden></span></a>
         {# The credits balance means something to credit managers and platform admins only; employees have "Mit forbrug" in the menu. #}
@@ -244,7 +246,7 @@
     {# Conversation history for the AI pages: a floating panel opened from the header (see ai-sidebar.js). #}
     {% if _in_ai and session.get('user') %}{% include 'fm/_ai_sidebar.html' %}{% endif %}
 
-    <main class="fm-content">
+    <main class="fm-content" id="fm-main" tabindex="-1">
       {% if session.get('admin_acting_company_id') %}
       <div class="fm-wrap" style="padding-bottom:0">
         <div role="status" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;border-radius:var(--r-md);margin-bottom:12px;border:1px solid color-mix(in srgb,var(--fm-clay) 40%,var(--fm-line));background:color-mix(in srgb,var(--fm-clay) 12%,var(--fm-surface));color:var(--fm-ink)">

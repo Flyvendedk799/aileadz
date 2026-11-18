@@ -99,6 +99,8 @@
 
     initMotion();
     initNavSections();
+    // The lit entry is also announced as the current page.
+    document.querySelectorAll(".fm-nav-link.active, .fm-subnav a.active, .fm-tabs a.active").forEach(a => a.setAttribute("aria-current", "page"));
     initCmdK();
     initTooltips();
     initNotifBadge();
@@ -301,7 +303,7 @@
     back.className = "cmdk-back"; back.id = "cmdkBack";
     back.innerHTML = `
       <div class="cmdk" role="dialog" aria-label="Kommandopalet">
-        <div class="cmdk-in"><i class="fa-solid fa-magnifying-glass"></i><input id="cmdkInput" type="text" placeholder="Søg sider, handlinger…" autocomplete="off" /><span class="fm-kbd">Esc</span></div>
+        <div class="cmdk-in"><i class="fa-solid fa-magnifying-glass"></i><input id="cmdkInput" type="text" placeholder="Søg kurser, bestillinger, mål og sider…" aria-label="Søg" autocomplete="off" /><span class="fm-kbd">Esc</span></div>
         <div class="cmdk-list" id="cmdkList"></div>
         <div class="cmdk-foot"><span><span class="fm-kbd">↑</span><span class="fm-kbd">↓</span> Naviger</span><span><span class="fm-kbd">↵</span> Vælg</span><span><span class="fm-kbd">⌘K</span> Åbn</span></div>
       </div>`;
@@ -311,16 +313,20 @@
     let results = [], active = 0, searchSeq = 0, debounceT = null;
     const SEARCH_URL = "/api/search";
 
+    // Results carry course, order and goal titles: text, never markup.
+    function escHtml(v) {
+      return String(v == null ? "" : v).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
     function staticMatches(ql) {
       return all.filter(it => !ql || it.title.toLowerCase().includes(ql) || it.sub.toLowerCase().includes(ql));
     }
     function drawList(q) {
-      if (!results.length) { list.innerHTML = `<div class="cmdk-empty">Ingen resultater for “${q}”</div>`; return; }
+      if (!results.length) { list.innerHTML = `<div class="cmdk-empty">Ingen resultater for “${escHtml(q)}”</div>`; return; }
       const groups = {};
       results.forEach((r, i) => { (groups[r.group] = groups[r.group] || []).push({ r, i }); });
       list.innerHTML = Object.keys(groups).map(g =>
-        `<div class="cmdk-group">${g}</div>` + groups[g].map(({ r, i }) =>
-          `<div class="cmdk-item" data-i="${i}"><i class="fa-solid ${r.icon}"></i><span class="cmdk-t">${r.title}</span><span class="cmdk-s">${r.sub}</span><span class="cmdk-go"><i class="fa-solid fa-arrow-turn-down" style="transform:rotate(90deg)"></i></span></div>`
+        `<div class="cmdk-group">${escHtml(g)}</div>` + groups[g].map(({ r, i }) =>
+          `<div class="cmdk-item" data-i="${i}"><i class="fa-solid ${escHtml(r.icon)}"></i><span class="cmdk-t">${escHtml(r.title)}</span><span class="cmdk-s">${escHtml(r.sub)}</span><span class="cmdk-go"><i class="fa-solid fa-arrow-turn-down" style="transform:rotate(90deg)"></i></span></div>`
         ).join("")).join("");
       paintActive();
       list.querySelectorAll(".cmdk-item").forEach(el => {
@@ -334,7 +340,7 @@
       results = staticMatches(ql);
       active = 0;
       drawList(q);
-      // Live entity search (employees / companies / users) via the backend,
+      // Live search (courses, own orders and goals, and by role people/companies) via the backend,
       // debounced; live hits are shown first, static nav/actions after.
       if (debounceT) clearTimeout(debounceT);
       if (ql.length >= 2) {
@@ -369,6 +375,7 @@
     function open() { back.classList.add("open"); input.value = ""; render(""); setTimeout(() => input.focus(), 30); }
     function close() { back.classList.remove("open"); }
     window.fmCmdK = open;
+    document.querySelectorAll("[data-cmdk-open]").forEach(btn => btn.addEventListener("click", e => { e.preventDefault(); open(); }));
 
     input.addEventListener("input", () => render(input.value));
     input.addEventListener("keydown", (e) => {

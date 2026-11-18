@@ -1399,7 +1399,7 @@ def get_analytics_overview():
         cur.execute("""
             SELECT COUNT(*) AS total_orders,
                    COALESCE(SUM(price), 0) AS total_spend,
-                   COUNT(CASE WHEN completion_status='completed' THEN 1 END) AS completed,
+                   COUNT(CASE WHEN (status = 'completed' OR COALESCE(completion_status, '') = 'completed') THEN 1 END) AS completed,
                    COUNT(CASE WHEN status='pending_approval' THEN 1 END) AS pending_approvals
             FROM course_orders WHERE company_id = %s AND status NOT IN ('cancelled','rejected')
         """, (g.company_id,))

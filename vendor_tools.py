@@ -210,7 +210,7 @@ def vendor_performance_summary(args, vendor_name):
                 COUNT(*) AS total_orders,
                 SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS orders_30d,
                 SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 90 DAY) THEN 1 ELSE 0 END) AS orders_90d,
-                SUM(CASE WHEN status = 'completed' OR completion_status = 'completed' THEN 1 ELSE 0 END) AS completed_orders,
+                SUM(CASE WHEN (status = 'completed' OR COALESCE(completion_status, '') = 'completed') THEN 1 ELSE 0 END) AS completed_orders,
                 SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_orders
             FROM course_orders
             WHERE product_handle IN ({placeholders})
@@ -225,7 +225,7 @@ def vendor_performance_summary(args, vendor_name):
             f"""
             SELECT product_handle,
                    COUNT(*) AS orders,
-                   SUM(CASE WHEN status = 'completed' OR completion_status = 'completed' THEN 1 ELSE 0 END) AS completed
+                   SUM(CASE WHEN (status = 'completed' OR COALESCE(completion_status, '') = 'completed') THEN 1 ELSE 0 END) AS completed
             FROM course_orders
             WHERE product_handle IN ({placeholders})
             GROUP BY product_handle
@@ -367,7 +367,7 @@ def vendor_analytics_series(vendor_name, months=6):
             f"""
             SELECT DATE_FORMAT(created_at, '%%Y-%%m') AS ym,
                    COUNT(*) AS orders,
-                   SUM(CASE WHEN status = 'completed' OR completion_status = 'completed' THEN 1 ELSE 0 END) AS completed
+                   SUM(CASE WHEN (status = 'completed' OR COALESCE(completion_status, '') = 'completed') THEN 1 ELSE 0 END) AS completed
             FROM course_orders
             WHERE product_handle IN ({placeholders})
               AND created_at >= DATE_SUB(DATE_FORMAT(NOW(), '%%Y-%%m-01'), INTERVAL %s MONTH)
@@ -383,7 +383,7 @@ def vendor_analytics_series(vendor_name, months=6):
         cur.execute(
             f"""
             SELECT COUNT(*) AS orders,
-                   SUM(CASE WHEN status = 'completed' OR completion_status = 'completed' THEN 1 ELSE 0 END) AS completed,
+                   SUM(CASE WHEN (status = 'completed' OR COALESCE(completion_status, '') = 'completed') THEN 1 ELSE 0 END) AS completed,
                    SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS orders_30d
             FROM course_orders
             WHERE product_handle IN ({placeholders})
@@ -397,7 +397,7 @@ def vendor_analytics_series(vendor_name, months=6):
             f"""
             SELECT product_handle,
                    COUNT(*) AS orders,
-                   SUM(CASE WHEN status = 'completed' OR completion_status = 'completed' THEN 1 ELSE 0 END) AS completed
+                   SUM(CASE WHEN (status = 'completed' OR COALESCE(completion_status, '') = 'completed') THEN 1 ELSE 0 END) AS completed
             FROM course_orders
             WHERE product_handle IN ({placeholders})
             GROUP BY product_handle

@@ -328,7 +328,7 @@ def company_analytics_snapshot(conn, company_id, day=None):
             """
             SELECT
                 SUM(CASE WHEN DATE(created_at) = """ + day_sql + """ THEN 1 ELSE 0 END)        AS started,
-                SUM(CASE WHEN completion_status = 'completed'
+                SUM(CASE WHEN (status = 'completed' OR COALESCE(completion_status, '') = 'completed')
                           AND DATE(completion_date) = """ + day_sql + """ THEN 1 ELSE 0 END)   AS completed
             FROM course_orders
             WHERE company_id = %s

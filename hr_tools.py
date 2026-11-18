@@ -2045,7 +2045,7 @@ def derive_employee_compliance(conn, company_id, *, username, user_id=None,
         cur.execute("""
             SELECT product_handle, product_title, completion_date
             FROM course_orders
-            WHERE company_id = %s AND completion_status = 'completed'
+            WHERE company_id = %s AND (status = 'completed' OR COALESCE(completion_status, '') = 'completed')
               AND (username = %s OR (user_id IS NOT NULL AND user_id = %s))
         """, (company_id, username, user_id))
         for r in cur.fetchall() or []:
@@ -2123,7 +2123,7 @@ def derive_company_compliance(conn, company_id, department='', only_gaps=False):
         expiring   — compliant but < 60 days from expiry (recurrence-based)
         overdue    — had a matching completion but it expired
         missing    — no matching completion at all
-    Completions come from course_orders (completion_status='completed') and the
+    Completions come from course_orders (the canonical "completed" test, order_lifecycle.sql_completed) and the
     employee profile table user_completed_courses, matched by required_course_handle,
     or by title/category text when no handle is set. Nothing is stored — pure read.
 
@@ -2199,7 +2199,7 @@ def derive_company_compliance(conn, company_id, department='', only_gaps=False):
         cur.execute("""
             SELECT user_id, username, product_handle, product_title, completion_date
             FROM course_orders
-            WHERE company_id = %s AND completion_status = 'completed'
+            WHERE company_id = %s AND (status = 'completed' OR COALESCE(completion_status, '') = 'completed')
         """, (company_id,))
         for r in cur.fetchall():
             entry = (

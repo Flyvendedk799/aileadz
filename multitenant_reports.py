@@ -626,8 +626,8 @@ def create_multitenant_reports_blueprint():
             cur.execute("""
                 SELECT COUNT(*) AS total_orders,
                        COUNT(CASE WHEN status = 'pending' THEN 1 END) AS pending_orders,
-                       COUNT(CASE WHEN status = 'completed' OR completion_status = 'completed' THEN 1 END) AS completed_orders,
-                       COALESCE(SUM(CASE WHEN status = 'completed' OR completion_status = 'completed' THEN price END), 0) AS total_revenue
+                       COUNT(CASE WHEN (status = 'completed' OR COALESCE(completion_status, '') = 'completed') THEN 1 END) AS completed_orders,
+                       COALESCE(SUM(CASE WHEN (status = 'completed' OR COALESCE(completion_status, '') = 'completed') THEN price END), 0) AS total_revenue
                 FROM course_orders
                 WHERE company_id = %s
             """, (cid,))

@@ -327,10 +327,10 @@ def create_hr_dashboard_blueprint():
             cur.execute("""
                 SELECT 
                     COUNT(DISTINCT co.id) as total_enrollments,
-                    COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) as completed_courses,
-                    COUNT(DISTINCT CASE WHEN co.completion_status = 'in_progress' THEN co.id END) as in_progress_courses,
-                    COUNT(DISTINCT CASE WHEN co.completion_deadline < NOW() AND co.completion_status != 'completed' THEN co.id END) as overdue_courses,
-                    COALESCE(SUM(CASE WHEN co.completion_status = 'completed' THEN co.price END), 0) as total_training_investment,
+                    COUNT(DISTINCT CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.id END) as completed_courses,
+                    COUNT(DISTINCT CASE WHEN (co.status IN ('approved', 'booked') AND COALESCE(co.completion_status, '') <> 'completed') THEN co.id END) as in_progress_courses,
+                    COUNT(DISTINCT CASE WHEN co.completion_deadline < NOW() AND (NOT (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') AND co.status NOT IN ('cancelled', 'rejected')) THEN co.id END) as overdue_courses,
+                    COALESCE(SUM(CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.price END), 0) as total_training_investment,
                     COUNT(DISTINCT co.user_id) as employees_with_training
                 FROM course_orders co
                 WHERE co.company_id = %s
@@ -414,9 +414,9 @@ def create_hr_dashboard_blueprint():
                     cu.department,
                     COUNT(DISTINCT cu.user_id) as employee_count,
                     COUNT(DISTINCT co.id) as total_enrollments,
-                    COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) as completed_courses,
+                    COUNT(DISTINCT CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.id END) as completed_courses,
                     ROUND(
-                        COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) * 100.0 / 
+                        COUNT(DISTINCT CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.id END) * 100.0 / 
                         NULLIF(COUNT(DISTINCT co.id), 0), 1
                     ) as completion_rate,
                     COUNT(DISTINCT CASE WHEN cu.last_chatbot_interaction >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN cu.user_id END) as active_chatbot_users,
@@ -439,7 +439,7 @@ def create_hr_dashboard_blueprint():
                     'success' as alert_level
                 FROM course_orders co
                 JOIN users u ON co.user_id = u.id
-                WHERE co.company_id = %s AND co.completion_status = 'completed' 
+                WHERE co.company_id = %s AND (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') 
                 AND co.completion_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)
                 
                 UNION ALL
@@ -452,7 +452,7 @@ def create_hr_dashboard_blueprint():
                 FROM course_orders co
                 JOIN users u ON co.user_id = u.id
                 WHERE co.company_id = %s AND co.completion_deadline < NOW() 
-                AND co.completion_status NOT IN ('completed', 'cancelled')
+                AND (NOT (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') AND co.status NOT IN ('cancelled', 'rejected'))
                 
                 UNION ALL
                 
@@ -474,7 +474,7 @@ def create_hr_dashboard_blueprint():
             cur.execute("""
                 SELECT 
                     u.username, cu.department, cu.job_title,
-                    COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) as courses_completed,
+                    COUNT(DISTINCT CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.id END) as courses_completed,
                     COUNT(DISTINCT co.id) as courses_enrolled,
                     cu.total_chatbot_queries,
                     COALESCE(AVG(elp.progress_percentage), 0) as avg_progress,
@@ -590,7 +590,7 @@ def create_hr_dashboard_blueprint():
             cur.execute("""
                 SELECT COALESCE(SUM(price), 0) AS total_spend,
                        COUNT(DISTINCT user_id) AS trained,
-                       COUNT(CASE WHEN completion_status = 'completed' THEN 1 END) AS completed
+                       COUNT(CASE WHEN (status = 'completed' OR COALESCE(completion_status, '') = 'completed') THEN 1 END) AS completed
                 FROM course_orders
                 WHERE company_id = %s AND status NOT IN ('cancelled', 'rejected')
             """, (company['id'],))
@@ -629,7 +629,7 @@ def create_hr_dashboard_blueprint():
             cur.execute("""
                 SELECT COUNT(*) AS cnt
                 FROM course_orders
-                WHERE company_id = %s AND completion_status = 'completed'
+                WHERE company_id = %s AND (status = 'completed' OR COALESCE(completion_status, '') = 'completed')
             """, (company['id'],))
             funnel_completed_orders = cur.fetchone()['cnt'] or 0
 
@@ -1915,9 +1915,9 @@ def create_hr_dashboard_blueprint():
                     cu.hire_date, cu.last_login, cu.last_chatbot_interaction,
                     cu.total_chatbot_queries, cu.status,
                     COUNT(DISTINCT co.id) as courses_enrolled,
-                    COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) as courses_completed,
-                    COUNT(DISTINCT CASE WHEN co.completion_status = 'in_progress' THEN co.id END) as courses_in_progress,
-                    COUNT(DISTINCT CASE WHEN co.completion_deadline < NOW() AND co.completion_status NOT IN ('completed', 'cancelled') THEN co.id END) as overdue_courses,
+                    COUNT(DISTINCT CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.id END) as courses_completed,
+                    COUNT(DISTINCT CASE WHEN (co.status IN ('approved', 'booked') AND COALESCE(co.completion_status, '') <> 'completed') THEN co.id END) as courses_in_progress,
+                    COUNT(DISTINCT CASE WHEN co.completion_deadline < NOW() AND (NOT (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') AND co.status NOT IN ('cancelled', 'rejected')) THEN co.id END) as overdue_courses,
                     COALESCE(AVG(elp.progress_percentage), 0) as avg_progress,
                     COALESCE(SUM(elp.time_spent_minutes), 0) as total_time_spent,
                     COUNT(DISTINCT elp.learning_path_id) as learning_paths_enrolled,
@@ -2000,7 +2000,7 @@ def create_hr_dashboard_blueprint():
                 SELECT 
                     DATE(co.created_at) as date,
                     COUNT(DISTINCT co.id) as enrollments,
-                    COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) as completions,
+                    COUNT(DISTINCT CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.id END) as completions,
                     COUNT(DISTINCT co.user_id) as unique_learners
                 FROM course_orders co
                 WHERE co.company_id = %s AND co.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
@@ -2014,13 +2014,13 @@ def create_hr_dashboard_blueprint():
                 SELECT 
                     co.product_title, co.product_handle,
                     COUNT(DISTINCT co.id) as enrollments,
-                    COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) as completions,
+                    COUNT(DISTINCT CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.id END) as completions,
                     ROUND(
-                        COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) * 100.0 / 
+                        COUNT(DISTINCT CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.id END) * 100.0 / 
                         COUNT(DISTINCT co.id), 1
                     ) as completion_rate,
                     COALESCE(AVG(CASE WHEN co.completion_date IS NOT NULL THEN DATEDIFF(co.completion_date, co.created_at) END), 0) as avg_completion_days,
-                    COALESCE(SUM(CASE WHEN co.completion_status = 'completed' THEN co.price END), 0) as revenue
+                    COALESCE(SUM(CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.price END), 0) as revenue
                 FROM course_orders co
                 WHERE co.company_id = %s AND co.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 GROUP BY co.product_title, co.product_handle
@@ -2037,13 +2037,13 @@ def create_hr_dashboard_blueprint():
                     COUNT(DISTINCT cu.user_id) as total_employees,
                     COUNT(DISTINCT co.user_id) as employees_with_training,
                     COUNT(DISTINCT co.id) as total_enrollments,
-                    COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) as completions,
-                    COALESCE(SUM(CASE WHEN co.completion_status = 'completed' THEN co.price END), 0) as training_investment,
+                    COUNT(DISTINCT CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.id END) as completions,
+                    COALESCE(SUM(CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.price END), 0) as training_investment,
                     ROUND(
                         COUNT(DISTINCT co.user_id) * 100.0 / COUNT(DISTINCT cu.user_id), 1
                     ) as participation_rate,
                     ROUND(
-                        COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) * 100.0 / 
+                        COUNT(DISTINCT CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.id END) * 100.0 / 
                         NULLIF(COUNT(DISTINCT co.id), 0), 1
                     ) as completion_rate
                 FROM company_users cu
@@ -2101,10 +2101,10 @@ def create_hr_dashboard_blueprint():
                         ELSE 'Other'
                     END as skill_category,
                     COUNT(DISTINCT co.id) as demand,
-                    COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) as supply,
+                    COUNT(DISTINCT CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.id END) as supply,
                     COUNT(DISTINCT co.user_id) as interested_employees,
                     ROUND(
-                        COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) * 100.0 / 
+                        COUNT(DISTINCT CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.id END) * 100.0 / 
                         COUNT(DISTINCT co.id), 1
                     ) as fulfillment_rate
                 FROM course_orders co
@@ -2357,7 +2357,7 @@ def create_hr_dashboard_blueprint():
 
             cur.execute("""
                 SELECT COUNT(*) AS orders,
-                       COUNT(CASE WHEN completion_status = 'completed' THEN 1 END) AS completed_orders,
+                       COUNT(CASE WHEN (status = 'completed' OR COALESCE(completion_status, '') = 'completed') THEN 1 END) AS completed_orders,
                        COALESCE(SUM(CASE WHEN status NOT IN ('cancelled', 'rejected') THEN price END), 0) AS training_spend
                 FROM course_orders
                 WHERE company_id = %s
@@ -2380,7 +2380,7 @@ def create_hr_dashboard_blueprint():
                 SELECT cu.department,
                        COUNT(DISTINCT cu.user_id) AS employees,
                        COUNT(DISTINCT co.id) AS orders,
-                       COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) AS completed,
+                       COUNT(DISTINCT CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.id END) AS completed,
                        COALESCE(SUM(CASE WHEN co.status NOT IN ('cancelled', 'rejected') THEN co.price END), 0) AS spend
                 FROM company_users cu
                 LEFT JOIN course_orders co ON co.user_id = cu.user_id AND co.company_id = cu.company_id
@@ -2559,8 +2559,8 @@ def create_hr_dashboard_blueprint():
                     cu.*, u.username, u.email,
                     manager.username as manager_name,
                     COUNT(DISTINCT co.id) as total_enrollments,
-                    COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) as completed_courses,
-                    COUNT(DISTINCT CASE WHEN co.completion_status = 'in_progress' THEN co.id END) as in_progress_courses,
+                    COUNT(DISTINCT CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.id END) as completed_courses,
+                    COUNT(DISTINCT CASE WHEN (co.status IN ('approved', 'booked') AND COALESCE(co.completion_status, '') <> 'completed') THEN co.id END) as in_progress_courses,
                     COALESCE(SUM(elp.time_spent_minutes), 0) as total_learning_time
                 FROM company_users cu
                 JOIN users u ON cu.user_id = u.id
@@ -5089,7 +5089,7 @@ def create_hr_dashboard_blueprint():
                     u.username,
                     cu.department, cu.job_title, cu.status,
                     COUNT(DISTINCT co.id) AS courses_enrolled,
-                    COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) AS courses_completed,
+                    COUNT(DISTINCT CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.id END) AS courses_completed,
                     COUNT(DISTINCT CASE WHEN co.status = 'pending_approval' THEN co.id END) AS orders_pending_approval,
                     COALESCE(AVG(elp.progress_percentage), 0) AS avg_progress
                 FROM company_users cu
@@ -5244,7 +5244,7 @@ def create_hr_dashboard_blueprint():
                        LOWER(COALESCE(co.product_title, '')) AS title,
                        COALESCE(co.completion_date, co.updated_at, co.created_at) AS completed_at
                 FROM course_orders co
-                WHERE co.company_id = %s AND co.completion_status = 'completed'
+                WHERE co.company_id = %s AND (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed')
             """, (company['id'],))
             completions = cur.fetchall() or []
 

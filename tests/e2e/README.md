@@ -8,6 +8,10 @@ private until the employee shares it, that HR reaches a shared goal from its not
 that a colleague cannot open someone else's order, and that no request answered with a
 server error.
 
+`crawl.test.cjs` is the breadth check: for four roles it follows the sidebar, sub-navigation and tab
+bars and opens every page it finds (about 160 page loads), failing on any server error. It only
+reads, so it runs on the same seed before or after the journey.
+
 It is **not** part of `pytest`: the offline suite must never need MySQL or a browser.
 
 ## Run it
@@ -17,7 +21,7 @@ cd sandbox
 ./sandbox.sh reset && ./sandbox.sh up   # a fresh database (the journey orders a course once)
 ./sandbox.sh demo                        # schema + demo tenant (sandbox/demo_seed.py)
 ./sandbox.sh run &                       # http://127.0.0.1:5001
-cd .. && BASE_URL=http://127.0.0.1:5001 node --test tests/e2e/journey.test.cjs
+cd .. && BASE_URL=http://127.0.0.1:5001 node --test tests/e2e/crawl.test.cjs tests/e2e/journey.test.cjs
 ```
 
 Needs Node 22 and the `playwright` package with its Chromium (`npx playwright install chromium`

@@ -41,6 +41,28 @@ NOT_COUNTED_STATUSES = frozenset({REJECTED, CANCELLED})
 SQL_NOT_COUNTED = "('cancelled', 'rejected')"
 SQL_IN_PROGRESS = "('approved', 'booked')"
 
+
+# "Is this order completed / under way / overdue?" as SQL, the ONE wording every
+# query uses. ``completion_status`` is only ever written as 'completed' (it is NULL
+# for every other order), so a test like ``completion_status != 'completed'`` matches
+# nothing; the status column is the truth and the old column is honoured for rows
+# completed before the lifecycle existed. Queries carry this text literally
+# (tests/test_kpi_definitions.py keeps them identical); ``alias`` is the table alias.
+def sql_completed(alias=""):
+    p = (alias + ".") if alias else ""
+    return "(%sstatus = 'completed' OR COALESCE(%scompletion_status, '') = 'completed')" % (p, p)
+
+
+def sql_in_progress(alias=""):
+    p = (alias + ".") if alias else ""
+    return "(%sstatus IN ('approved', 'booked') AND COALESCE(%scompletion_status, '') <> 'completed')" % (p, p)
+
+
+def sql_still_open(alias=""):
+    """Not completed and not called off: what a deadline can still be overdue for."""
+    p = (alias + ".") if alias else ""
+    return "(NOT %s AND %sstatus NOT IN ('cancelled', 'rejected'))" % (sql_completed(alias), p)
+
 # Statuses that older rows / older code paths still use. Reads normalise them so
 # an unmigrated row renders correctly; schema_registry migrates the data once.
 LEGACY_ALIASES = {

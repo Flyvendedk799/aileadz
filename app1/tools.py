@@ -5664,7 +5664,7 @@ def _execute_get_my_course_status(args, username):
     overdue_count = 0
     for r in rows:
         completion_status = (r.get("completion_status") or "").lower()
-        is_done = completion_status == "completed"
+        is_done = completion_status == "completed" or (r.get("status") or "").lower() == "completed"
         deadline = r.get("completion_deadline")
         days_left = None
         overdue = False
@@ -7445,8 +7445,8 @@ def _execute_get_my_agenda(args, username):
             rows = []
 
         for r in rows:
-            done = (r.get("completion_status") or "").lower() == "completed"
             status = (r.get("status") or "").lower()
+            done = status == "completed" or (r.get("completion_status") or "").lower() == "completed"
             if done or status in ("cancelled", "annulleret", "rejected", "afvist"):
                 continue
             title = r.get("product_title") or "Ukendt kursus"

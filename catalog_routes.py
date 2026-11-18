@@ -266,7 +266,7 @@ def _user_reviewable_orders(handle):
                FROM course_orders co
                LEFT JOIN course_reviews cr ON cr.order_id = co.order_id
                WHERE co.product_handle = %s
-                 AND (co.status = 'completed' OR co.completion_status = 'completed')
+                 AND ((co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed'))
                  AND ( (%s IS NOT NULL AND co.user_id = %s)
                        OR (%s <> '' AND co.username = %s) )
                  AND cr.id IS NULL
@@ -295,7 +295,7 @@ def _completed_count(handle):
         cur.execute(
             """SELECT COUNT(*) AS c FROM course_orders
                WHERE product_handle = %s
-                 AND (status = 'completed' OR completion_status = 'completed')""",
+                 AND ((status = 'completed' OR COALESCE(completion_status, '') = 'completed'))""",
             (handle,),
         )
         row = cur.fetchone() or {}

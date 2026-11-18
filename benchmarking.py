@@ -343,7 +343,7 @@ def _company_value_maps(cohort_ids):
             SELECT company_id,
                    COALESCE(SUM(CASE WHEN status IN ({sp}) THEN price END), 0) AS spend,
                    COUNT(*) AS total_orders,
-                   COUNT(CASE WHEN completion_status = 'completed' THEN 1 END) AS completed_orders
+                   COUNT(CASE WHEN (status = 'completed' OR COALESCE(completion_status, '') = 'completed') THEN 1 END) AS completed_orders
             FROM course_orders
             WHERE company_id IN ({ph})
             GROUP BY company_id
@@ -490,7 +490,7 @@ def _company_value_maps(cohort_ids):
                    AVG(DATEDIFF(completion_date, COALESCE(started_at, created_at))) AS days
             FROM course_orders
             WHERE company_id IN ({ph})
-              AND completion_status = 'completed'
+              AND (status = 'completed' OR COALESCE(completion_status, '') = 'completed')
               AND completion_date IS NOT NULL
               AND COALESCE(started_at, created_at) IS NOT NULL
               AND DATEDIFF(completion_date, COALESCE(started_at, created_at)) >= 0

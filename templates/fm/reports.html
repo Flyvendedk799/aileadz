@@ -2,7 +2,7 @@
 {% block page_id %}reports{% endblock %}
 {% block title %}Mit forbrug · rapport{% endblock %}
 {% block topbar_title %}Mit forbrug · detaljeret rapport{% endblock %}
-{% block topbar_sub %}Overblik over kreditforbrug, app-aktivitet og historiske transaktioner.{% endblock %}
+{% block topbar_sub %}Overblik over dit kreditforbrug, hvad det gik til, og historiske transaktioner.{% endblock %}
 {% block extra_head %}
 <style>
   .rp-charts { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; margin-top: 16px; }
@@ -18,15 +18,15 @@
   <div class="kpi-row" style="grid-template-columns:repeat(3,1fr)">
     <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Total kreditter forbrugt</div><div class="kv tnum">{{ total_used }}</div></div></div>
     <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-wallet"></i></span><div><div class="kl">Tilgængelige kreditter</div><div class="kv tnum">{{ current_credits }}</div></div></div>
-    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-share-nodes"></i></span><div><div class="kl">Social rækkevidde</div><div class="kv tnum">{{ total_impressions }}</div><div class="kd">visninger · {{ total_followers|dknum }} følgere</div></div></div>
+    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-list-ol"></i></span><div><div class="kl">Antal forbrug</div><div class="kv tnum">{{ usage_count }}</div><div class="kd">registreringer i perioden</div></div></div>
   </div>
   <div class="kpi-row" style="grid-template-columns:repeat(3,1fr);margin-top:14px">
     <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-gauge"></i></span><div><div class="kl">Gns. dagligt forbrug</div><div class="kv tnum">{{ (average_usage or 0)|dknum(1) }}</div><div class="kd">kreditter pr. dag med forbrug</div></div></div>
     <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-arrow-trend-up"></i></span><div><div class="kl">Maks. dagligt forbrug</div><div class="kv tnum">{{ peak_usage }}</div><div class="kd">{{ ("den " ~ (peak_day|dkdate)) if peak_day else "intet forbrug endnu" }}</div></div></div>
-    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-grip"></i></span><div><div class="kl">Brug pr. app</div>
-      {% if app_usage %}
+    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-grip"></i></span><div><div class="kl">Hvad kreditterne gik til</div>
+      {% if usage_by_purpose %}
       <div style="font-size:12.5px;color:var(--fm-ink-2);margin-top:4px">
-        {% for app, usage in app_usage.items() %}<div class="fm-spread" style="padding:2px 0"><span>{{ app }}</span><strong>{{ usage }}</strong></div>{% endfor %}
+        {% for label, used in usage_by_purpose %}<div class="fm-spread" style="padding:2px 0"><span>{{ label }}</span><strong>{{ used }}</strong></div>{% endfor %}
       </div>
       {% else %}<div class="kv tnum" style="font-size:18px">Ingen data</div>{% endif %}
     </div></div>

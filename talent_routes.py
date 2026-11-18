@@ -41,6 +41,32 @@ def required(cur, cid, module):
         abort(404)
 
 
+@talent_bp.app_context_processor
+def _talent_nav():
+    """``talent_modules()`` for the shell: which talent modules this company switched on,
+    so the sidebar can offer "Interne muligheder". One primary-key read per page, memoised
+    per request; any failure means "nothing switched on"."""
+    def talent_modules():
+        cid = session.get('company_id')
+        if not cid or not session.get('user'):
+            return {}
+
+        def load():
+            cur = None
+            try:
+                import MySQLdb.cursors
+                cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+                return dict(service.flags(cur, cid))
+            except Exception:
+                return {}
+            finally:
+                if cur:
+                    cur.close()
+        from request_memo import memo
+        return memo(('talent_modules', cid), load)
+    return {'talent_modules': talent_modules}
+
+
 def _profile_schema():
     """Goal visibility lives on the profile's goal table; make sure its columns exist
     before a transaction starts (cached after the first call in a process)."""

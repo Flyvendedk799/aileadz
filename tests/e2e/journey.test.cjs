@@ -135,6 +135,13 @@ test('the completed course reaches the employee: orders, CV and development work
   await assert.doesNotReject(page.getByText(COURSE_TITLE).first().waitFor());
   await page.go('/udvikling');
   assert.ok(await page.getByRole('link', { name: 'Find læring' }).count() > 0, 'an unmet requirement links to the catalogue');
+  // The company uses internal mobility, so the sidebar offers it and the page lights its entry.
+  await page.locator('#fmSide').getByRole('link', { name: 'Interne muligheder' }).click();
+  await page.waitForURL('**/muligheder');
+  await assert.doesNotReject(page.getByText('Teamleder til Salg Øst').first().waitFor());
+  assert.equal(await page.locator('#fmSide a[aria-current="page"]').innerText(), 'Interne muligheder');
+  await page.go('/min-laering');
+  await assert.doesNotReject(page.getByRole('navigation', { name: 'Dit næste skridt' }).getByRole('link', { name: 'Min udvikling' }).waitFor());
   await page.close_();
 });
 

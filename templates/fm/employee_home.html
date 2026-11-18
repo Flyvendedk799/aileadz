@@ -222,5 +222,19 @@
           </div>
         </div>
 
+        {# Where the learner goes from here: the rest of their own workspace. Links with no
+           destination for this person (no company, module off) drop out by themselves. #}
+        {% from 'fm/_macros.html' import related %}
+        <div style="margin-top:22px">
+        {{ related([
+            ('Min udvikling', url_for('talent.workspace') if has_endpoint('talent.workspace') and session.get('company_id') else '', 'fa-seedling'),
+            ('Interne muligheder', url_for('talent.opportunities') if has_endpoint('talent.opportunities') and session.get('company_id') and talent_modules is defined and talent_modules().get('mobility_enabled') else '', 'fa-arrow-up-right-dots'),
+            ('Udviklingsmål', url_for('futurematch.learning_goals'), 'fa-bullseye'),
+            ('Mit CV', url_for('futurematch.my_cv'), 'fa-file-lines'),
+            ('Mind-Map', url_for('futurematch.mind_map'), 'fa-brain'),
+            ('Kollega-chat', url_for('futurematch.company_chat') if session.get('company_id') else '', 'fa-comments'),
+        ], title='Dit næste skridt') }}
+        </div>
+
       </div>
 {% endblock %}

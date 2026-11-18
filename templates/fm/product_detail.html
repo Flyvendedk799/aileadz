@@ -560,6 +560,17 @@
         </div>
         {% endif %}
 
+        {# The person's own skill gaps this course is about (their data, shown only to them). #}
+        {% if my_gaps %}
+        <div class="pd-gaps" style="margin:0 0 12px;padding:10px 12px;border:1px solid var(--fm-line);border-radius:var(--r-ctrl);background:var(--fm-primary-tint);font-size:13px;line-height:1.5">
+          <strong><i class="fa-solid fa-seedling"></i> Passer til det, du arbejder hen imod</strong>
+          <ul style="margin:6px 0 0;padding-left:18px">
+            {% for g in my_gaps %}<li>{{ g.skill }}: {% if g.current_level is not none %}niveau {{ g.current_level }} i dag, {% endif %}mål {{ g.target_level }} af 5</li>{% endfor %}
+          </ul>
+          {% if has_endpoint('talent.workspace') and session.get('company_id') %}<a href="{{ url_for('talent.workspace') }}" style="font-weight:600">Se Min udvikling</a>{% endif %}
+        </div>
+        {% endif %}
+
         {% if anon %}
         <a class="pd-cta" href="{{ url_for('auth.login') }}"><i class="fa-solid fa-arrow-right-to-bracket"></i>Log ind for at anmode</a>
         {% else %}

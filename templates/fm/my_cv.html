@@ -48,6 +48,8 @@
           </div>
         </details>
         <a class="btn btn-ghost btn-sm" href="{{ url_for('futurematch.chat') }}?from=cv&amp;intent={{ 'Se mit CV igennem og sig, hvad der vil gøre den største forskel'|urlencode }}"><i class="fa-solid fa-wand-magic-sparkles"></i> Gennemgå med AI</a>
+        {# The CV is what an internal application is built from, so the next step is one click away. #}
+        {% if has_endpoint('talent.opportunities') and session.get('company_id') and talent_modules is defined and talent_modules().get('mobility_enabled') %}<a class="btn btn-ghost btn-sm" href="{{ url_for('talent.opportunities') }}"><i class="fa-solid fa-arrow-up-right-dots"></i> Se interne muligheder</a>{% endif %}
       </div>
     </div>
   </section>

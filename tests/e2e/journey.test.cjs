@@ -140,6 +140,11 @@ test('the completed course reaches the employee: orders, CV and development work
   await page.waitForURL('**/muligheder');
   await assert.doesNotReject(page.getByText('Teamleder til Salg Øst').first().waitFor());
   assert.equal(await page.locator('#fmSide a[aria-current="page"]').innerText(), 'Interne muligheder');
+  // A course that is about one of the person's own gaps says so, and the CV leads on to opportunities.
+  await page.go('/products/demo-ledelse-grundforloeb');
+  await assert.doesNotReject(page.locator('.pd-gaps', { hasText: 'Ledelse' }).waitFor());
+  await page.go('/profil/cv');
+  await assert.doesNotReject(page.getByRole('link', { name: 'Se interne muligheder' }).first().waitFor());
   await page.go('/min-laering');
   await assert.doesNotReject(page.getByRole('navigation', { name: 'Dit næste skridt' }).getByRole('link', { name: 'Min udvikling' }).waitFor());
   await page.close_();

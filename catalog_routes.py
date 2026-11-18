@@ -468,6 +468,23 @@ def _department_budget(department):
     }
 
 
+def _my_gaps_for(product):
+    """Which of the signed-in person's own skill gaps this course is about (may be empty).
+    Their own data only; never raises, never slows an anonymous visit."""
+    username = session.get("user")
+    if not username:
+        return []
+    try:
+        import competency
+        gaps = competency.compute_skill_gaps(username, company_id=session.get("company_id"),
+                                             user_id=session.get("user_id"), limit=None)
+        tags = product.get("tags")
+        return competency.gaps_matched_by(gaps, product.get("title"), " ".join(tags) if isinstance(tags, (list, tuple)) else tags)
+    except Exception as exc:
+        current_app.logger.debug("product gap hint skipped: %s", exc)
+        return []
+
+
 @catalog_bp.route("/products/<handle>")
 def product_detail(handle):
     product = catalog.get_product(handle)
@@ -495,6 +512,7 @@ def product_detail(handle):
     existing_order = _user_open_order(handle)
     return render_template(
         "fm/product_detail.html",
+        my_gaps=_my_gaps_for(product),
         existing_order=existing_order,
         ordered_session_id=_ordered_session_id(product, request.args.get("order")),
         request_flow=_request_flow(),

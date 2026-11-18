@@ -443,3 +443,13 @@ def test_one_reader_lists_assigned_and_personal_paths(env):
         items=lps.paths_for_learner(db.connection.cursor(),'ada',1,7)
     assert [(i['kind'],i['title'],i['done'],i['total']) for i in items]==[('assigned','Ny i salg',1,2),('personal','Mod teamleder',1,2)]
     assert items[0]['url']=='/min-laering/forloeb/5' and items[1]['steps'][1]=={'title':'Fri tekst','done':False}
+
+
+def test_a_course_is_matched_to_the_gaps_it_is_about():
+    import competency
+    gaps=[dict(skill='Forhandling',current_level=2,target_level=3),dict(skill='Ledelse',current_level=None,target_level=3),dict(skill='SQL',current_level=1,target_level=4)]
+    hit=competency.gaps_matched_by(gaps,'Salgstræning i praksis','Salg, Forhandling, Kommunikation')
+    assert [g['skill'] for g in hit]==['Forhandling']
+    assert competency.gaps_matched_by(gaps,'Ledelse: grundforløb','')[0]['skill']=='Ledelse'
+    assert competency.gaps_matched_by(gaps,'NoSQL i dybden','')==[], 'a word that merely contains the skill is not a match'
+    assert competency.gaps_matched_by(gaps,'','')==[]

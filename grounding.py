@@ -850,3 +850,61 @@ def _sanitize_label(label) -> str:
         return s[:60]
     except Exception:
         return ""
+
+
+# ── A pending confirm card is not a finished action ─────────────────────────
+# The live chat probe (docs/reviews/2026-11-chat-probe) found answers that said an
+# action was done while its confirm card was still waiting for the person's click.
+# This is the same kind of circuit-breaker as ``grounding_disclaimer``: it never
+# rewrites the answer, it adds one honest line when the claim and the facts differ.
+PENDING_CONFIRMATION_NOTE = (
+    "Bemærk: det er ikke udført endnu. Det sker først, når du trykker Bekræft på kortet."
+)
+_DONE_CLAIM = _re.compile(
+    r"\b(?:er nu|er blevet|er hermed|har nu|jeg har|har jeg|nu er)\b[^.!?\n]{0,60}?\b"
+    r"(?:delt|gemt|sendt|annulleret|afbestilt|bestilt|godkendt|afvist|oprettet|tildelt|booket|"
+    r"ændret|opdateret|slettet|fjernet|planlagt|registreret|tilmeldt|ombooket)\b",
+    _re.IGNORECASE,
+)
+_CONFIRM_CUE = _re.compile(r"bekræft|kortet|tryk|klik|venter på dig|ikke (?:udført|gemt|sendt|delt)[^.]{0,20}endnu", _re.IGNORECASE)
+
+
+def _as_dict(output):
+    if isinstance(output, dict):
+        return output
+    if isinstance(output, (str, bytes)):
+        try:
+            import json
+            parsed = json.loads(output)
+            return parsed if isinstance(parsed, dict) else {}
+        except (TypeError, ValueError):
+            return {}
+    return {}
+
+
+def pending_confirmation_note(answer, tool_outputs):
+    """The note to append when ``answer`` claims an action is done although this
+    turn only produced a confirm card (a tool result with ``needs_confirmation``)
+    and no tool reported the action as carried out. Returns "" otherwise.
+
+    Pure and guarded. Conservative on purpose: an answer that mentions the card
+    or the Bekræft button already tells the truth and is left alone."""
+    try:
+        text = str(answer or "")
+        if not text.strip():
+            return ""
+        results = [_as_dict(o) for o in (tool_outputs or [])]
+        pending = [r for r in results if r.get("needs_confirmation") is True or r.get("status") == "proposed"]
+        if not pending:
+            return ""
+        carried_out = [r for r in results if r not in pending and (
+            r.get("success") is True or r.get("status") in ("success", "ok", "order_created", "saved"))
+            and (r.get("section") or r.get("order_id") or r.get("queued") or r.get("visibility"))]
+        if carried_out:
+            return ""          # something really was done this turn; do not second-guess which
+        if _DONE_CLAIM.search(text) and not _CONFIRM_CUE.search(text):
+            return PENDING_CONFIRMATION_NOTE
+        return ""
+    except Exception:
+        return ""
+

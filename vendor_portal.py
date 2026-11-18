@@ -1221,6 +1221,11 @@ def vendor_ask():
                         note = "\n\n" + verdict["disclaimer"]
                         full_text += note
                         yield _vendor_sse({"type": "text", "content": note})
+                pending_note = _grounding.pending_confirmation_note(
+                    full_text, [getattr(tr, "output", None) for tr in (runtime_result.tool_results or [])])
+                if pending_note:
+                    full_text += "\n\n" + pending_note
+                    yield _vendor_sse({"type": "text", "content": "\n\n" + pending_note})
             except Exception as _ge:
                 logger.debug("vendor grounding check skipped: %s", _ge)
 

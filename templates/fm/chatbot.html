@@ -27,7 +27,7 @@
 .hr-msg.user .hr-msg-bubble{background:var(--fm-primary);color:#fff;border-radius:14px 14px 4px 14px}
 .hr-msg-bubble ul{margin:6px 0;padding-left:18px}
 .hr-chat-input{display:flex;gap:10px;padding:14px 18px;border-top:1px solid var(--fm-line);background:var(--fm-surface)}
-.hr-chat-input input{flex:1;border-radius:999px;padding:11px 18px;border:1px solid var(--fm-line);background:var(--fm-surface-2);font-size:14px;transition:var(--t)}
+.hr-chat-input input{min-width:0;flex:1;color:var(--fm-ink);border-radius:999px;padding:11px 18px;border:1px solid var(--fm-line);background:var(--fm-surface-2);font-size:14px;transition:var(--t)}
 .hr-chat-input input:focus{border-color:var(--fm-primary);outline:none;box-shadow:0 0 0 3px var(--fm-primary-tint)}
 .hr-chat-input button{border-radius:999px;width:44px;height:44px;flex:0 0 44px;display:grid;place-items:center}
 .hr-typing{display:none;align-items:center;gap:8px;padding:6px 20px;color:var(--fm-ink-3);font-size:13px}
@@ -51,13 +51,23 @@
 .hr-tool-chip.running{opacity:.78;position:relative}
 .hr-tool-chip.running:after{content:"";width:6px;height:6px;border-radius:50%;background:var(--fm-primary);animation:hrTyping 1.2s infinite}
 .hr-tool-chip.error{color:#b91c1c;border-color:#fecaca;background:#fef2f2}
+.hr-start{padding:clamp(14px,3vw,32px);max-width:680px;margin:auto}
+.hr-start>i{color:var(--fm-primary);background:var(--fm-primary-tint);padding:12px;border-radius:12px}
+.hr-start h2{margin:16px 0;font-size:clamp(22px,3vw,32px);line-height:1.12}
+.hr-start .hr-suggestions{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr))}
+.hr-start .hr-suggestion-chip{display:flex;align-items:center;gap:10px;text-align:left;border-radius:10px;background:var(--fm-surface);color:var(--fm-ink);min-height:44px}
+.hr-start .hr-suggestion-chip i{color:var(--fm-primary)}
+.hr-start .hr-suggestion-chip:hover{background:var(--fm-primary-tint)}
+[data-theme="dark"] .hr-msg.user .hr-msg-bubble{color:#102a20}
+@media(max-width:600px){.hr-chat-messages{padding:12px}.hr-start{padding:10px}.hr-msg{max-width:96%}.hr-chat-input input{font-size:16px}}
+@media(prefers-reduced-motion:reduce){.hr-typing-dots span,.hr-tool-chip.running:after{animation:none}}
 </style>
 {% endblock %}
 {% block content %}
 <div class="fm-wrap">
   <div class="fm-spread" style="margin-bottom:14px;flex-wrap:wrap;gap:10px">
-    <div class="fm-eyebrow"><i class="fa-solid fa-robot"></i> Spørg om alt i din virksomheds uddannelse</div>
-    <div class="fm-flex fm-gap8">
+    <h1 class="workspace-heading" style="margin:0">HR-assistent</h1>
+    <div class="fm-flex fm-gap8" style="flex-wrap:wrap">
       <button type="button" class="btn btn-ghost btn-sm" data-chat-id-copy data-chat-scope="hr" disabled title="Chat-id bliver tilgængeligt, når samtalen starter"><i class="fa-regular fa-copy"></i> <span data-chat-id-label>Kopiér chat-id</span></button>
       <button class="btn btn-ghost btn-sm" onclick="resetChat()" title="Ny samtale"><i class="fa-solid fa-rotate-right"></i> Ny samtale</button>
       <a href="{{ url_for('hr_dashboard.chatbot_sessions') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-clock-rotate-left"></i> Samtaler</a>
@@ -74,21 +84,17 @@
   </aside>
   <div class="fm-card hr-chat-card">
     <div class="hr-chat-messages" id="chatMessages">
-      <div class="hr-msg assistant">
-        <div class="hr-msg-avatar"><i class="fa-solid fa-robot"></i></div>
-        <div>
-          <div class="hr-msg-bubble">Hej! Jeg er din HR AI-assistent. Jeg kan hjælpe dig med at analysere uddannelsesdata, kompetencegab, budgetter og medarbejderaktivitet. Hvad vil du gerne vide?</div>
-          <div class="hr-suggestions">
-            <button type="button" class="hr-suggestion-chip" onclick="sendSuggestion(this)">Vis træningsstatus</button>
-            <button type="button" class="hr-suggestion-chip" onclick="sendSuggestion(this)">Kompetencegab analyse</button>
-            <button type="button" class="hr-suggestion-chip" onclick="sendSuggestion(this)">Budgetoverblik</button>
-            <button type="button" class="hr-suggestion-chip" onclick="sendSuggestion(this)">Ventende godkendelser</button>
-            <button type="button" class="hr-suggestion-chip" onclick="sendSuggestion(this)">Inaktive medarbejdere</button>
-          </div>
+      <section class="hr-start">
+        <i class="fa-solid fa-comments" aria-hidden="true"></i>
+        <h2>Hvad vil du undersøge?</h2>
+        <div class="hr-suggestions">
+          {% for icon, question in [('fa-graduation-cap', 'Vis træningsstatus'), ('fa-layer-group', 'Analysér kompetencegab'), ('fa-wallet', 'Vis budgetoverblik'), ('fa-circle-check', 'Vis ventende godkendelser'), ('fa-users', 'Vis inaktive medarbejdere')] %}
+          <button type="button" class="hr-suggestion-chip" onclick="sendSuggestion(this)"><i class="fa-solid {{ icon }}" aria-hidden="true"></i> {{ question }}</button>
+          {% endfor %}
         </div>
-      </div>
+      </section>
     </div>
-    <div class="hr-typing" id="typingIndicator">
+    <div class="hr-typing" id="typingIndicator" role="status">
       <div class="hr-typing-dots"><span></span><span></span><span></span></div>
       <span id="typingText">Analyserer...</span>
     </div>
@@ -106,6 +112,7 @@
 <script>
 var conversationToken = null;
 const chatMessages = document.getElementById('chatMessages');
+const starter = chatMessages.querySelector('.hr-start');
 const chatInput = document.getElementById('chatInput');
 const typingIndicator = document.getElementById('typingIndicator');
 const typingText = document.getElementById('typingText');
@@ -142,6 +149,7 @@ function sendMessage(suggestion){
   document.getElementById('sendBtn').disabled = true;
   activeToolRun = null;
   chatMessages.querySelectorAll('.fm-chips').forEach(n => n.remove());
+  if (starter) starter.remove();
   appendMessage('user', query);
   typingIndicator.classList.add('active');
   typingText.textContent = 'Analyserer...';

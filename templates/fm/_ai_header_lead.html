@@ -1,11 +1,15 @@
 {# Header buttons for the AI pages (/chat, /mind-map): conversation history and a new chat.
    The panel itself is fm/_ai_sidebar.html; ai-sidebar.js wires these buttons. #}
+{% if session.get('user') %}
 <button type="button" class="fm-icon-btn ai-lead-btn" data-ai-hist-toggle aria-haspopup="dialog" aria-expanded="false" aria-controls="aiHist" aria-label="Samtaler" title="Samtaler">
   <i class="fa-solid fa-clock-rotate-left"></i>
 </button>
 <button type="button" class="fm-icon-btn ai-lead-btn" data-ai-new data-ai-new-href="{{ url_for('futurematch.chat') }}?new=1" aria-label="Ny samtale" title="Ny samtale">
   <i class="fa-regular fa-pen-to-square"></i>
 </button>
+{% else %}
+<a class="fm-icon-btn ai-lead-btn" href="{{ url_for('futurematch.chat') }}?new=1" aria-label="Ny samtale" title="Ny samtale"><i class="fa-regular fa-pen-to-square"></i></a>
+{% endif %}
 <button type="button" class="fm-icon-btn ai-lead-btn" data-chat-id-copy data-chat-scope="employee" disabled title="Chat-id bliver tilgængeligt, når samtalen starter" aria-label="Kopiér chat-id">
-  <i class="fa-regular fa-copy"></i><span data-chat-id-label>Kopiér chat-id</span>
+  <i class="fa-regular fa-copy"></i><span class="fm-sr-only" data-chat-id-label aria-live="polite">Kopiér chat-id</span>
 </button>

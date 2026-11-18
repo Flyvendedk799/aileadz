@@ -16,7 +16,7 @@
     <header class="fm-aip-head">
       <span><i class="fa-solid fa-robot"></i> HR AI-assistent</span>
       <span class="fm-aip-hist">
-        <button type="button" data-chat-id-copy data-chat-scope="hr" disabled title="Chat-id bliver tilgængeligt, når samtalen starter" aria-label="Kopiér chat-id"><i class="fa-regular fa-copy"></i><span data-chat-id-label>Kopiér chat-id</span></button>
+        <button type="button" data-chat-id-copy data-chat-scope="hr" disabled title="Chat-id bliver tilgængeligt, når samtalen starter" aria-label="Kopiér chat-id"><i class="fa-regular fa-copy"></i><span class="fm-sr-only" data-chat-id-label aria-live="polite">Kopiér chat-id</span></button>
         <button type="button" id="fmAipNew" title="Ny samtale" aria-label="Ny samtale"><i class="fa-solid fa-rotate-right"></i></button>
         <a href="{{ url_for('hr_dashboard.hr_chatbot') }}" title="Åbn i fuld skærm" aria-label="Åbn i fuld skærm"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></a>
         <button type="button" class="fm-aip-x" id="fmAipClose" title="Luk" aria-label="Luk"><i class="fa-solid fa-xmark"></i></button>
@@ -31,7 +31,7 @@
       </div>
     </div>
     <form class="fm-aip-form" id="fmAipForm">
-      <input type="text" id="fmAipInput" placeholder="Stil et spørgsmål…" autocomplete="off" />
+      <input type="text" id="fmAipInput" aria-label="Besked til HR-assistenten" placeholder="Stil et spørgsmål…" autocomplete="off" />
       <button type="submit" aria-label="Send"><i class="fa-solid fa-paper-plane"></i></button>
     </form>
   </section>

@@ -23,6 +23,9 @@ os.environ.setdefault("AI_MEMORY_BACKEND", "sqlite")  # AI store tests opt in to
 # built explicitly by tests/test_schema_baseline.py.
 os.environ["ENTERPRISE_TABLE_SYNC_SKIP"] = "1"
 os.environ.setdefault("CATALOG_AUTO_EMBED", "0")  # never call the embedding API from tests
+# Many tests drive the assistant endpoints as one user; the turn brake has its own tests.
+os.environ.setdefault("AI_RATE_TURNS_5MIN", "0")
+os.environ.setdefault("AI_RATE_TURNS_HOUR", "0")
 
 
 def _mysql_reachable() -> bool:

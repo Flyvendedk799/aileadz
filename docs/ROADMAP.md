@@ -64,7 +64,7 @@ Read the "AI changes" section of `CLAUDE.md` first: every item must hold on both
 | T3-5 | **Company documents.** HR uploads policies and handbooks; indexed per company; retrieved only for that company; answers cite the document; text is fenced as untrusted; tables covered by GDPR and retention; HR page to upload, replace and remove. | new `company_documents` service; `app1/rag.py`, `upload_guard.py`, `gdpr_service.py` | a learner asks about their own company's policy and gets a cited answer; a cross-tenant eval case passes |
 | T3-7 | **Cross-role case.** Learner request, HR approval and vendor booking are joined only by data; give each assistant the same view of where a request stands and who acts next. | `ai_entity_context.py`, `ai_followups.py` | any of the three can answer "hvor er den?" identically |
 | T3-8 | **Evals that gate.** Golden set: employee 66, HR 4, vendor 3. Grow HR and vendor, run both providers, and turn reviewed thumbs-down turns into cases (`set_feedback_reviewed` feeds nothing today). | `ai_eval/` | a quality regression fails a build |
-| T3-9 | **Guardrails.** `AI_MAX_RUN_COST`/`AI_MAX_RUN_TOKENS` default to unlimited; logged-in `/app1/ask` and the HR/vendor assistants have no request rate limit. | `ai_runtime.py`, `rate_limit.py` | a runaway loop or a script cannot drain a company's credits |
+| T3-9 | **A default cost ceiling per run.** Turns are rate-limited per actor and a run stops after `AI_MAX_TOOL_CALLS`, but `AI_MAX_RUN_COST`/`AI_MAX_RUN_TOKENS` still default to unlimited. Pick defaults from real `ai_agent_runs` data so a normal long answer is never cut. | `ai_runtime.py` (`max_run_cost_usd`, `max_run_tokens`) | a single run cannot cost more than an agreed amount |
 
 ## Track 4: maintainability and reach
 

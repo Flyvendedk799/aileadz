@@ -3176,6 +3176,10 @@ def create_hr_dashboard_blueprint():
             return jsonify({"error": "Tom besked"}), 400
         if len(user_query) > 5000:
             return jsonify(error='Beskeden må højst være 5000 tegn.'), 400
+        import rate_limit
+        if not rate_limit.ai_turn_allowed("user:%s" % session.get('user')):
+            return jsonify({"error": rate_limit.AI_TURN_MESSAGE, "rate_limited": True,
+                            "answers": [{"type": "text", "content": rate_limit.AI_TURN_MESSAGE}]}), 429
 
         # Ensure company context is in session for hr_tools
         session['company_name'] = company.get('company_name', '')

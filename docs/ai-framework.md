@@ -758,6 +758,7 @@ vendor name is fenced; figures pass grounding.
 | `AI_TOKEN_CHARS_PER_TOKEN` | 4.0 | token estimator divisor (Danish tokenises worse; try 3.5) |
 | `AI_MAX_TOOL_CALLS` / `AI_MAX_TOOL_ITERATIONS` | 12 / 4 | per-run tool-call ceiling / loop base |
 | `AI_MAX_RUN_COST` / `AI_MAX_RUN_TOKENS` | 0 / 0 | per-run USD / token ceilings (0 = off) |
+| `AI_RATE_TURNS_5MIN` / `AI_RATE_TURNS_HOUR` | 30 / 200 | turns one actor may send to an assistant endpoint (`rate_limit.ai_turn_allowed`; 0 = off); answers 429 with a Danish message |
 | `AI_RATE_LIMIT_RETRY_SECONDS` / `_BACKOFF_CAP_SECONDS` / `_COOLDOWN_SECONDS` | 2.5 / 20 / 90 | 429 handling; cooldown forces the fast model |
 | `AI_LLM_ROUTER` / `AI_LLM_ROUTER_TIMEOUT_SECONDS` | on / 4 | LLM intent router on the ambiguous catch-all |
 | `AI_TRACE_SAMPLE_RATE` | 1 | run trace sampling |

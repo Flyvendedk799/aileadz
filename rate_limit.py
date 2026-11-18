@@ -71,3 +71,32 @@ def reset(key=None):
             _events.clear()
         else:
             _events.pop(key, None)
+
+
+# ── Assistant turns ─────────────────────────────────────────────────────────
+# Credits meter what a company spends; this is the brake on a script or a stuck
+# client hammering an assistant endpoint. Generous for a person, per actor.
+AI_TURN_MESSAGE = "Du har sendt mange beskeder på kort tid. Vent et øjeblik, og prøv igen."
+
+
+def _env_int(name, default):
+    import os
+    try:
+        return max(0, int(os.environ.get(name, default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def ai_turn_allowed(actor, now=None):
+    """One assistant turn for ``actor`` (e.g. ``"user:42"``, ``"vendor:7"``,
+    ``"anon:<ip>"``). False when the actor is over ``AI_RATE_TURNS_5MIN`` (default
+    30) or ``AI_RATE_TURNS_HOUR`` (default 200); 0 switches a limit off."""
+    short, hour = _env_int("AI_RATE_TURNS_5MIN", 30), _env_int("AI_RATE_TURNS_HOUR", 200)
+    if hour and is_limited("ai:h:%s" % actor, hour, 3600, now):
+        return False
+    if short and not hit("ai:5m:%s" % actor, short, 300, now):
+        return False
+    if hour:
+        hit("ai:h:%s" % actor, hour, 3600, now)
+    return True
+

@@ -1026,6 +1026,9 @@ def vendor_ask():
 
     if len(user_query) > 5000:
         return jsonify(error='Beskeden må højst være 5000 tegn.'), 400
+    import rate_limit
+    if not rate_limit.ai_turn_allowed("vendor:%s" % vendor_id):
+        return jsonify({"error": rate_limit.AI_TURN_MESSAGE, "rate_limited": True}), 429
 
     # Lazy, guarded imports so a broken AI stack never crashes the portal.
     try:

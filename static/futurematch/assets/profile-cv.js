@@ -10,7 +10,9 @@
   if (!root) return;
 
   const STAGES = ["Udtrækker tekst", "Læser CV", "Analyserer", "Foreslår profil"];
-  const LEVELS = ["Begynder", "Øvet", "Erfaren", "Ekspert", "Specialist"];
+  // The product's one set of skill levels (competency.py; the same four words on the
+  // profile, the CV and the mind map). The parser sends them in lower case.
+  const LEVELS = ["Begynder", "Mellem", "Avanceret", "Ekspert"];
   const PROF = ["Grundlæggende", "Professionelt", "Flydende", "Modersmål"];
   const MAX_BYTES = 8 * 1024 * 1024;
   const PARSE_TIMEOUT_MS = 95000;
@@ -186,8 +188,11 @@
     let input;
     if (opts.options) {
       input = document.createElement("select");
-      const cur = item[key] == null ? "" : String(item[key]);
+      let cur = item[key] == null ? "" : String(item[key]);
       const list = opts.options.slice();
+      // "mellem" from the parser is the option "Mellem", not a fifth choice.
+      const same = list.find((v) => v.toLowerCase() === cur.toLowerCase());
+      if (same) { cur = same; item[key] = same; }
       if (cur && list.indexOf(cur) < 0) list.unshift(cur);
       list.forEach((v) => {
         const o = document.createElement("option");

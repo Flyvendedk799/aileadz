@@ -9,7 +9,8 @@ that a colleague cannot open someone else's order, and that no request answered 
 server error.
 
 `crawl.test.cjs` is the breadth check: for four roles it follows the sidebar, sub-navigation and tab
-bars and opens every page it finds (about 160 page loads), failing on any server error. It only
+bars and opens every page it finds (about 160 page loads), failing on any server error and on a page
+without a level-1 heading or with a field or control that has no name (a few known pages are listed in the test). It only
 reads, so it runs on the same seed before or after the journey.
 
 It is **not** part of `pytest`: the offline suite must never need MySQL or a browser.

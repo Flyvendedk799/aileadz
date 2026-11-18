@@ -107,7 +107,7 @@
         {% if session.get('company_id') %}
         <form method="POST" action="{{ url_for('futurematch.learning_goal_share', goal_id=g.id) }}"><input type="hidden" name="shared" value="{{ 'no' if g_shared else 'yes' }}"><button class="gbtn" type="submit" title="{{ 'HR kan ikke længere se målet' if g_shared else 'HR ser målets titel, beskrivelse, måldato og status' }}"><i class="fa-solid {{ 'fa-lock' if g_shared else 'fa-share-nodes' }}"></i> {{ 'Gør privat' if g_shared else 'Del med HR' }}</button></form>
         {% endif %}
-        <form method="POST" action="{{ url_for('futurematch.learning_goal_status', goal_id=g.id) }}" onsubmit="return confirm('Slet dette mål?')"><input type="hidden" name="action" value="slet"><button class="gbtn danger" type="submit"><i class="fa-solid fa-trash"></i></button></form>
+        <form method="POST" action="{{ url_for('futurematch.learning_goal_status', goal_id=g.id) }}" onsubmit="return confirm('Slet dette mål?')"><input type="hidden" name="action" value="slet"><button class="gbtn danger" type="submit" aria-label="Slet målet" title="Slet målet"><i class="fa-solid fa-trash"></i></button></form>
       </div>
     </article>
     {% endfor %}

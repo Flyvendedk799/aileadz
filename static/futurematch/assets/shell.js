@@ -99,12 +99,48 @@
 
     initMotion();
     initNavSections();
+    initA11y();
     // The lit entry is also announced as the current page.
     document.querySelectorAll(".fm-nav-link.active, .fm-subnav a.active, .fm-tabs a.active").forEach(a => a.setAttribute("aria-current", "page"));
     initCmdK();
     initTooltips();
     initNotifBadge();
     applyBrand();
+  }
+
+  /* ---- Structure a screen reader can use ----
+     Two things most pages got wrong the same way, fixed once here:
+     - the page title lives in the top bar, not in an <h1>: when the page has no
+       level-1 heading of its own, the top-bar title becomes it;
+     - a label that sits next to its field without for/id is tied to that field,
+       so the field is announced with its name. */
+  function initA11y() {
+    const title = document.querySelector(".fm-top-title");
+    if (title && title.textContent.trim() && !document.querySelector('h1, [role="heading"][aria-level="1"]')) {
+      title.setAttribute("role", "heading");
+      title.setAttribute("aria-level", "1");
+    }
+    let n = 0;
+    document.querySelectorAll("label").forEach(label => {
+      if (label.htmlFor || label.querySelector("input, select, textarea")) return;
+      const box = label.parentElement;
+      if (!box) return;
+      const fields = box.querySelectorAll("input:not([type=hidden]), select, textarea");
+      if (fields.length !== 1) return;                       // only the unambiguous case
+      const field = fields[0];
+      if (field.getAttribute("aria-label") || field.getAttribute("aria-labelledby")) return;
+      if (field.id && document.querySelector('label[for="' + CSS.escape(field.id) + '"]')) return;
+      if (!field.id) field.id = "fm-field-" + (++n);
+      label.htmlFor = field.id;
+    });
+    // A field with no label at all (search boxes, the chat input) is at least
+    // announced by its placeholder instead of as "edit text".
+    document.querySelectorAll("input:not([type=hidden]):not([type=submit]):not([type=button]):not([type=checkbox]):not([type=radio]), textarea").forEach(field => {
+      if (field.getAttribute("aria-label") || field.getAttribute("aria-labelledby") || field.getAttribute("title")) return;
+      if (field.closest("label") || (field.id && document.querySelector('label[for="' + CSS.escape(field.id) + '"]'))) return;
+      const hint = (field.getAttribute("placeholder") || "").replace(/[….]+$/, "").trim();
+      if (hint) field.setAttribute("aria-label", hint);
+    });
   }
 
   /* ---- Collapsible sidebar sections ----

@@ -440,6 +440,11 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
 - **HR `get_employee_overview`** for one employee adds `development`: goals through
   `goal_service.for_hr` (the employee's own goals only when shared) and role readiness when
   role frameworks are on. HR tools never read the goal tables directly.
+- **`search_company_documents`** (company members) / **`hr_search_company_documents`** (HR):
+  passages from the company's own uploaded documents (`company_documents.search`, lexical,
+  company-scoped). Each passage is fenced as untrusted data and carries its document title;
+  the result tells the model to cite it and to say so when the answer is not there. Reaches the
+  menu on "what applies here" wording (handbook, policy, leave, home working ...).
 - **`get_my_agenda`** (profile-gated): cross-silo "what's on my plate" - course
   deadlines + pending approvals (`course_orders`, `order_approvals`), expiring
   certifications (`user_certifications`, `cert_expiry_service.parse_expiry`), dated

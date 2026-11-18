@@ -34,6 +34,7 @@ TABS = [
     ("virksomhed", "Virksomhed", "fa-building", "company.settings"),
     ("branding", "Branding", "fa-palette", "company.branding"),
     ("chatbot", "Chatbot & widget", "fa-robot", "company.chatbot_widget"),
+    ("dokumenter", "Dokumenter til AI", "fa-file-lines", "company.settings"),
     ("webhooks", "Webhooks", "fa-plug", "company.webhooks"),
     ("sso", "SSO", "fa-key", "company.sso"),
     ("api", "API-nøgler", "fa-code", "company.api_keys"),
@@ -130,6 +131,8 @@ def tab(tab):
         sub = request.args.get("view") if request.args.get("view") in ("chatbot", "widget") else "chatbot"
         endpoint = "hr_dashboard.widget_creator" if sub == "widget" else "hr_dashboard.chatbot_settings"
         return _delegate(endpoint, "chatbot", sub=sub)
+    if tab == "dokumenter":
+        return _tab_documents()
     if tab == "webhooks":
         return _delegate("enterprise_settings.webhooks_page", "webhooks")
     if tab == "sso":
@@ -401,6 +404,91 @@ def revoke_api_key(key_id):
     else:
         flash("Nøglen blev ikke fundet.", "warning")
     return redirect(url_for("settings_hub.tab", tab="api"))
+
+
+# ── Dokumenter til AI ───────────────────────────────────────────────────────
+def _tab_documents():
+    import MySQLdb.cursors
+    import company_documents
+    documents, error = [], False
+    cur = _conn().cursor(MySQLdb.cursors.DictCursor)
+    try:
+        documents = company_documents.list_documents(cur, _company_id())
+    except Exception as e:
+        logger.warning("list company documents failed: %s", e)
+        error = True
+    finally:
+        cur.close()
+    return render_template("fm/settings_documents.html", documents=documents, error=error, tab="dokumenter",
+                           max_documents=company_documents.MAX_DOCUMENTS,
+                           max_mb=company_documents.MAX_BYTES // (1024 * 1024))
+
+
+@settings_hub_bp.route("/dokumenter/upload", methods=["POST"])
+def upload_document():
+    if not capabilities.can("company.settings") or not _company_id():
+        return _denied()
+    import MySQLdb.cursors
+    import company_documents
+    import upload_guard
+    upload = request.files.get("file")
+    if not upload or not upload.filename:
+        flash("Vælg en fil at uploade.", "danger")
+        return redirect(url_for("settings_hub.tab", tab="dokumenter"))
+    conn = _conn()
+    cur = conn.cursor(MySQLdb.cursors.DictCursor)
+    try:
+        data = upload_guard.read_limited(upload, company_documents.MAX_BYTES)
+        company_documents.add_document(cur, _company_id(), session.get("user_id"),
+                                       request.form.get("title"), upload.filename, data)
+        conn.commit()
+        try:
+            from security_audit import audit
+            audit("company.document.add", "company_document", upload.filename[:100],
+                  "Dokument til AI uploadet", company_id=_company_id(), user_id=session.get("user_id"))
+        except Exception:
+            pass
+        flash("Dokumentet er uploadet. AI-assistenten kan nu svare ud fra det.", "success")
+    except (company_documents.DocumentError, upload_guard.UploadRejected) as e:
+        conn.rollback()
+        flash(str(e), "danger")
+    except Exception as e:
+        conn.rollback()
+        logger.warning("company document upload failed: %s", e)
+        flash("Dokumentet kunne ikke uploades. Prøv igen.", "danger")
+    finally:
+        cur.close()
+    return redirect(url_for("settings_hub.tab", tab="dokumenter"))
+
+
+@settings_hub_bp.route("/dokumenter/<document_id>/fjern", methods=["POST"])
+def remove_document(document_id):
+    if not capabilities.can("company.settings") or not _company_id():
+        return _denied()
+    import MySQLdb.cursors
+    import company_documents
+    conn = _conn()
+    cur = conn.cursor(MySQLdb.cursors.DictCursor)
+    try:
+        removed = company_documents.remove_document(cur, _company_id(), document_id)
+        conn.commit()
+        if removed:
+            try:
+                from security_audit import audit
+                audit("company.document.remove", "company_document", document_id,
+                      "Dokument til AI fjernet", company_id=_company_id(), user_id=session.get("user_id"))
+            except Exception:
+                pass
+            flash("Dokumentet er fjernet. AI-assistenten bruger det ikke længere.", "success")
+        else:
+            flash("Dokumentet blev ikke fundet.", "warning")
+    except Exception as e:
+        conn.rollback()
+        logger.warning("company document removal failed: %s", e)
+        flash("Dokumentet kunne ikke fjernes. Prøv igen.", "danger")
+    finally:
+        cur.close()
+    return redirect(url_for("settings_hub.tab", tab="dokumenter"))
 
 
 # ── Integrationer ───────────────────────────────────────────────────────────

@@ -170,8 +170,34 @@ TALENT_DDL = [
     ) {_ENGINE}""",
 ]
 
+# Company documents the assistants may answer from (company_documents.py). Only
+# the extracted text is stored, split into passages; always read by company_id.
+DOCUMENTS_DDL = [
+    f"""CREATE TABLE IF NOT EXISTS company_documents (
+        id VARCHAR(36) PRIMARY KEY,
+        company_id INT NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        filename VARCHAR(255) NULL,
+        char_count INT NOT NULL DEFAULT 0,
+        chunk_count INT NOT NULL DEFAULT 0,
+        uploaded_by INT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_company_documents (company_id, created_at)
+    ) {_ENGINE}""",
+    f"""CREATE TABLE IF NOT EXISTS company_document_chunks (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        document_id VARCHAR(36) NOT NULL,
+        company_id INT NOT NULL,
+        position INT NOT NULL,
+        content TEXT NOT NULL,
+        terms_json MEDIUMTEXT NULL,
+        INDEX idx_document_chunks (company_id, document_id, position)
+    ) {_ENGINE}""",
+]
+
 REGISTRY_DDL = [
     *TALENT_DDL,
+    *DOCUMENTS_DDL,
     AI_ACTIONS_DDL,
     f"""CREATE TABLE IF NOT EXISTS customer_accounts (
         company_id INT PRIMARY KEY,

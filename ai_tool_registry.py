@@ -199,6 +199,11 @@ _EMPLOYEE_META = {
         side_effect=True, parallel_safe=False, confirm_required=True,
         toolset_tags=("profile", "goals", "mutation"),
     ),
+    # Read-only: the company's own uploaded documents (company_documents.py), company-scoped.
+    "search_company_documents": ToolMeta(
+        "search_company_documents", auth_required=True, company_required=True,
+        toolset_tags=("company", "documents"), cache_ttl=60,
+    ),
     # Read-only: own role readiness, development goals, internal opportunities and applications.
     "get_my_development": ToolMeta(
         "get_my_development", auth_required=True, company_required=True,
@@ -336,6 +341,10 @@ _HR_META = {
     ),
     # AI empowerment pass: read-only cross-surface navigation for the HR panel.
     # No company scope required — it navigates, it never reads tenant data.
+    "hr_search_company_documents": ToolMeta(
+        "hr_search_company_documents", "hr", company_required=True, cache_ttl=60,
+        toolset_tags=("company", "documents"),
+    ),
     "hr_open_in_app": ToolMeta(
         "hr_open_in_app", "hr", company_required=False,
         toolset_tags=("navigation", "ui"), cache_ttl=0,
@@ -423,6 +432,7 @@ _TOOL_LABELS = {
     "get_learning_goals": "Hent mål",
     "share_learning_goal": "Del mål med HR",
     "get_my_development": "Min udvikling",
+    "search_company_documents": "Virksomhedens dokumenter",
     "update_learning_goal": "Opdater mål",
     "get_my_course_status": "Kursusstatus",
     "get_negotiated_discount": "Aftalepris",
@@ -474,6 +484,7 @@ _TOOL_LABELS = {
     "send_deadline_reminders": "Send påmindelser",
     "create_order_for_employee": "Bestil for medarbejder",
     "hr_open_in_app": "Åbn HR-side",
+    "hr_search_company_documents": "Virksomhedens dokumenter",
     # Vendor tools
     "vendor_performance_summary": "Salgsperformance",
     "get_demand_by_category": "Markedsefterspørgsel",
@@ -1278,6 +1289,13 @@ def get_employee_tool_selection(
                 "internt job", "interne stillinger", "min ansøgning", "min ansoegning", "ansøgning", "ansoegning",
                 "kompetencekrav", "klar til", "rollebeskrivelse")):
             names.add("get_my_development")
+        # "What applies here?" -> the company's own uploaded documents (read-only, company-scoped).
+        if company_id and _has_any(query, ("personalehåndbog", "personalehaandbog", "håndbog", "haandbog", "politik", "retningslinje",
+                "retningslinjer", "vores regler", "reglerne her", "hvad gælder", "hvad gaelder", "hos os", "her i virksomheden",
+                "i virksomheden", "procedure", "barsel", "ferie", "sygdom", "hjemmearbejde", "overarbejde", "opsigelse",
+                "uddannelsespolitik", "kursuspolitik", "har jeg ret til", "må jeg", "maa jeg", "hvem skal jeg spørge",
+                "står der i", "staar der i", "dokument")):
+            names.add("search_company_documents")
         # Goal visibility is the owner's call: the share tool only shows a confirm card.
         if company_id and _has_any(query, (
                 "del mit mål", "del mit maal", "del målet", "del maalet", "dele mit mål", "dele målet", "del med hr",
@@ -1510,6 +1528,12 @@ def get_hr_tool_selection(
         forced_candidates.append("get_company_skill_gaps")
     if _has_any(query, ("træning", "training", "status", "gennemført", "igang", "medarbejder")):
         names.update({"get_team_training_status", "get_employee_overview"})
+    if _has_any(query, ("personalehåndbog", "personalehaandbog", "håndbog", "haandbog", "politik", "retningslinje",
+            "retningslinjer", "vores regler", "reglerne her", "hvad gælder", "hvad gaelder", "hos os", "her i virksomheden",
+            "i virksomheden", "procedure", "barsel", "ferie", "sygdom", "hjemmearbejde", "overarbejde", "opsigelse",
+            "uddannelsespolitik", "kursuspolitik", "har jeg ret til", "må jeg", "maa jeg", "hvem skal jeg spørge",
+            "står der i", "staar der i", "dokument")):
+        names.add("hr_search_company_documents")
     # One person's goals and role readiness live on the employee lookup.
     if _has_any(query, ("udviklingsmål", "udviklingsmaal", "delt mål", "delte mål", "hans mål", "hendes mål",
                         "deres mål", "mål for ", "udviklingssamtale", "mus-samtale", "mus samtale",

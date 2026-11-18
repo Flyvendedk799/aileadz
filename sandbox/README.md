@@ -25,7 +25,8 @@ export OPENAI_API_KEY=sk-...        # optional
 Open http://127.0.0.1:5001/login: `test` / `test` (platform admin, also `company_admin` of the
 seeded company "Sandbox A/S", slug `sandbox`) or `medarbejder` / `test` (employee).
 
-After `demo` there are also `hr` (HR manager), `leder` (department head of Salg), `ada` and `bo`
+After `demo` the course provider "Demo Akademi" can log in to the vendor portal at `/vendor/login`
+(`udbyder@sandbox.example` / `test`). There are also `hr` (HR manager), `leder` (department head of Salg), `ada` and `bo`
 (employees in Salg), all with password `test`. The company then has departments with budgets, five
 courses from "Demo Akademi" (`sandbox/.demo/catalog.json`, written by the seed with dates relative
 to today), an internal course, a learning path, one order in each state (awaiting approval,

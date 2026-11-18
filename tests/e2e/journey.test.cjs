@@ -185,6 +185,35 @@ test('search finds a course, the person\'s own order and own goal, and the skip 
   await page.close_();
 });
 
+test('the course provider sees its orders in the vendor portal, in the theme it chose', async () => {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'da-DK' });
+  context.setDefaultTimeout(12000);
+  await context.route('**/*', (route) => (route.request().url().startsWith(BASE) ? route.continue() : route.abort()));
+  const page = await context.newPage();
+  page.on('response', (r) => { if (r.status() >= 500) serverErrors.push(r.status() + ' ' + r.url()); });
+  await page.goto(BASE + '/vendor/login', { waitUntil: 'domcontentloaded' });
+  await page.fill('input[name="email"]', 'udbyder@sandbox.example');
+  await page.fill('input[name="password"]', PASSWORD);
+  await page.press('input[name="password"]', 'Enter');
+  await page.waitForURL('**/vendor/', { waitUntil: 'domcontentloaded' });
+  for (const [path, tab] of [['/vendor/', 'Oversigt'], ['/vendor/orders', 'Bestillinger'], ['/vendor/analytics', 'Analyser'],
+    ['/vendor/submit-catalog', 'Indsend katalog'], ['/vendor/profile', 'Profil']]) {
+    const response = await page.goto(BASE + path, { waitUntil: 'domcontentloaded' });
+    assert.equal(response.status(), 200, path);
+    assert.match(await page.locator('.vp-nav a[aria-current="page"]').innerText(), new RegExp('^' + tab));
+  }
+  await page.goto(BASE + '/vendor/orders', { waitUntil: 'domcontentloaded' });
+  await assert.doesNotReject(page.getByText('Salgstræning i praksis').first().waitFor(), 'the approved order waits for the provider');
+  await page.getByRole('button', { name: /tema/i }).click();
+  assert.equal(await page.evaluate(() => document.documentElement.getAttribute('data-theme')), 'dark');
+  await page.goto(BASE + '/vendor/profile', { waitUntil: 'domcontentloaded' });
+  assert.equal(await page.evaluate(() => document.documentElement.getAttribute('data-theme')), 'dark', 'the choice is remembered');
+  // A vendor session is not a company session.
+  const company = await page.goto(BASE + '/hr/approvals', { waitUntil: 'domcontentloaded' });
+  assert.ok(!page.url().includes('/hr/approvals') || company.status() >= 400, 'a vendor never reaches company pages');
+  await context.close();
+});
+
 test('another employee cannot open the order, and nothing answered with a server error', async () => {
   const page = await as('medarbejder');
   const response = await page.go('/min-ordre/' + state.orderId);

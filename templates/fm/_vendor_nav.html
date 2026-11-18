@@ -3,14 +3,15 @@
    Vendors are an isolated session (session['vendor_id'] / ['vendor_name']); this
    never reads session['user']. Set `vendor_tab` before including:
        {% set vendor_tab = 'orders' %}{% include 'fm/_vendor_nav.html' %}
-   Keys: dashboard, orders, analytics, submit, profile. The page supplies the
-   .vp-top / .vp-nav styles. #}
+   Keys: dashboard, orders, analytics, submit, profile. The styles are in
+   assets/vendor-portal.css, loaded by fm/vendor_base.html. #}
 {% set _vt = vendor_tab | default('') %}
 {% set _vname = (vendor_name | default('')) or session.get('vendor_name') or '' %}
 <header class="vp-top">
   <span class="vp-mark">F</span>
   <span class="name">Leverandørportal</span>
   {% if _vname %}<span class="who">{{ _vname }}</span>{% endif %}
+  <button class="fm-icon-btn vp-theme" type="button" data-vendor-theme aria-label="Skift mellem lyst og mørkt tema" title="Tema"><i class="fa-solid fa-moon"></i></button>
 </header>
 <nav class="vp-nav" aria-label="Leverandørportal">
   <a href="{{ url_for('vendor.vendor_dashboard') }}" class="{{ 'active' if _vt == 'dashboard' }}"{% if _vt == 'dashboard' %} aria-current="page"{% endif %}>Oversigt</a>

@@ -13,6 +13,8 @@ history, notifications and queued mail are what a real customer would have):
   ``ada`` and ``bo`` (employees, Salg) and ``medarbejder`` (employee, Udvikling),
   all with password ``test``; ``test`` stays platform admin and company admin;
 * departments with budgets, one internal course, one learning path;
+* the course provider "Demo Akademi" with a vendor-portal login
+  (``udbyder@sandbox.example`` / ``test`` at ``/vendor/login``);
 * one order in each state: awaiting approval, approved, booked, completed, rejected;
 * talent: modules on, role frameworks, an assigned role, an open internal
   opportunity, assessments, one private and one shared development goal, and one
@@ -128,6 +130,16 @@ def _departments(cur, conn, company_id):
                     (company_id, name, year)):
             cur.execute("INSERT INTO department_budgets (company_id,department,annual_budget,spent,fiscal_year) VALUES (%s,%s,%s,0,%s)",
                         (company_id, name, budget, year))
+    conn.commit()
+
+
+def _vendor(cur, conn):
+    """The course provider gets a portal login, so its orders can be handled from the vendor side."""
+    import vendor_auth
+    if not _one(cur, "SELECT id FROM vendors WHERE vendor_name=%s", (VENDOR,)):
+        cur.execute("INSERT INTO vendors (vendor_name,slug,contact_email,password_hash,status,description) "
+                    "VALUES (%s,'demo-akademi','udbyder@sandbox.example',%s,'active','Kurser i salg, ledelse og data.')",
+                    (VENDOR, vendor_auth.hash_vendor_password(PASSWORD)))
     conn.commit()
 
 
@@ -263,6 +275,7 @@ def seed_demo(app):
             company_id = company["id"]
             ids = _people(cur, conn, company_id)
             _departments(cur, conn, company_id)
+            _vendor(cur, conn)
             _learning(cur, conn, company_id, ids)
             _orders(cur, conn, company_id, ids)
             _talent(cur, conn, company_id, ids)
@@ -272,5 +285,6 @@ def seed_demo(app):
             raise
         finally:
             cur.close()
-    print("✓ Demo tenant ready: hr / leder / ada / bo / medarbejder (password: %s), admin: test" % PASSWORD)
+    print("✓ Demo tenant ready: hr / leder / ada / bo / medarbejder (password: %s), admin: test, "
+          "vendor: udbyder@sandbox.example at /vendor/login" % PASSWORD)
     return True

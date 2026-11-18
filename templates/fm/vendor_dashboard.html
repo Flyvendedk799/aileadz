@@ -1,14 +1,8 @@
-<!DOCTYPE html>
-<html lang="da" data-theme="light">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Oversigt · Leverandørportal · Futurematch</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/vendor/fontawesome/css/fa-core.min.css') }}?v={{ asset_version('futurematch/vendor/fontawesome/css/fa-core.min.css') }}" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm.css') }}?v={{ asset_version('futurematch/assets/fm.css') }}" />
+{% extends "fm/vendor_base.html" %}
+{% block title %}Oversigt{% endblock %}
+{% block page_id %}vendor-dashboard{% endblock %}
+{% block vendor_tab %}dashboard{% endblock %}
+{% block extra_head %}
   <style>
     body { margin: 0; background: var(--fm-bg); color: var(--fm-ink); font-family: 'Hanken Grotesk', system-ui, sans-serif; }
     .vp-top { display: flex; align-items: center; gap: 12px; padding: 14px 24px; background: var(--fm-surface, #fff);
@@ -97,9 +91,8 @@
     .vp-ai-form button { border: none; border-radius: 10px; background: var(--fm-primary); color: #fff; width: 42px; cursor: pointer; font-size: 15px; }
     @media (max-width: 720px) { .vp-kpis { grid-template-columns: 1fr; } .vp-ai-panel { width: calc(100vw - 24px); right: 12px; bottom: 12px; } }
   </style>
-</head>
-<body data-page="vendor-dashboard">
-  {% set vendor_tab = 'dashboard' %}{% include 'fm/_vendor_nav.html' %}
+{% endblock %}
+{% block content %}
 
   <main class="vp-wrap">
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -198,6 +191,8 @@
       {% endif %}
     </div>
   </main>
+{% endblock %}
+{% block extra_scripts %}
 
   <!-- AI-assistent: self-contained SSE-klient mod /vendor/ask (.vp-* styling) -->
   <button type="button" class="vp-ai-fab" id="vpAiFab" aria-label="Åbn leverandør-assistent">
@@ -354,5 +349,4 @@
     });
   })();
   </script>
-</body>
-</html>
+{% endblock %}

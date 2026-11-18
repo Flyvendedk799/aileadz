@@ -175,6 +175,7 @@ ADMIN_TAB_BY_ENDPOINT = {
 
 # Sidebar entry for everything outside the two sub-nav sections.
 SIDEBAR_BY_ENDPOINT = {
+    'dashboard.dashboard': 'home',
     'futurematch.employee_home': 'emphome',
     'futurematch.timeline': 'timeline',
     'futurematch.my_order': 'timeline',

@@ -64,7 +64,7 @@
   {% if session.get('user') %}
   <aside class="fm-side" id="fmSide" aria-label="Primær navigation">
     <div class="fm-side-head">
-      <a class="fm-brand" href="{{ url_for('futurematch.employee_home') if session.get('user') else url_for('dashboard.dashboard') }}">
+      <a class="fm-brand" href="{{ url_for('dashboard.dashboard') }}">
         {% if white_label_active and company_branding.company_logo %}
         <span class="fm-mark"><img src="{{ company_branding.company_logo }}" alt="{{ platform_name }}" style="width:100%;height:100%;object-fit:contain;border-radius:inherit"></span>
         {% else %}
@@ -89,6 +89,13 @@
       {# Every learner gets "Min læring" (employees, managers and solo users alike). #}
       {# Platform admins start with the learner and company sections folded; the Admin section is open.
          shell.js remembers each section's state (localStorage) and keeps the current page's section open. #}
+      {# Managers and platform admins land on the workspace overview after login; it is their home. #}
+      {% set _has_home = can('company.workspace') or _is_admin %}
+      {% if _has_home %}
+      <ul class="fm-nav-list">
+        <li><a class="fm-nav-link {{ 'active' if _nav == 'home' }}" href="{{ url_for('dashboard.dashboard') }}"><i class="fa-solid fa-gauge-high"></i><span>Forside</span></a></li>
+      </ul>
+      {% endif %}
       <div data-section="learn" {% if _is_admin %}data-default="closed"{% endif %} class="fm-nav-label">Min læring</div>
       <ul class="fm-nav-list">
         <li><a class="fm-nav-link {{ 'active' if _nav == 'emphome' }}" href="{{ url_for('futurematch.employee_home') }}"><i class="fa-solid fa-house"></i><span>Min læring</span></a></li>

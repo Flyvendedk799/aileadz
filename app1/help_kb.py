@@ -247,6 +247,9 @@ def chunk_articles(articles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                         "section": section,
                         "url": url,
                         "keywords": keywords,
+                        # Who the article is written for: employee, hr or vendor. Not part
+                        # of the hash, so adding it never invalidates an embedding index.
+                        "audience": (art.get("audience") or "employee").strip().lower(),
                         "text": piece,
                         "hash": _chunk_hash(slug, title, section, url, keywords, piece),
                     })
@@ -533,8 +536,12 @@ def _excerpt(text: str, limit: int = EXCERPT_CHARS) -> str:
 # Search
 # ---------------------------------------------------------------------------
 
-def search_help(query: str, k: int = 3) -> List[Dict[str, Any]]:
-    """Top-k help chunks for ``query``: [{title, section, url, excerpt, score}]."""
+def search_help(query: str, k: int = 3, audience: str = "employee") -> List[Dict[str, Any]]:
+    """Top-k help chunks for ``query``: [{title, section, url, excerpt, score}].
+
+    Only articles written for ``audience`` (``employee``, ``hr`` or ``vendor``) are
+    searched: an employee is never told how an HR page works, and a vendor never
+    reads about pages it cannot open."""
     try:
         query = str(query or "").strip()[:MAX_QUERY_CHARS]
         if not query:
@@ -544,7 +551,7 @@ def search_help(query: str, k: int = 3) -> List[Dict[str, Any]]:
         except (TypeError, ValueError):
             k = 3
 
-        chunks = _current_chunks()
+        chunks = [c for c in _current_chunks() if c.get("audience", "employee") == audience]
         if not chunks:
             return []
 
@@ -652,7 +659,7 @@ def _no_results(message: str) -> str:
     return json.dumps({"status": "no_results", "message": message}, ensure_ascii=False)
 
 
-def execute_search_platform_help(args: Dict[str, Any]) -> str:
+def execute_search_platform_help(args: Dict[str, Any], audience: str = "employee") -> str:
     """Tool executor → JSON string. Never raises, never leaks exception text."""
     try:
         if not isinstance(args, dict):
@@ -666,7 +673,7 @@ def execute_search_platform_help(args: Dict[str, Any]) -> str:
             k = max(1, min(5, int(args.get("k", 3))))
         except (TypeError, ValueError):
             k = 3
-        results = search_help(query, k=k)
+        results = search_help(query, k=k, audience=audience)
         if not results:
             return _no_results(_MSG_NO_HITS)
         payload = [

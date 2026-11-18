@@ -446,6 +446,11 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
   company-scoped). Each passage is fenced as untrusted data and carries its document title;
   the result tells the model to cite it and to say so when the answer is not there. Reaches the
   menu on "what applies here" wording (handbook, policy, leave, home working ...).
+- **Help per audience**: `search_platform_help` (employee), `hr_search_platform_help` (HR) and
+  `vendor_search_help` (vendor) search only the articles whose front matter names that audience
+  (`help_kb.search_help(..., audience=)`), so nobody is told how a page they cannot open works.
+- **HR `hr_onboarding_readiness` / `hr_mail_delivery_status`** (read-only): the evidence behind
+  "Kom i gang" and the company's mail queue by state, with the items that need a person.
 - **`get_my_agenda`** (profile-gated): cross-silo "what's on my plate" - course
   deadlines + pending approvals (`course_orders`, `order_approvals`), expiring
   certifications (`user_certifications`, `cert_expiry_service.parse_expiry`), dated

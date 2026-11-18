@@ -1207,3 +1207,18 @@ VENDOR_TOOLS.extend([
         'parameters':{'type':'object','properties':{'handle':{'type':'string'},'title':{'type':'string'},'summary':{'type':'string'}},'required':['handle']}}},
 ])
 _VENDOR_TOOL_ROUTER.update(vendor_booking_work=vendor_booking_work, vendor_propose_catalog_correction=vendor_propose_catalog_correction)
+
+
+def vendor_search_help(args, vendor_name):
+    """The help articles written for course providers (never the company-side ones)."""
+    import json as _json
+    from app1.help_kb import execute_search_platform_help
+    return _json.loads(execute_search_platform_help(args or {}, audience="vendor"))
+
+
+VENDOR_TOOLS.append({'type': 'function', 'function': {
+    'name': 'vendor_search_help',
+    'description': ("Slå op i hjælpeartiklerne til leverandørportalen: hvordan man bekræfter en plads, afviser en bestilling, "
+                    "retter kurser og hold, og indsender et katalog. Brug det ved 'hvordan gør jeg ...' om portalen."),
+    'parameters': {'type': 'object', 'properties': {'query': {'type': 'string'}}, 'required': ['query']}}})
+_VENDOR_TOOL_ROUTER.update(vendor_search_help=vendor_search_help)

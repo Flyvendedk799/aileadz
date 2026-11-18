@@ -972,6 +972,23 @@ HR_TOOLS.extend([
 HR_TOOLS.append({
     "type": "function",
     "function": {
+        "name": "hr_search_platform_help",
+        "description": (
+            "Slå op i Futurematch' egne hjælpeartikler til HR: hvordan man godkender og booker, tildeler kurser og "
+            "læringsforløb, følger mails, sætter virksomheden op og uploader dokumenter til AI. Brug det, når brugeren "
+            "spørger 'hvordan gør jeg ...' eller 'hvor finder jeg ...' om selve platformen. Svar ud fra artiklen."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "Det, brugeren vil vide om platformen."}},
+            "required": ["query"],
+        },
+    },
+})
+
+HR_TOOLS.append({
+    "type": "function",
+    "function": {
         "name": "hr_onboarding_readiness",
         "description": (
             "Vis hvor langt virksomheden er med at komme i gang: hvilke trin der er på plads (medarbejdere og ledere, "
@@ -1047,6 +1064,11 @@ HR_TOOLS.append({
         },
     },
 })
+
+
+def _execute_hr_search_platform_help(args):
+    from app1.help_kb import execute_search_platform_help
+    return execute_search_platform_help(args, audience="hr")
 
 
 def _execute_hr_onboarding_readiness(args):
@@ -4424,6 +4446,7 @@ def execute_hr_tool(tool_call):
         "hr_open_in_app": _execute_hr_open_in_app,
         "hr_search_company_documents": _execute_hr_search_company_documents,
         "hr_onboarding_readiness": _execute_hr_onboarding_readiness,
+        "hr_search_platform_help": _execute_hr_search_platform_help,
         "hr_mail_delivery_status": _execute_hr_mail_delivery_status,
     }
 

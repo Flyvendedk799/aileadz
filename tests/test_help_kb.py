@@ -28,7 +28,6 @@ for k, v in _SAFE_ENV.items():
 
 import app1.help_kb as help_kb  # noqa: E402
 
-_ROUTE_SOURCES = ("futurematch_ui.py", "pages.py", "api.py", "gdpr_routes.py")
 
 
 class _IsolatedIndex(unittest.TestCase):
@@ -80,17 +79,34 @@ class TestArticles(unittest.TestCase):
                 slugs.add(a["slug"])
 
     def test_every_url_is_a_real_route(self):
-        """Drift guard: front-matter URLs must exist as route strings in the code."""
-        source = ""
-        for name in _ROUTE_SOURCES:
-            with open(os.path.join(_REPO_ROOT, name), encoding="utf-8") as fh:
-                source += fh.read()
+        """Drift guard: every front-matter URL must resolve in the real app's URL map
+        (so HR and vendor articles, whose routes live under a blueprint prefix, are
+        checked the same way as the learner ones)."""
+        from werkzeug.exceptions import MethodNotAllowed, NotFound
+        from werkzeug.routing import RequestRedirect
+        from tests.secapp import get_app
+        urls = get_app().url_map.bind("localhost")
         for a in self.articles:
             with self.subTest(slug=a["slug"], url=a["url"]):
-                self.assertTrue(
-                    f"'{a['url']}'" in source or f'"{a["url"]}"' in source,
-                    f"{a['url']} is not a route in {_ROUTE_SOURCES}",
-                )
+                try:
+                    urls.match(a["url"], method="GET")
+                except (RequestRedirect, MethodNotAllowed):
+                    pass
+                except NotFound:
+                    self.fail(f"{a['url']} is not a route in the app")
+
+    def test_each_audience_only_finds_its_own_articles(self):
+        by_slug = {a["slug"]: (a.get("audience") or "employee") for a in self.articles}
+        self.assertEqual({"employee", "hr", "vendor"}, set(by_slug.values()))
+        for audience, question in (("hr", "hvordan godkender og booker jeg en bestilling"),
+                                   ("vendor", "hvordan bekræfter jeg en plads på en bestilling"),
+                                   ("employee", "hvordan bestiller jeg et kursus og får det godkendt")):
+            with self.subTest(audience=audience):
+                hits = help_kb.search_help(question, k=5, audience=audience)
+                self.assertTrue(hits, question)
+                titles = {a["title"]: a["slug"] for a in self.articles}
+                for h in hits:
+                    self.assertEqual(by_slug[titles[h["title"]]], audience, h["title"])
 
     def test_front_matter_parser(self):
         meta, body = help_kb._parse_front_matter(

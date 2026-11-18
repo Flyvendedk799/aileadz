@@ -9,6 +9,7 @@ HR_CAPABILITIES = {
     'approve_order_from_chat': 'hr.approvals',
     'hr_open_in_app': 'hr.view',
     'hr_search_company_documents': 'hr.view',
+    'hr_search_platform_help': 'hr.view',
     'hr_onboarding_readiness': 'company.employees',
     'hr_mail_delivery_status': 'company.employees',
     'search_courses_for_team': 'hr.view',
@@ -27,9 +28,9 @@ SCOPED_READS = {'get_team_training_status', 'get_employee_overview', 'get_budget
 
 
 def hr_allowed(name):
-    if department_scope() == '' and name not in {'hr_open_in_app', 'hr_search_company_documents', 'search_courses_for_team', 'bulk_calendar_invites'}:
+    if department_scope() == '' and name not in {'hr_open_in_app', 'hr_search_company_documents', 'hr_search_platform_help', 'search_courses_for_team', 'bulk_calendar_invites'}:
         return False
-    if department_scope() is not None and name not in SCOPED_READS | {'approve_order_from_chat', 'hr_open_in_app', 'hr_search_company_documents', 'search_courses_for_team', 'bulk_calendar_invites'}:
+    if department_scope() is not None and name not in SCOPED_READS | {'approve_order_from_chat', 'hr_open_in_app', 'hr_search_company_documents', 'hr_search_platform_help', 'search_courses_for_team', 'bulk_calendar_invites'}:
         return False
     return can(HR_CAPABILITIES.get(name, 'hr.analytics'))
 

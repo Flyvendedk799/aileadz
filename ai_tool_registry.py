@@ -341,6 +341,7 @@ _HR_META = {
     ),
     # AI empowerment pass: read-only cross-surface navigation for the HR panel.
     # No company scope required — it navigates, it never reads tenant data.
+    "hr_search_platform_help": ToolMeta("hr_search_platform_help", "hr", company_required=False, cache_ttl=600, toolset_tags=("help",)),
     "hr_onboarding_readiness": ToolMeta("hr_onboarding_readiness", "hr", company_required=True, cache_ttl=60, toolset_tags=("onboarding",)),
     "hr_mail_delivery_status": ToolMeta("hr_mail_delivery_status", "hr", company_required=True, cache_ttl=30, toolset_tags=("mail",)),
     "hr_search_company_documents": ToolMeta(
@@ -361,6 +362,7 @@ _HR_META = {
 
 _VENDOR_META = {
     'vendor_booking_work': ToolMeta('vendor_booking_work', 'vendor', auth_required=True, toolset_tags=('vendor','order')),
+    'vendor_search_help': ToolMeta('vendor_search_help', 'vendor', toolset_tags=('vendor', 'help'), cache_ttl=600),
     'vendor_propose_catalog_correction': ToolMeta('vendor_propose_catalog_correction', 'vendor', auth_required=True,
                                                 side_effect=True, parallel_safe=False, confirm_required=True, toolset_tags=('vendor','catalog')),
     "vendor_performance_summary": ToolMeta(
@@ -488,6 +490,7 @@ _TOOL_LABELS = {
     "hr_open_in_app": "Åbn HR-side",
     "hr_search_company_documents": "Virksomhedens dokumenter",
     "hr_onboarding_readiness": "Kom i gang",
+    "hr_search_platform_help": "Hjælpeartikler",
     "hr_mail_delivery_status": "Mail og leveringer",
     # Vendor tools
     "vendor_performance_summary": "Salgsperformance",
@@ -1541,6 +1544,13 @@ def get_hr_tool_selection(
             "uddannelsespolitik", "kursuspolitik", "har jeg ret til", "må jeg", "maa jeg", "hvem skal jeg spørge",
             "står der i", "staar der i", "dokument")):
         names.add("hr_search_company_documents")
+    try:
+        from app1.help_kb import help_kb_enabled
+        if help_kb_enabled() and _has_any(query, ("hvordan ", "hvor finder", "hvor kan jeg", "hvor ser jeg", "hvad betyder",
+                                                  "how do i", "hvordan gør", "hvordan goer")):
+            names.add("hr_search_platform_help")
+    except Exception:
+        pass
     if _has_any(query, ("kom i gang", "komme i gang", "er vi klar", "hvad mangler vi", "opsætning", "opsaetning",
                         "onboarding", "sat op", "næste skridt for os", "pilot")):
         names.add("hr_onboarding_readiness")

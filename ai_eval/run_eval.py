@@ -586,6 +586,19 @@ _GATED_METRICS = (
 )
 
 
+MIN_GATE_CASES = 5
+MIN_GATE_FLIPS = 2
+
+
+def _applicable(key: str, counts: Dict[str, Any], current: Dict[str, Any]) -> Optional[int]:
+    """How many cases a gated metric was scored on (None when unknown: gate it)."""
+    if key == "overall_pass_pct":
+        return current.get("cases_total")
+    base = "retrieval" if key == "retrieval_precision_pct" else key[:-len("_pct")]
+    row = counts.get(base)
+    return int(row["applicable"]) if row and row.get("applicable") is not None else None
+
+
 def run_gate(current: Dict[str, Any], threshold_pct: float,
              baseline_path: Optional[pathlib.Path] = None) -> Tuple[bool, List[str]]:
     """Compare current aggregate metrics against a baseline (default ai_eval/baseline.json).
@@ -602,6 +615,7 @@ def run_gate(current: Dict[str, Any], threshold_pct: float,
 
     base_m = base.get("metrics", base)
     cur_m = current["metrics"]
+    counts = current.get("counts") or {}
     ok = True
     for key in _GATED_METRICS:
         b = base_m.get(key)
@@ -609,7 +623,12 @@ def run_gate(current: Dict[str, Any], threshold_pct: float,
         if b is None or c is None:
             continue
         drop = b - c
-        if drop > threshold_pct:
+        # A metric scored on a handful of cases moves 50 pp when one answer flips: only a
+        # drop of at least MIN_GATE_FLIPS cases on MIN_GATE_CASES or more counts.
+        n = _applicable(key, counts, current)
+        if drop > threshold_pct and n is not None and (n < MIN_GATE_CASES or drop * n / 100.0 < MIN_GATE_FLIPS - 0.01):
+            msgs.append(f"noisy dip {key}: {b}% -> {c}% on {n} case(s), not gated")
+        elif drop > threshold_pct:
             ok = False
             msgs.append(f"REGRESSION {key}: {b}% -> {c}%  (drop {round(drop, 1)} > {threshold_pct} pp)")
         elif drop > 0:

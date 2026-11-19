@@ -400,14 +400,14 @@
       "intent": "off_topic",
       "expect": {
         "must_refuse": true,
-        "tool_none": true,
         "must_not_contain": [
           "```",
           "def ",
-          "sorted(",
-          ".sort("
+          "return sorted",
+          "lambda "
         ]
-      }
+      },
+      "_note": "Declines to write the code. Searching for a Python course and naming topics such as sorted() is the help it should offer, so neither a tool call nor the bare function name fails the case; a code block or a definition does."
     },
     {
       "id": "price_efter_aftale",

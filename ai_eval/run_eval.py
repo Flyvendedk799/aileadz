@@ -191,8 +191,9 @@ def ask(client, query: str, *, mode: str = "default", kind: str = "message", sco
     for e in events:
         t = e.get("type")
         types[t] = types.get(t, 0) + 1
-        if t == "chunk":
-            text += e.get("content", "")
+        # The employee assistant streams "chunk" events; HR and vendor stream "text".
+        if t in ("chunk", "text"):
+            text += e.get("content", "") or ""
         elif t == "error":
             err = e.get("content")
         elif t == "course_cards":

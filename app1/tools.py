@@ -5651,7 +5651,7 @@ def _execute_get_my_course_status(args, username):
         cur.execute(
             f"""
             SELECT order_id, product_handle, product_title, status, completion_status,
-                   price, started_at, completion_deadline, completion_date
+                   price, started_at, completion_deadline, completion_date, variant_date
             FROM course_orders
             WHERE {where}
             ORDER BY (completion_deadline IS NULL), completion_deadline ASC, created_at DESC
@@ -5660,6 +5660,9 @@ def _execute_get_my_course_status(args, username):
             tuple(params),
         )
         rows = cur.fetchall()
+        # Where each one stands and whose move it is: the same reading HR and the provider get.
+        import order_fulfillment
+        cases = order_fulfillment.case_states(cur, rows)
         cur.close()
     except Exception as e:
         print(f"[get_my_course_status] DB error: {e}")
@@ -5696,6 +5699,7 @@ def _execute_get_my_course_status(args, username):
             "days_left": days_left,
             "overdue": overdue,
             "completed": is_done,
+            "stands": {k: (cases.get(r.get("order_id")) or {}).get(k) for k in ("status_label", "waiting_on_label", "next_step")},
         })
 
     active = [c for c in courses if not c["completed"]]

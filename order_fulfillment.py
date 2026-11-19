@@ -28,6 +28,47 @@ def details(cur, order_id):
     return row
 
 
+def case_states(cur, rows):
+    """``{order_id: order_lifecycle.case_state(...)}`` for a batch of order rows.
+
+    Gathers the facts the reading needs (the booking, whether attendance was
+    reported, an open change request, an open outcome review) in three queries
+    for the whole batch. ``rows`` are ``course_orders`` rows the caller is already
+    allowed to see (``order_id``, ``status`` and, for timing, ``variant_date``)."""
+    rows = [r for r in rows or [] if r.get("order_id")]
+    if not rows:
+        return {}
+    ids = [r["order_id"] for r in rows]
+    marks = ",".join(["%s"] * len(ids))
+    detail, changing, reviewing = {}, set(), set()
+    try:
+        cur.execute("SELECT order_id, booking_json, completion_state FROM course_order_details WHERE order_id IN (%s)" % marks, ids)
+        for d in cur.fetchall() or []:
+            try:
+                booking = json.loads(d.get("booking_json") or "{}")
+            except (TypeError, ValueError):
+                booking = {}
+            detail[d["order_id"]] = (booking, d.get("completion_state"))
+        cur.execute("SELECT DISTINCT order_id FROM course_order_changes WHERE status='pending' AND order_id IN (%s)" % marks, ids)
+        changing = {c["order_id"] for c in cur.fetchall() or []}
+        cur.execute("SELECT DISTINCT order_id FROM learning_outcome_reviews WHERE status<>'completed' AND order_id IN (%s)" % marks, ids)
+        reviewing = {c["order_id"] for c in cur.fetchall() or []}
+    except Exception:
+        # The reading degrades to what the status alone says; it never fails the caller.
+        pass
+    out = {}
+    for row in rows:
+        booking, state = detail.get(row["order_id"], ({}, None))
+        try:
+            held = order_timing.has_taken_place(row, booking)
+        except Exception:
+            held = False
+        out[row["order_id"]] = lc.case_state(
+            row.get("status"), pending_change=row["order_id"] in changing, taken_place=held,
+            attendance_reported=state == "reported", outcome_pending=row["order_id"] in reviewing)
+    return out
+
+
 def booking_for(order_id):
     """The booking details of an order for display only ({} when none; never raises)."""
     try:

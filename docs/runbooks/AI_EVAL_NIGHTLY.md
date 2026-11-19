@@ -38,7 +38,9 @@ python -m ai_eval.run_eval --provider openai --set-baseline --baseline ai_eval/b
 ```
 
 The gate threshold is 10 percentage points per metric: the set is small, and a single run
-moves a few cases either way.
+moves a few cases either way. A drop only counts when at least 2 cases flipped on a metric
+scored on 5 or more cases (`MIN_GATE_FLIPS`, `MIN_GATE_CASES` in `run_eval.py`): with two
+order-confirmation cases, one different answer is a 50-point swing.
 
 ## Known limits
 

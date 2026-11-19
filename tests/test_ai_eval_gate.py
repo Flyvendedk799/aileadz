@@ -25,3 +25,16 @@ def test_committed_baselines_are_valid_json():
     for path in run_eval.BASELINES_DIR.glob("*.json"):
         data = json.loads(path.read_text())
         assert "overall_pass_pct" in data["metrics"], path
+
+
+def test_a_metric_on_few_cases_does_not_gate_on_one_flip(tmp_path):
+    base = tmp_path / "b.json"
+    base.write_text(json.dumps({"metrics": {"order_confirmation_pct": 100.0, "refusal_pct": 62.5}}))
+    one_flip = {"metrics": {"order_confirmation_pct": 50.0, "refusal_pct": 62.5},
+                "counts": {"order_confirmation": {"applicable": 2}, "refusal": {"applicable": 8}}}
+    ok, msgs = run_eval.run_gate(one_flip, 10.0, base)
+    assert ok and any("noisy dip order_confirmation_pct" in m for m in msgs)
+    two_flips = {"metrics": {"order_confirmation_pct": 100.0, "refusal_pct": 37.5},
+                 "counts": {"order_confirmation": {"applicable": 2}, "refusal": {"applicable": 8}}}
+    ok, msgs = run_eval.run_gate(two_flips, 10.0, base)
+    assert not ok and any("REGRESSION refusal_pct" in m for m in msgs)

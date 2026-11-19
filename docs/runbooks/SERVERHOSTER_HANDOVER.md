@@ -26,7 +26,7 @@ Nothing here needs a manual step; it is what to expect and check after the deplo
 - **New tables and columns are created by the app** on the web service's first request
   (`company_documents`, `company_document_chunks`, three sharing columns on
   `user_learning_goals`, `company_settings.ai_checkin_notifications_enabled`). All additive.
-  Take a backup first (section 5) and check Admin, Systemstatus afterwards: no missing
+  Take a backup first (`sudo /usr/local/bin/aileadz-backup.sh`, [BACKUP_RESTORE.md](BACKUP_RESTORE.md)) and check Admin, Systemstatus afterwards: no missing
   tables or columns.
 - **No new required environment variables.** Optional ones, with safe defaults:
   `AI_RATE_TURNS_5MIN` (30) and `AI_RATE_TURNS_HOUR` (200) limit how many assistant
@@ -132,40 +132,28 @@ public git history. They must be treated as compromised.
 password); Admin, Katalog shows the Shopify sync working; the old Shopify token returns
 401 when tried against the Shopify API.
 
-## 5. Schedule backups and rehearse one restore
+## 6. Answers read off the host (2026-11-19)
 
-**Why:** the database and some runtime files exist only on this server, and no backup
-is known to be running. Procedure: [BACKUP_RESTORE.md](BACKUP_RESTORE.md).
-
-**Do:**
-
-1. Confirm `mysqldump` is available to the app user. If not, report it and stop.
-2. Run `scripts/backup.sh <a directory outside the app checkout>` once by hand with the
-   production `MYSQL_*` values. Report the printed directory and the `MANIFEST` content
-   (it holds no secrets).
-3. Schedule the same command daily, and add a step that copies the new directory off the
-   server (the owner decides where).
-4. Rehearse section 4 of BACKUP_RESTORE.md: restore the newest dump into a scratch
-   database, compare row counts with production, drop the scratch database.
-
-**Check:** the manifest lists `instance`, `static/uploads` and `static/brand_assets` under
-`files` (or says which are missing); the rehearsal's row counts match.
-
-## 6. Things to read off the host and report back
-
-No change, just answers the repository cannot give:
-
-- The current web start command before step 1 (to confirm what production was running).
-- Whether a `/cache` directory persists between CI runs.
-- Whether these paths are on a persisted volume that survives a redeploy: `instance/`,
-  `static/uploads/`, `static/brand_assets/`, and the catalog file that
-  `CATALOG_SOURCE_FILE` points at. They exist only on this one disk.
-- Whether any backup of the MySQL database is scheduled, where it is stored and when it
-  last ran. (No backup or restore procedure is documented yet; this answer decides how
-  that runbook is written.)
-- Whether the two GitHub Actions workflows that remain (`security.yml` weekly,
-  `ai-eval-nightly.yml` nightly) are still running, and whether the repository secrets
-  `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` they need are set. (Read from GitHub, not the host.)
+- **Host:** ServerHoster on a Google Cloud VM (`serverhoster`, europe-west1-b) since
+  2026-11-18. Services `aileadz` (web, port 3014, futurematch.dk) and `aileadz-worker`,
+  both on branch `main` with auto-pull; MySQL is the ServerHoster database `aileadz-db`
+  (credentials injected as `DATABASE_URL`).
+- **Web start command before step 1:** `.venv/bin/python -m gunicorn wsgi:application
+  --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 180 --graceful-timeout 30
+  --access-logfile - --error-logfile -`. Two processes, so the per-process limiter and
+  caches were already split (T4-1); step 1 brings it to one.
+- **Worker:** `.venv/bin/python drain_worker.py --loop --interval 120`, running.
+- **CI cache:** `/root/.survhub/ci-cache` persists between runs.
+- **Runtime paths:** the service has no persisted paths and the checkout is a plain git
+  working tree; `instance/`, `static/uploads/` and `static/brand_assets/` do not exist
+  there yet. Nothing has been uploaded to disk so far, and `scripts/backup.sh` picks
+  them up once they exist.
+- **Backups:** none existed. Now scheduled, with the off-server copy and a rehearsed
+  restore; see [BACKUP_RESTORE.md](BACKUP_RESTORE.md), "How production does it".
+- **GitHub Actions:** `security.yml` ran and failed weekly on pip-audit (fixed with the
+  Pillow and filelock bumps). `ai-eval-nightly.yml` "passed" nightly without running:
+  neither `OPENAI_API_KEY` nor `ANTHROPIC_API_KEY` is set as a repository secret. It is
+  replaced by a nightly job on the server ([AI_EVAL_NIGHTLY.md](AI_EVAL_NIGHTLY.md)).
 
 ## Report format
 

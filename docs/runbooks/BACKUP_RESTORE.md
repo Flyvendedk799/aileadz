@@ -42,6 +42,27 @@ if the dump fails.
   company promises customers (`retention_service.POLICIES`) applies to backups too, so
   do not keep them for years.
 - A backup holds personal data. Store it encrypted and restrict who can read it.
+- Set `BACKUP_DIR` to the target directory on the **web** service: Admin, Systemstatus
+  (`/admin/system-health`) then shows the newest backup's age and turns red when it is
+  older than `BACKUP_MAX_AGE_HOURS` (default 30) or when the host's failure hook wrote a
+  newer `LAST_FAILURE` file (`backup_status.py`).
+
+### How production does it (since 2026-11-19)
+
+- `/usr/local/bin/aileadz-backup.sh` (root, on the ServerHoster VM) reads the database
+  credentials from ServerHoster at run time and calls this repo's `scripts/backup.sh`
+  from the deployed checkout into `/root/.survhub/backups/aileadz`, keeping 14 days.
+- `aileadz-backup.timer` runs it daily at 01:30 UTC. On failure,
+  `aileadz-backup-failed.service` writes `LAST_FAILURE` in that directory and logs to
+  the journal (`journalctl -t aileadz-backup`).
+- Off-server copy: the VM disk has a daily snapshot at 02:00 UTC (GCE snapshot policy
+  `serverhoster-daily`, 7 days, kept if the disk is deleted), so each night's dump
+  leaves the server half an hour after it is taken. The project's org policy forbids
+  service-account keys, so a direct bucket copy would need the VM's storage scope
+  changed, which means a VM stop.
+- Run it by hand before a deploy: `sudo /usr/local/bin/aileadz-backup.sh`.
+- Restore rehearsed on 2026-11-19 into a scratch database on the same MySQL: all 165
+  tables matched production row for row.
 
 ## 3. Restore
 

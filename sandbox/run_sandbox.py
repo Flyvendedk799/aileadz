@@ -70,8 +70,17 @@ def ensure_schema(app):
 
 
 def seed(app):
-    """Best-effort: link the 'test' user to a sandbox company as company_admin."""
+    """Best-effort: hash the seeded passwords and link 'test' to a sandbox company as company_admin."""
     with app.app_context():
+        # init.sql seeds plaintext passwords and only hashed ones authenticate. The boot-time
+        # rehash is skipped under TESTING (smoke, ai_eval), so do it here or every login fails.
+        try:
+            from auth import rehash_plaintext_passwords
+            n = rehash_plaintext_passwords(app.mysql.connection)
+            if n:
+                print("✓ Hashed %d seeded password(s)." % n)
+        except Exception as e:
+            print("  [seed] password hashing skipped:", e)
         try:
             cur = _dict_cursor(app)
             cur.execute("SELECT id FROM users WHERE username=%s", ("test",))
@@ -98,6 +107,15 @@ def seed(app):
                     (cid, uid),
                 )
                 app.mysql.connection.commit()
+            # The talent modules are opt-in per company; the eval's HR talent cases need them.
+            try:
+                import schema_registry
+                import talent_service
+                cur.execute(schema_registry.ddl("talent_settings"))
+                talent_service.set_flags(cur, cid, {"roles_enabled": 1, "mobility_enabled": 1, "planning_enabled": 1})
+                app.mysql.connection.commit()
+            except Exception as e:
+                print("  [seed] talent modules not enabled:", e)
             cur.close()
             print("✓ Seeded company 'Sandbox A/S' (slug=sandbox); 'test' is company_admin.")
         except Exception as e:

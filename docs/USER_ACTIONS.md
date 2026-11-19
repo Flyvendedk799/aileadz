@@ -35,7 +35,7 @@ The host-side steps in this section and in section 1 are written out as a hand-o
 - **Catalog file:** `app1/shopify_products_all_pages.json` is untracked. Keep a copy outside the checkout and point `CATALOG_SOURCE_FILE` at it on web and worker, or a deploy can remove it (CATALOG_REBUILD.md). With the Shopify variables from 1.2 set, the `shopify_sync` job recreates it; check Admin, Katalog for index status.
 - **AI keys:** `OPENAI_API_KEY` is needed in every configuration (embeddings); add `ANTHROPIC_API_KEY` for Claude and pick the provider in Admin, AI-indstillinger.
 - **Optional:** `AI_CREDITS_PER_DKK` (default 10, `credit_service.py`); prompt A/B via `AI_PROMPT_VARIANTS=v2.0,v2.1` (first is control) plus `AI_PROMPT_ADDENDUM_V2_1="..."`, results in AI observability.
-- **Nightly eval** (`.github/workflows/ai-eval-nightly.yml`): add repository secrets `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and optionally `EVAL_VENDOR_EMAIL`/`EVAL_VENDOR_PASSWORD` (otherwise vendor cases are skipped). Run the workflow once manually and read the scorecards, especially fluency.
+- **Nightly eval** runs on the server ([runbooks/AI_EVAL_NIGHTLY.md](runbooks/AI_EVAL_NIGHTLY.md)) with the web service's keys. To include Claude, add `ANTHROPIC_API_KEY` to the web service; for vendor cases add `EVAL_VENDOR_EMAIL`/`EVAL_VENDOR_PASSWORD` to the wrapper.
 
 ## 5. Privacy decisions
 

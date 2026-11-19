@@ -118,6 +118,46 @@
     </div>
   </div>
 
+  {# --- Backup (T0-7): newest scripts/backup.sh run in BACKUP_DIR --- #}
+  {% set bk = backup or {} %}
+  {% set bk_pill = {'ok': ('green', 'Frisk'), 'stale': ('red', 'For gammel'), 'failed': ('red', 'Fejlede'), 'missing': ('red', 'Ingen backup fundet')}.get(bk.state, ('amber', 'Ikke sat op')) %}
+  <div class="fm-card" style="margin-top:20px">
+    <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-box-archive"></i></span><h3>Backup</h3>
+      <span class="status-pill {{ bk_pill[0] }}" style="margin-left:auto">{{ bk_pill[1] }}</span>
+    </div>
+    <div class="fm-card-body" style="font-size:13px;color:var(--fm-ink-2)">
+      {% if bk.state in ('ok', 'stale', 'failed') %}
+      <p>Seneste backup: <strong>{{ bk.taken.strftime('%d.%m.%Y %H:%M') }} UTC</strong> ({{ bk.age_hours }} timer siden{% if bk.db_bytes %}, database {{ (bk.db_bytes / 1048576)|round(1) }} MB{% endif %}). {{ bk.count }} backups på serveren.</p>
+      {% if bk.state == 'failed' %}<p><strong>Den seneste kørsel fejlede</strong> {{ bk.failed_at.strftime('%d.%m.%Y %H:%M') }} UTC. Se serverens log for aileadz-backup.</p>{% endif %}
+      {% if bk.state == 'stale' %}<p><strong>Der er ikke taget backup i over {{ bk.max_age_hours|int }} timer.</strong> Tjek den planlagte backup på serveren.</p>{% endif %}
+      {% elif bk.state == 'missing' %}
+      <p>Der ligger ingen backup i den angivne mappe. Kør backup-scriptet og tjek planlægningen (docs/runbooks/BACKUP_RESTORE.md).</p>
+      {% else %}
+      <p>Backupstatus vises, når variablen <code>BACKUP_DIR</code> peger på backupmappen (docs/runbooks/BACKUP_RESTORE.md).</p>
+      {% endif %}
+    </div>
+  </div>
+
+  {# --- AI-kvalitet (T0-3): nightly golden-set eval gated against the committed baseline --- #}
+  <div class="fm-card" style="margin-top:20px">
+    <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-robot"></i></span><h3>AI-kvalitet</h3>
+      {% set worst = (ai_eval|map(attribute='state')|list) %}
+      <span class="status-pill {{ 'amber' if not ai_eval else ('red' if ('regression' in worst or 'stale' in worst) else 'green') }}" style="margin-left:auto">{{ 'Ikke sat op' if not ai_eval else ('Kræver opmærksomhed' if ('regression' in worst or 'stale' in worst) else 'Stabil') }}</span>
+    </div>
+    <div class="fm-card-body" style="font-size:13px;color:var(--fm-ink-2)">
+      {% for r in ai_eval %}
+      <p><strong>{{ 'Claude' if r.provider == 'anthropic' else 'OpenAI' }}:</strong>
+        {{ r.passed }}/{{ r.total }} testsamtaler bestået{% if r.overall_pct is not none %} ({{ r.overall_pct }} %){% endif %},
+        kørt {{ r.taken.strftime('%d.%m.%Y %H:%M') }} UTC{% if r.commit %} på {{ r.commit }}{% endif %}.
+        {% if r.state == 'regression' %}<strong>Kvaliteten er faldet i forhold til baseline.</strong>{% elif r.state == 'stale' %}<strong>Ingen kørsel i over {{ r.max_age_hours|int }} timer.</strong>{% endif %}
+      </p>
+      {% if r.messages %}<ul style="margin:4px 0 10px 18px">{% for m in r.messages %}<li><code>{{ m }}</code></li>{% endfor %}</ul>{% endif %}
+      {% else %}
+      <p>Den natlige AI-test vises her, når variablen <code>AI_EVAL_DIR</code> peger på dens resultatmappe (docs/runbooks/AI_EVAL_NIGHTLY.md).</p>
+      {% endfor %}
+    </div>
+  </div>
+
   {# --- Baggrundsjobs (N-8.1) --- #}
   <div class="fm-table-wrap" style="margin-top:20px">
     <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)">

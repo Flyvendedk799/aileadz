@@ -50,6 +50,17 @@ sys.path.insert(0, str(ROOT))
 GOLDEN_PATH = HERE / "golden_set.json"
 LAST_RUN_PATH = HERE / "last_run.json"
 BASELINE_PATH = HERE / "baseline.json"
+# Reviewed per-provider baselines, committed so a scheduled run can gate (ROADMAP T3-8).
+BASELINES_DIR = HERE / "baselines"
+
+
+def resolve_baseline(explicit: str = "", provider: str = "") -> pathlib.Path:
+    """--baseline wins; else the committed baselines/<provider>.json; else baseline.json."""
+    if explicit:
+        return pathlib.Path(explicit)
+    if provider and (BASELINES_DIR / f"{provider}.json").exists():
+        return BASELINES_DIR / f"{provider}.json"
+    return BASELINE_PATH
 SANDBOX_DIR = ROOT / "sandbox"
 
 
@@ -198,7 +209,7 @@ def ask(client, query: str, *, mode: str = "default", kind: str = "message", sco
     }
 
 
-def read_session_telemetry(app, session_id: str) -> Tuple[Optional[List[str]], Optional[int], Optional[Dict[str, int]], List[str]]:
+def read_session_telemetry(app, session_id: str, after_id: Optional[int] = None) -> Tuple[Optional[List[str]], Optional[int], Optional[Dict[str, int]], List[str]]:
     """Pull tool names (debug_logs), latency + tokens (ai_agent_runs) and raw tool-result
     JSON for this session. Best-effort: returns (tools, latency_ms, tokens, tool_result_jsons).
     All elements may be None / [] if telemetry tables are unavailable."""
@@ -240,12 +251,30 @@ def read_session_telemetry(app, session_id: str) -> Tuple[Optional[List[str]], O
             conn = app.mysql.connection
             cur = conn.cursor(MySQLdb.cursors.DictCursor)
 
+            # Tool names from ai_tool_runs: the runtime writes one row per call on every
+            # assistant, while the debug log above is sampled. The HR assistant keys its
+            # rows as "hr_<session id>"; the rows written since the case started are the fallback.
+            try:
+                cur.execute(
+                    "SELECT tool_name FROM ai_tool_runs WHERE session_id IN (%s, %s) ORDER BY id",
+                    (session_id, "hr_" + session_id),
+                )
+                rows = cur.fetchall() or []
+                if not rows and after_id is not None:
+                    cur.execute("SELECT tool_name FROM ai_tool_runs WHERE id > %s ORDER BY id", (after_id,))
+                    rows = cur.fetchall() or []
+                run_names = [r["tool_name"] for r in rows if r.get("tool_name")]
+                if run_names:
+                    tools = list(dict.fromkeys((tools or []) + run_names))
+            except Exception:
+                pass
+
             # Latency + tokens from ai_agent_runs (the agentic-loop telemetry).
             try:
                 cur.execute(
                     "SELECT latency_ms, input_tokens, output_tokens FROM ai_agent_runs "
-                    "WHERE session_id=%s ORDER BY id DESC LIMIT 1",
-                    (session_id,),
+                    "WHERE session_id IN (%s, %s) ORDER BY id DESC LIMIT 1",
+                    (session_id, "hr_" + session_id),
                 )
                 row = cur.fetchone()
                 if row:
@@ -267,6 +296,21 @@ def read_session_telemetry(app, session_id: str) -> Tuple[Optional[List[str]], O
 # Drive one golden case (single- or multi-turn) and collect the scored turn
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _last_tool_run_id(app) -> Optional[int]:
+    """Highest ai_tool_runs id before a case starts (cases run one at a time)."""
+    try:
+        with app.app_context():
+            import MySQLdb
+            cur = app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            try:
+                cur.execute("SELECT COALESCE(MAX(id), 0) AS m FROM ai_tool_runs")
+                return int((cur.fetchone() or {}).get("m") or 0)
+            finally:
+                cur.close()
+    except Exception:
+        return 0  # table not created yet: every row belongs to this case
+
+
 def run_case(app, case: Dict[str, Any]) -> Dict[str, Any]:
     """Run a case end-to-end. The SCORED turn is the last turn (or the only query).
     Returns a 'collected' dict consumed by scorers.score_case."""
@@ -282,6 +326,7 @@ def run_case(app, case: Dict[str, Any]) -> Dict[str, Any]:
     # stores session_id in the Flask session; we can fetch it via the cookie jar.
     turns = case.get("turns") or [{"query": case["query"]}]
 
+    first_tool_row = _last_tool_run_id(app)
     wall_start = time.time()
     last = None
     case_mode = case.get("mode", "default")
@@ -297,8 +342,9 @@ def run_case(app, case: Dict[str, Any]) -> Dict[str, Any]:
 
     session_id = _session_id_from_client(client)
     tools, latency, tokens, tool_jsons = (None, None, None, [])
-    if session_id:
-        tools, latency, tokens, tool_jsons = read_session_telemetry(app, session_id)
+    # The HR and vendor assistants keep no session_id in the cookie; their tool rows are
+    # still found as the tool rows written since the case started.
+    tools, latency, tokens, tool_jsons = read_session_telemetry(app, session_id or "", after_id=first_tool_row)
 
     collected = {
         "events": last["events"],
@@ -540,15 +586,17 @@ _GATED_METRICS = (
 )
 
 
-def run_gate(current: Dict[str, Any], threshold_pct: float) -> Tuple[bool, List[str]]:
-    """Compare current aggregate metrics against ai_eval/baseline.json.
+def run_gate(current: Dict[str, Any], threshold_pct: float,
+             baseline_path: Optional[pathlib.Path] = None) -> Tuple[bool, List[str]]:
+    """Compare current aggregate metrics against a baseline (default ai_eval/baseline.json).
     Returns (ok, messages). A metric that drops by more than threshold (percentage
     points) fails the gate. Missing baseline → gate passes with a note."""
     msgs = []
-    if not BASELINE_PATH.exists():
-        return True, [f"no baseline at {BASELINE_PATH.name}; gate skipped (use --set-baseline to create one)"]
+    path = baseline_path or BASELINE_PATH
+    if not path.exists():
+        return True, [f"no baseline at {path.name}; gate skipped (use --set-baseline to create one)"]
     try:
-        base = json.loads(BASELINE_PATH.read_text())
+        base = json.loads(path.read_text())
     except Exception as e:
         return True, [f"baseline unreadable ({e}); gate skipped"]
 
@@ -587,7 +635,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--judge", action="store_true", help="also run the gpt-4o-mini holistic judge")
     ap.add_argument("--gate", action="store_true", help="fail (exit 1) on regression vs baseline.json")
     ap.add_argument("--threshold", type=float, default=5.0, help="gate threshold in percentage points (default 5.0)")
-    ap.add_argument("--set-baseline", action="store_true", help="write this run's aggregates to baseline.json and exit")
+    ap.add_argument("--set-baseline", action="store_true", help="write this run's aggregates to the baseline and exit")
+    ap.add_argument("--baseline", type=str, default="",
+                    help="baseline file to gate against / write (default: baselines/<provider>.json if committed, else baseline.json)")
     ap.add_argument("--only", type=str, default="", help="comma-separated case ids to run")
     ap.add_argument("--no-warm", action="store_true", help="skip RAG warmup")
     ap.add_argument("--provider", choices=["openai", "anthropic"], default="",
@@ -668,22 +718,30 @@ def main(argv: Optional[List[str]] = None) -> int:
             for pc in per_case
         ],
     }
+    baseline_path = resolve_baseline(args.baseline, args.provider)
+    gate_ok, gate_msgs = (True, [])
+    if args.gate:
+        gate_ok, gate_msgs = run_gate(agg, args.threshold, baseline_path)
+        run_record["gate"] = {"ok": gate_ok, "threshold_pp": args.threshold,
+                              "baseline": str(baseline_path), "messages": gate_msgs}
     LAST_RUN_PATH.write_text(json.dumps(run_record, ensure_ascii=False, indent=2))
     print(f"\nWrote {LAST_RUN_PATH}")
 
     if args.set_baseline:
-        BASELINE_PATH.write_text(json.dumps({
+        baseline_path.parent.mkdir(parents=True, exist_ok=True)
+        baseline_path.write_text(json.dumps({
             "version": 1,
             "timestamp": run_record["timestamp"],
             "metrics": agg["metrics"],
             "latency_p50_ms": agg["latency_p50_ms"],
             "latency_p95_ms": agg["latency_p95_ms"],
         }, ensure_ascii=False, indent=2))
-        print(f"Wrote baseline -> {BASELINE_PATH}")
+        print(f"Wrote baseline -> {baseline_path}")
         return 0
 
     if args.gate:
-        ok, msgs = run_gate(agg, args.threshold)
+        print(f"Gating against {baseline_path}")
+        ok, msgs = gate_ok, gate_msgs
         print("\n" + "=" * 78)
         print("REGRESSION GATE")
         print("=" * 78)

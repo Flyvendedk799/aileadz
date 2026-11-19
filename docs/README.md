@@ -39,6 +39,7 @@ Read in this order when new to the repo: [../CLAUDE.md](../CLAUDE.md) -> [ARCHIT
 | [runbooks/CHAT_DEBUG.md](runbooks/CHAT_DEBUG.md) | finding full captured conversations, errors and tool logs by a copied chat ID |
 | [runbooks/SERVERHOSTER_HANDOVER.md](runbooks/SERVERHOSTER_HANDOVER.md) | pending host-side changes, written to hand to a person or agent with ServerHoster access |
 | [runbooks/DEPLOY.md](runbooks/DEPLOY.md) | ServerHoster deploy, environment variables, post-deploy checks |
+| [runbooks/AI_EVAL_NIGHTLY.md](runbooks/AI_EVAL_NIGHTLY.md) | the nightly live AI eval on the server, its gate and re-baselining |
 | [runbooks/BACKUP_RESTORE.md](runbooks/BACKUP_RESTORE.md) | what to back up (`scripts/backup.sh`), restoring into an empty database, rolling a deploy back |
 | [runbooks/JOB_RUNNER.md](runbooks/JOB_RUNNER.md) | scheduler jobs, the worker service, opportunistic driver |
 | [runbooks/EMAIL_SETUP.md](runbooks/EMAIL_SETUP.md) | SMTP configuration and test send |

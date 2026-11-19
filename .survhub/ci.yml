@@ -1,4 +1,4 @@
-# Runs on ServerHoster (in Docker on the VPS), not GitHub Actions.
+# Runs on ServerHoster (in Docker on the server), not GitHub Actions.
 # Replaces .github/workflows/ci.yml (gitleaks, ruff, boot smoke + pytest).
 # Triggers: pushes to main and pull requests into main.
 #

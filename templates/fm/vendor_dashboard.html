@@ -104,6 +104,19 @@
     <h1 class="vp-h1">Velkommen, {{ vendor_name }}</h1>
     <p class="vp-lead">Her kan du følge dit katalog og dine indsendelser.</p>
 
+    {# A brand-new provider: no courses, nothing submitted, nothing ordered. Say what makes the page come alive. #}
+    {% if kpis and not kpis.course_count and not kpis.submission_count and not kpis.awaiting_booking %}
+    <section class="vp-card vp-first-run" aria-label="Sådan kommer du i gang">
+      <h2 style="font-size:17px;margin:0 0 6px">Dit katalog er tomt endnu</h2>
+      <p class="vp-lead" style="margin-bottom:12px">Virksomheder kan bestille hos dig, så snart dine kurser står i kataloget. Det sker sådan:</p>
+      <ul style="margin:0;padding-left:18px;line-height:1.75;font-size:14px">
+        <li><a href="{{ url_for('vendor.vendor_submit') }}">Indsend dit katalog</a> som fil eller link. Futurematch gennemgår det, før det bliver synligt.</li>
+        <li><a href="{{ url_for('vendor.vendor_profile') }}">Udfyld din profil</a>, så virksomhederne kan se, hvem du er, og hvem de skal kontakte.</li>
+        <li>Når nogen bestiller, står det under <a href="{{ url_for('vendor.vendor_orders') }}">Bestillinger</a>, hvor du bekræfter pladsen.</li>
+      </ul>
+    </section>
+    {% endif %}
+
     <div class="vp-kpis">
       <a class="vp-kpi" href="{{ url_for('vendor.vendor_analytics') }}" style="text-decoration:none;color:inherit" title="Se ordrer og gennemførelse pr. kursus">
         <div class="num">{{ kpis.course_count }}</div>

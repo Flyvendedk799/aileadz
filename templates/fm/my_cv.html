@@ -54,6 +54,19 @@
     </div>
   </section>
 
+  {# An empty CV: say that importing one is the fastest start, and what the other ways in are. #}
+  {% if cv and not (stats.roles or stats.skills or stats.verified_courses) %}
+  <section class="cvs-first-run" aria-label="Sådan kommer du i gang">
+    <h2>Dit CV er tomt endnu</h2>
+    <p>Hurtigst er at importere det CV, du allerede har. Så står dine job, din uddannelse og dine kompetencer her med det samme, og du kan rette alt bagefter.</p>
+    <p>
+      <button type="button" class="btn btn-primary btn-sm" data-cv-open aria-controls="cvImport"><i class="fa-solid fa-file-arrow-up"></i> Importér CV</button>
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('futurematch.chat') }}?from=cv&amp;intent={{ 'Hjælp mig med at bygge mit CV op fra bunden'|urlencode }}">Byg det sammen med assistenten</a>
+    </p>
+    <p class="cvs-first-run-note">Kurser, du gennemfører her, kommer selv med som dokumentation.</p>
+  </section>
+  {% endif %}
+
   {% include 'fm/_cv_import.html' %}
 
   <div class="cvs-grid">

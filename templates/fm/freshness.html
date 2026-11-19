@@ -146,7 +146,7 @@
           <tbody>
             {% for c in courses %}
             <tr>
-              <td><input type="checkbox" name="handles" value="{{ c.handle }}"></td>
+              <td><input type="checkbox" name="handles" value="{{ c.handle }}" aria-label="Vælg {{ c.title or c.handle }}"></td>
               <td><strong>{{ c.title }}</strong></td>
               <td class="fr-muted">{{ c.vendor }}</td>
               <td class="tnum">

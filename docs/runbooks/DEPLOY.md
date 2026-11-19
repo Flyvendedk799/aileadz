@@ -46,6 +46,7 @@ and 301-redirects `www.<host>` to `<host>` (`CANONICAL_WWW_REDIRECT=0` disables)
 | `MAIL_*` / `SMTP_*` | No mail leaves without a server and a sender (EMAIL_SETUP.md). |
 | `APP_BASE_URL` | Absolute links in e-mails. |
 | `SCHEDULER_OPPORTUNISTIC` | `0` on the web service once the worker runs (JOB_RUNNER.md). |
+| `BACKUP_DIR` | Where `scripts/backup.sh` writes; Systemstatus then shows backup freshness (BACKUP_RESTORE.md). |
 | `HEALTH_TOKEN` | Lets a monitor read the detailed `/readyz` body via `X-Health-Token`. |
 | `TWOFA_ENFORCE_ADMIN`, `CSP_ENFORCE`, `HSTS_*` | Security switches; the defaults are the safe production values. |
 

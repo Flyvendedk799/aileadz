@@ -1407,9 +1407,16 @@ def admin_system_health():
     except Exception as e:
         logging.warning("system-health: job status unavailable: %s", e)
 
+    backup = {}
+    try:
+        import backup_status
+        backup = backup_status.status()
+    except Exception as e:
+        logging.warning("system-health: backup status unavailable: %s", e)
+
     return render_template('fm/admin_system_health.html',
                            features=features, outbox=outbox, snapshot=snapshot,
-                           mail=mail, jobs=jobs)
+                           mail=mail, jobs=jobs, backup=backup)
 
 
 # ---------------------------------------------------------------------------

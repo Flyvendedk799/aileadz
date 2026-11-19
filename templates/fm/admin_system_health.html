@@ -118,6 +118,26 @@
     </div>
   </div>
 
+  {# --- Backup (T0-7): newest scripts/backup.sh run in BACKUP_DIR --- #}
+  {% set bk = backup or {} %}
+  {% set bk_pill = {'ok': ('green', 'Frisk'), 'stale': ('red', 'For gammel'), 'failed': ('red', 'Fejlede'), 'missing': ('red', 'Ingen backup fundet')}.get(bk.state, ('amber', 'Ikke sat op')) %}
+  <div class="fm-card" style="margin-top:20px">
+    <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-box-archive"></i></span><h3>Backup</h3>
+      <span class="status-pill {{ bk_pill[0] }}" style="margin-left:auto">{{ bk_pill[1] }}</span>
+    </div>
+    <div class="fm-card-body" style="font-size:13px;color:var(--fm-ink-2)">
+      {% if bk.state in ('ok', 'stale', 'failed') %}
+      <p>Seneste backup: <strong>{{ bk.taken.strftime('%d.%m.%Y %H:%M') }} UTC</strong> ({{ bk.age_hours }} timer siden{% if bk.db_bytes %}, database {{ (bk.db_bytes / 1048576)|round(1) }} MB{% endif %}). {{ bk.count }} backups på serveren.</p>
+      {% if bk.state == 'failed' %}<p><strong>Den seneste kørsel fejlede</strong> {{ bk.failed_at.strftime('%d.%m.%Y %H:%M') }} UTC. Se serverens log for aileadz-backup.</p>{% endif %}
+      {% if bk.state == 'stale' %}<p><strong>Der er ikke taget backup i over {{ bk.max_age_hours|int }} timer.</strong> Tjek den planlagte backup på serveren.</p>{% endif %}
+      {% elif bk.state == 'missing' %}
+      <p>Der ligger ingen backup i den angivne mappe. Kør backup-scriptet og tjek planlægningen (docs/runbooks/BACKUP_RESTORE.md).</p>
+      {% else %}
+      <p>Backupstatus vises, når variablen <code>BACKUP_DIR</code> peger på backupmappen (docs/runbooks/BACKUP_RESTORE.md).</p>
+      {% endif %}
+    </div>
+  </div>
+
   {# --- Baggrundsjobs (N-8.1) --- #}
   <div class="fm-table-wrap" style="margin-top:20px">
     <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)">

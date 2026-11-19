@@ -199,14 +199,9 @@ def hr():
                             'WHERE a.company_id=%s AND h.user_id=%s ORDER BY a.updated_at DESC', (cid, user_id)) if settings.get('mobility_enabled') else []
         scenarios = rows(cur, 'SELECT * FROM talent_scenarios WHERE company_id=%s ORDER BY created_at DESC', (cid,)) if settings.get('planning_enabled') else []
         for scenario in scenarios:
-            people_in_scope = [p for p in people if not scenario['department'] or p['department'] == scenario['department']]
             from kanon import _resolve_k_default
-            # Bounded pilot workload; never present a partial cohort as the whole workforce.
-            if len(people_in_scope) > 500:
-                scenario['coverage'] = None
-            else:
-                states = service.cohort_states(cur, cid, people_in_scope)
-                scenario['coverage'] = service.coverage(states, scenario['requirements'], _resolve_k_default())
+            scenario['coverage'] = service.scenario_coverage(cur, cid, people, scenario['department'],
+                                                             scenario['requirements'], _resolve_k_default())
             total = 0
             available = True
             import catalog_service

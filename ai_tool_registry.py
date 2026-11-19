@@ -343,6 +343,19 @@ _HR_META = {
     # No company scope required — it navigates, it never reads tenant data.
     "hr_search_platform_help": ToolMeta("hr_search_platform_help", "hr", company_required=False, cache_ttl=600, toolset_tags=("help",)),
     "hr_talent_overview": ToolMeta("hr_talent_overview", "hr", company_required=True, cache_ttl=30, toolset_tags=("talent",)),
+    # T3-2: HR prepares talent work behind a confirm card; both save drafts only.
+    "hr_draft_role_framework": ToolMeta(
+        "hr_draft_role_framework", "hr",
+        company_required=True, side_effect=True, parallel_safe=False,
+        confirm_required=True, manager_only=True, audit_action="hr_draft_role_framework",
+        toolset_tags=("talent", "mutation"),
+    ),
+    "hr_run_capability_scenario": ToolMeta(
+        "hr_run_capability_scenario", "hr",
+        company_required=True, side_effect=True, parallel_safe=False,
+        confirm_required=True, manager_only=True, audit_action="hr_run_capability_scenario",
+        toolset_tags=("talent", "mutation"),
+    ),
     "hr_onboarding_readiness": ToolMeta("hr_onboarding_readiness", "hr", company_required=True, cache_ttl=60, toolset_tags=("onboarding",)),
     "hr_mail_delivery_status": ToolMeta("hr_mail_delivery_status", "hr", company_required=True, cache_ttl=30, toolset_tags=("mail",)),
     "hr_search_company_documents": ToolMeta(
@@ -492,6 +505,8 @@ _TOOL_LABELS = {
     "hr_search_company_documents": "Virksomhedens dokumenter",
     "hr_onboarding_readiness": "Kom i gang",
     "hr_talent_overview": "Talent og roller",
+    "hr_draft_role_framework": "Rolleramme som kladde",
+    "hr_run_capability_scenario": "Kapacitetsscenarie",
     "hr_search_platform_help": "Hjælpeartikler",
     "hr_mail_delivery_status": "Mail og leveringer",
     # Vendor tools
@@ -1559,6 +1574,17 @@ def get_hr_tool_selection(
     if _has_any(query, ("rolleramme", "rollekrav", "rolleprofil", "intern stilling", "interne stilling", "interne mulighed",
                         "ansøgning", "ansoegning", "ansættelsesteam", "kapacitetsscenarie", "scenarie", "talent")):
         names.add("hr_talent_overview")
+    # T3-2: the two talent writes reach the menu when HR wants to prepare something,
+    # never on a question about what exists (they are confirm-gated drafts anyway).
+    if _has_any(query, ("opret en rolle", "opret rolle", "lav en rolle", "beskriv rollen", "beskriv en rolle",
+                        "rolleramme for", "rolleramme til", "ny rolleramme", "lav en rolleramme", "opret rolleramme",
+                        "udkast til en rolle", "kladde til en rolle", "rollekrav til", "kompetencekrav til rollen",
+                        "ny version af rollen", "opdater rollen")):
+        names.update({"hr_draft_role_framework", "hr_talent_overview"})
+    if _has_any(query, ("kør et scenarie", "koer et scenarie", "kør scenarie", "kapacitetsscenarie for", "kapacitetsscenarie til", "nyt scenarie",
+                        "lav et scenarie", "opret scenarie", "regn på om", "har vi folkene", "har vi nok folk",
+                        "har vi nok medarbejdere", "hvor mange mangler vi", "kan vi bemande", "kapacitet til")):
+        names.update({"hr_run_capability_scenario", "hr_talent_overview"})
     if _has_any(query, ("mail", "e-mail", "email", "fik de", "fået besked", "faaet besked", "ikke modtaget",
                         "leveringer", "levering", "ikke sendt", "fejler")):
         names.add("hr_mail_delivery_status")

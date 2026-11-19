@@ -12,6 +12,8 @@ HR_CAPABILITIES = {
     'hr_search_platform_help': 'hr.view',
     'hr_onboarding_readiness': 'company.employees',
     'hr_talent_overview': 'company.employees',
+    'hr_draft_role_framework': 'company.employees',
+    'hr_run_capability_scenario': 'company.employees',
     'hr_mail_delivery_status': 'company.employees',
     'search_courses_for_team': 'hr.view',
     'assign_learning_path_to_team': 'company.learning_paths',

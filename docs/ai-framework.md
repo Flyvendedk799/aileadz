@@ -456,6 +456,14 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
 - **HR `hr_talent_overview`** (read-only): role frameworks with their required competencies, the
   acting person's own hiring pipelines as counts per stage (only opportunities they are on the hiring
   team for; applicants are never named) and capability scenarios, each only when its module is on.
+- **HR `hr_draft_role_framework` / `hr_run_capability_scenario`** (confirm-gated, manager-only,
+  `company.employees` like the talent page, active member of the session company or the acting
+  platform admin, module on): a role framework saved through `talent_service.save_role` as an
+  unpublished draft (`based_on` adds a version of an existing role in the same company), and a
+  scenario whose preview already carries its coverage (`talent_service.scenario_coverage`, the same
+  counts and k-anonymity suppression as the page, never a name) and which the confirm saves as a
+  draft (`save_scenario`). The assistant never publishes either: publishing a role, or a scenario
+  (which writes the company's skill targets), stays a click on `/hr/talent`.
 - **HR `hr_onboarding_readiness` / `hr_mail_delivery_status`** (read-only): the evidence behind
   "Kom i gang" and the company's mail queue by state, with the items that need a person.
 - **`get_my_agenda`** (profile-gated): cross-silo "what's on my plate" - course

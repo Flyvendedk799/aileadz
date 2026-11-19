@@ -610,13 +610,14 @@ _MUTATION_TOOLS = frozenset({
     "send_company_email", "send_deadline_reminders", "create_order_for_employee",
     "manage_my_order", "request_manager_approval", "share_learning_goal",
     "approve_order_from_chat", "reject_order_from_chat",
+    "hr_draft_role_framework", "hr_run_capability_scenario",
 })
 
 # HR manager-only tool names (must not appear when the agent is in employee scope)
 _MANAGER_ONLY_TOOLS = frozenset({
     "schedule_recurring_report", "recheck_compliance", "generate_fresh_insights",
     "bulk_calendar_invites", "send_company_email", "send_deadline_reminders",
-    "create_order_for_employee",
+    "create_order_for_employee", "hr_draft_role_framework", "hr_run_capability_scenario",
 })
 
 

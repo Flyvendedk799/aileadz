@@ -95,7 +95,7 @@ share one profile and one memory, and hand the user to each other with context:
   for the first message (or the profiler's own opener, which no longer fires on top of a
   handoff: `bootChat` resolves `true` when it sent something).
 - **Vocabulary** (`app1/surface_context.py`): `from` in `SURFACES` (`chat, profiler,
-  mind_map, profile, cv_upload, my_learning, goals, timeline`); `focus` is `section:<key>`
+  mind_map, profile, cv_upload, my_learning, goals, development, timeline`); `focus` is `section:<key>`
   (`SECTIONS`) or a Mind-Map node id (`skill:42`, `exp:7`, `edu:`, `cert:`, `lang:`,
   `goal:`, `link:`, `path:`, `course:`, `mem:`), the same ids as `open_mind_map` and
   `#n=`. `normalize_context` whitelists in `ask()`; `resolve_focus` looks the ref up in
@@ -214,7 +214,7 @@ Subsequent requests cannot inherit the previous request's policy.
   `prefer_quality` stay on main; profile-mutation intents always stay on main (so the
   confirm card UX holds). A rate-limit cooldown forces the fast model.
 - **Guards:** `AI_MAX_TOOL_CALLS` (12) per run, repeat-call circuit breaker,
-  `AI_MAX_RUN_COST` / `AI_MAX_RUN_TOKENS` (0 = off), `choose_max_iterations`
+  `AI_MAX_RUN_COST` / `AI_MAX_RUN_TOKENS` (0.50 USD / 200k tokens; 0 = off), `choose_max_iterations`
   (`AI_MAX_TOOL_ITERATIONS`, base 4), per-turn token budget -> "start a new chat".
 - **Intent routing:** employee regex classifier first; `AI_LLM_ROUTER` (default on,
   4 s timeout) refines only the ambiguous catch-all.
@@ -419,7 +419,8 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
   `sse_events.UI_ACTIONS` (a test pins the tool enum to it both ways); includes
   `open_cv_upload` (`/profil/cv#import`, the import in the CV studio), `open_my_cv` (`/profil/cv`, the
   CV studio), `open_mind_map`, `open_my_learning`
-  (`/min-laering`), `open_goals` (`/mine-maal`), `open_timeline` (`/min-tidslinje`).
+  (`/min-laering`), `open_goals` (`/mine-maal`), `open_timeline` (`/min-tidslinje`), `open_development`
+  (`/udvikling`), `open_opportunities` (`/muligheder`).
   `open_profiler` / `open_advisor` take `section` or `node` + `intent` and build a
   handoff URL (1b); `open_catalog` URL-encodes its query; `open_profile` anchors only to ids that exist
   on the profile page (`_PROFILE_PAGE_SECTIONS`, test-pinned to the template).
@@ -427,6 +428,44 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
   read-only cards; reach the menu by keywords + semantic fallback.
   `show_skill_gaps` = `compute_skill_gaps` (1-5 scale) -> `skill_gaps_card`; its JSON is
   the data the model reasons over (chains to `recommend_for_profile`).
+- **`get_my_development`** (company members only, read-only): the person's own picture from
+  `talent_service.overview` - current role and how its competency requirements are covered,
+  development goals with their steps, and, when the company enabled mobility, open internal
+  opportunities and the person's applications. `explore_role` evaluates them against another
+  published role and stores nothing. Reaches the menu on career/role/opportunity wording, in
+  assistant mode, and on a handoff from `/udvikling` (`from=development`).
+- **`share_learning_goal`** (company members only, confirm-gated): the owner shares one own goal
+  with their company's HR or takes it back (`goal_service.share_own_goal`). `get_learning_goals`
+  returns each goal's `visibility` and, when the company lets the AI use them, the goals the
+  manager shared (`from_manager`).
+- **HR `get_employee_overview`** for one employee adds `development`: goals through
+  `goal_service.for_hr` (the employee's own goals only when shared) and role readiness when
+  role frameworks are on. HR tools never read the goal tables directly.
+- **`search_company_documents`** (company members) / **`hr_search_company_documents`** (HR):
+  passages from the company's own uploaded documents (`company_documents.search`, lexical,
+  company-scoped). Each passage is fenced as untrusted data and carries its document title;
+  the result tells the model to cite it and to say so when the answer is not there. Reaches the
+  menu on "what applies here" wording (handbook, policy, leave, home working ...).
+- **Where an order stands** (`order_lifecycle.case_state`): one reading of an order (status, the
+  party whose move it is, the next step) in wording that fits any reader. It rides along with an
+  order in focus for the learner and HR assistants and in `vendor_booking_work`, so the three say
+  the same thing about the same request.
+- **Help per audience**: `search_platform_help` (employee), `hr_search_platform_help` (HR) and
+  `vendor_search_help` (vendor) search only the articles whose front matter names that audience
+  (`help_kb.search_help(..., audience=)`), so nobody is told how a page they cannot open works.
+- **HR `hr_talent_overview`** (read-only): role frameworks with their required competencies, the
+  acting person's own hiring pipelines as counts per stage (only opportunities they are on the hiring
+  team for; applicants are never named) and capability scenarios, each only when its module is on.
+- **HR `hr_draft_role_framework` / `hr_run_capability_scenario`** (confirm-gated, manager-only,
+  `company.employees` like the talent page, active member of the session company or the acting
+  platform admin, module on): a role framework saved through `talent_service.save_role` as an
+  unpublished draft (`based_on` adds a version of an existing role in the same company), and a
+  scenario whose preview already carries its coverage (`talent_service.scenario_coverage`, the same
+  counts and k-anonymity suppression as the page, never a name) and which the confirm saves as a
+  draft (`save_scenario`). The assistant never publishes either: publishing a role, or a scenario
+  (which writes the company's skill targets), stays a click on `/hr/talent`.
+- **HR `hr_onboarding_readiness` / `hr_mail_delivery_status`** (read-only): the evidence behind
+  "Kom i gang" and the company's mail queue by state, with the items that need a person.
 - **`get_my_agenda`** (profile-gated): cross-silo "what's on my plate" - course
   deadlines + pending approvals (`course_orders`, `order_approvals`), expiring
   certifications (`user_certifications`, `cert_expiry_service.parse_expiry`), dated
@@ -462,7 +501,9 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
   `user_education`, `user_completed_courses`, `user_profile_summary` (+`target_role`),
   `user_certifications`, `user_languages`, `user_portfolio_links`, `user_memories`,
   `user_learning_goals`, `user_learning_paths`; `ensure_tables()` runs idempotent
-  CREATE/ALTER every boot. All are covered by GDPR export/erase (drift-tested).
+  CREATE/ALTER every boot. All are covered by GDPR export/erase (drift-tested). Goals are
+  written here but read through `goal_service` (`get_learning_goals` is a thin adapter over
+  `goal_service.own_goals` that keeps the profile shape: stored status slug plus `shared`).
 - **Competency** (`competency.py`): `canonical_skill()` + `skill_category()` run on every
   skill write (`add_skill`, `/api/cv/apply`, chat `update_user_profile`). The 1-5 scale
   is **reused from `hr_tools.SKILL_LEVEL_MAP`** (begynder=1..ekspert=5), never forked.
@@ -636,8 +677,8 @@ Claude; `AI_USER_KNOWLEDGE_EMBEDDINGS=0` = keyword-only.
 **HR learner context - `learner_context.py`.** The learner's assigned paths/progress, HR
 skill-matrix gaps, department targets, HR-written goals; each source degrades
 independently; 120 s per-worker cache. HR goals are **opt-in per goal**: only
-`employee_goals.shared_with_employee = 1` (`goal_sharing.SHARED_PREDICATE`, carried by
-every learner-facing query; a test scans the repo for unfiltered reads), plus company
+`employee_goals.shared_with_employee = 1`, read through `goal_service.shared_hr_goals`, the
+one learner-facing reader (a test scans the repo for unfiltered reads), plus company
 switch `company_settings.ai_learner_hr_goals` (default on) and `AI_LEARNER_HR_GOALS=0`
 platform kill switch. Unshared goals never reach the learner UI, AI context or data export.
 
@@ -744,7 +785,8 @@ vendor name is fenced; figures pass grounding.
 | `AI_TOOL_TURN_TEMPERATURE` | 0.2 | OpenAI temperature on tool-deciding turns |
 | `AI_TOKEN_CHARS_PER_TOKEN` | 4.0 | token estimator divisor (Danish tokenises worse; try 3.5) |
 | `AI_MAX_TOOL_CALLS` / `AI_MAX_TOOL_ITERATIONS` | 12 / 4 | per-run tool-call ceiling / loop base |
-| `AI_MAX_RUN_COST` / `AI_MAX_RUN_TOKENS` | 0 / 0 | per-run USD / token ceilings (0 = off) |
+| `AI_MAX_RUN_COST` / `AI_MAX_RUN_TOKENS` | 0.50 / 200000 | per-run USD / token ceilings, about 3x the largest normal production run (0 = off) |
+| `AI_RATE_TURNS_5MIN` / `AI_RATE_TURNS_HOUR` | 30 / 200 | turns one actor may send to an assistant endpoint (`rate_limit.ai_turn_allowed`; 0 = off); answers 429 with a Danish message. Anonymous visitors are keyed on their address and get 5x the limits, since an office shares one |
 | `AI_RATE_LIMIT_RETRY_SECONDS` / `_BACKOFF_CAP_SECONDS` / `_COOLDOWN_SECONDS` | 2.5 / 20 / 90 | 429 handling; cooldown forces the fast model |
 | `AI_LLM_ROUTER` / `AI_LLM_ROUTER_TIMEOUT_SECONDS` | on / 4 | LLM intent router on the ambiguous catch-all |
 | `AI_TRACE_SAMPLE_RATE` | 1 | run trace sampling |
@@ -790,9 +832,9 @@ SANDBOX=1 AI_WARMUP_ON_IMPORT=0 MYSQL_HOST=127.0.0.1 MYSQL_USER=none MYSQL_PASSW
 
 - **AI-quality eval** (`ai_eval/`, see its README): drives the real endpoints against
   `golden_set.json` (employee, HR, vendor scopes); needs a live `OPENAI_API_KEY` + the Docker
-  sandbox MySQL (`./sandbox/sandbox.sh up && init`, port 3307) - not offline. Nightly on both
-  providers: `.github/workflows/ai-eval-nightly.yml`. Re-baseline once after an intentional
-  quality shift: `python3 ai_eval/run_eval.py --set-baseline`.
+  sandbox MySQL (`./sandbox/sandbox.sh up && init`, port 3307) - not offline. Nightly on the
+  server, gated against `ai_eval/baselines/<provider>.json` (runbooks/AI_EVAL_NIGHTLY.md).
+  Re-baseline after an intentional quality shift with `--set-baseline --baseline ai_eval/baselines/<provider>.json`.
 - **Offline coverage by area:** runtime/provider `test_ai_runtime.py`, `test_ai_provider_toggle.py`,
   `test_ai_fallback_guard.py`; SSE pipeline `test_ask_sse_offline.py` (mocked LLM: no
   `<suggestions>` leak, one final completion, grounding disclaimer, `meta` before `[DONE]`);

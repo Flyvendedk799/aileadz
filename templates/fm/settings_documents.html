@@ -1,0 +1,61 @@
+{% extends "fm_base.html" %}
+{% import 'fm/_macros.html' as ui %}
+{% block page_id %}csettings{% endblock %}
+{% block title %}Dokumenter til AI{% endblock %}
+{% block topbar_title %}Dokumenter til AI{% endblock %}
+{% block topbar_sub %}Upload jeres politikker og håndbøger, så AI-assistenten kan svare ud fra dem og henvise til dem.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+{% include 'fm/_settings_tabs.html' %}
+
+<div class="split"><div class="stack">
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-file-lines"></i></span><h3>Jeres dokumenter</h3>
+    <span class="fm-badge" style="margin-left:auto">{{ documents|length }} af {{ max_documents }}</span></div>
+  <div class="fm-card-body" style="padding-top:6px">
+    {% if error %}
+    {{ ui.empty('Dokumenterne kunne ikke hentes', 'Prøv at genindlæse siden om et øjeblik.', 'fa-triangle-exclamation') }}
+    {% elif documents %}
+    <table class="fm-table">
+      <thead><tr><th>Dokument</th><th>Omfang</th><th>Uploadet</th><th style="text-align:right"></th></tr></thead>
+      <tbody>
+      {% for d in documents %}
+        <tr>
+          <td><div style="font-weight:650">{{ d.title }}</div>{% if d.filename %}<div class="mono muted" style="font-size:11.5px">{{ d.filename }}</div>{% endif %}</td>
+          <td class="muted">{{ d.char_count|dknum }} tegn · {{ d.chunk_count }} afsnit</td>
+          <td class="muted">{{ d.created_at|dkdate(style='short') }}</td>
+          <td style="text-align:right">
+            <form method="post" action="{{ url_for('settings_hub.remove_document', document_id=d.id) }}" onsubmit="return confirm('Fjern dokumentet? AI-assistenten kan ikke længere svare ud fra det.')">
+              <button class="btn btn-ghost btn-sm" type="submit"><i class="fa-solid fa-trash"></i> Fjern</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    {{ ui.empty('Ingen dokumenter endnu', 'Upload fx personalehåndbogen eller jeres uddannelsespolitik. Så kan medarbejderne spørge AI-assistenten og få svar med henvisning til dokumentet.', 'fa-file-lines') }}
+    {% endif %}
+  </div></div>
+</div>
+
+<div class="stack">
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-upload"></i></span><h3>Upload et dokument</h3></div>
+  <div class="fm-card-body">
+    <form method="post" action="{{ url_for('settings_hub.upload_document') }}" enctype="multipart/form-data" style="display:grid;gap:12px">
+      <label class="fm-field" style="margin:0"><span>Titel (valgfri)</span>
+        <input class="fm-input" name="title" maxlength="255" placeholder="F.eks. Personalehåndbog 2026"></label>
+      <label class="fm-field" style="margin:0"><span>Fil</span>
+        <input class="fm-input" type="file" name="file" accept=".pdf,.docx,.txt,.md" required></label>
+      <div><button class="btn btn-primary btn-sm" type="submit"><i class="fa-solid fa-upload"></i> Upload</button></div>
+    </form>
+    <ul class="muted" style="font-size:12.5px;margin:14px 0 0;padding-left:18px;line-height:1.6">
+      <li>PDF, Word (.docx) eller tekstfil (.txt, .md), højst {{ max_mb }} MB. En scannet PDF uden tekst og ældre Word-filer (.doc) kan ikke læses.</li>
+      <li>Vi gemmer kun teksten, ikke selve filen.</li>
+      <li>Dokumenterne bruges kun for jeres virksomhed og kun af jeres egne medarbejdere og HR.</li>
+      <li>Upload ikke dokumenter med personoplysninger om enkeltpersoner: alle medarbejdere kan få svar ud fra indholdet.</li>
+      <li>Erstat et dokument ved at fjerne det gamle og uploade det nye.</li>
+    </ul>
+  </div></div>
+</div></div>
+</div>
+{% endblock %}

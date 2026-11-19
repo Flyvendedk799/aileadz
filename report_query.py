@@ -542,7 +542,7 @@ def cohort_retention(company_id=None, months=6):
     the classic retention triangle: cohort size on the diagonal, falling
     retention to the right.
 
-    Completion is ``completion_status = 'completed'`` (using completion_date when
+    Completion is ``(status = 'completed' OR COALESCE(completion_status, '') = 'completed')`` (using completion_date when
     present, else the order's created_at). All aggregation is DB-side; we group
     by (cohort_month, month_offset) and COUNT(DISTINCT user_id) — no per-row
     Python work. Tenant-scoped when ``company_id`` is given.
@@ -611,7 +611,7 @@ def cohort_retention(company_id=None, months=6):
                 GROUP BY user_id
             ) fo ON fo.user_id = o.user_id
             WHERE o.user_id IS NOT NULL
-              AND o.completion_status = 'completed'
+              AND (o.status = 'completed' OR COALESCE(o.completion_status, '') = 'completed')
               {tenant_and}
             GROUP BY fo.cohort_month, fo.cohort_period, month_offset
             HAVING month_offset >= 0 AND month_offset <= %s

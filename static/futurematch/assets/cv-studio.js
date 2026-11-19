@@ -145,7 +145,7 @@
       : "Kurser du gennemfører via Futurematch, kommer automatisk på CV'et.", '<a href="/catalog">Find kurser</a>']);
     if (course) rows.push(["fa-circle-check", esc(course) + " kompetence" + (course === 1 ? "" : "r") + " er bevist via gennemførte kurser.", ""]);
     if (leader) rows.push(["fa-user-check", esc(leader) + " kompetence" + (leader === 1 ? "" : "r") + " er vurderet af din leder.", ""]);
-    if ((cv.in_progress || []).length) rows.push(["fa-person-running", esc(cv.in_progress.length) + " forløb er i gang og vises under 'Under uddannelse'.", '<a href="/min-tidslinje">Se tidslinje</a>']);
+    if ((cv.in_progress || []).length) rows.push(["fa-person-running", esc(cv.in_progress.length) + " forløb er i gang og vises under 'Under uddannelse'.", '<a href="/min-tidslinje">Se bestillinger</a>']);
     const expired = (cv.certifications || []).filter((c) => c.state === "udloebet");
     const soon = (cv.certifications || []).filter((c) => c.state === "udloeber");
     if (expired.length || soon.length) rows.push(["fa-certificate", (expired.length ? esc(expired.length) + " certificering(er) er udløbet" : "") +

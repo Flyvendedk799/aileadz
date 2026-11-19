@@ -48,7 +48,7 @@ ROUTES_OK = {
         {"skill_name": "Forhandling", "current_level": 3, "target_level": 0},
     ],
     "FROM employee_goals": [
-        {"goal_title": "Blive teamleder", "goal_description": "Inden udgangen af 2027",
+        {"id": 1, "goal_title": "Blive teamleder", "goal_description": "Inden udgangen af 2027",
          "target_date": datetime.date(2027, 12, 31), "status": "active", "progress": 10},
     ],
 }

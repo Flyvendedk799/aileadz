@@ -305,7 +305,10 @@ def test_vendor_booking_references_do_not_include_buyers_or_other_vendors(app):
         with mock.patch('vendor_tools._dict_cursor',return_value=app.mysql.connection.cursor()):
             result = vendor_tools.vendor_booking_work({},'Vendor')
         assert [r['order_id'] for r in result['orders']] == ['own']
-        assert set(result['orders'][0]) == {'order_id','product_title','status','pending_change','explanation','url'}
+        assert set(result['orders'][0]) == {'order_id','product_title','status','pending_change','explanation','url','case'}
+        # 'case' is the shared where-it-stands reading: status wording only, no buyer or company.
+        assert set(result['orders'][0]['case']) == {'status','status_label','stage','waiting_on','waiting_on_label','next_step'}
+        assert result['orders'][0]['case']['stage'] == 'course'
 
 
 def test_deleted_conversation_token_and_late_digest_are_invalid(app):

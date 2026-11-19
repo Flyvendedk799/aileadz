@@ -24,11 +24,6 @@ try:
 except Exception:  # pragma: no cover - import-safety guard
     event_bus = None
 
-try:
-    import redis
-except ImportError:
-    redis = None
-
 # Seat / subscription governance (guarded: must never crash boot if missing).
 # seat_governance.can_add_employee FAILS OPEN internally, so a None module here
 # simply means no seat enforcement (legacy behaviour) rather than a hard error.
@@ -252,16 +247,6 @@ def _is_safe_webhook_url(url):
             return False
 
     return True
-
-# Redis client for rate limiting (fallback to in-memory if Redis not available)
-try:
-    if redis:
-        redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
-        redis_client.ping()
-    else:
-        redis_client = None
-except Exception:
-    redis_client = None
 
 class APIManager:
     """Enterprise API Management"""
@@ -1414,7 +1399,7 @@ def get_analytics_overview():
         cur.execute("""
             SELECT COUNT(*) AS total_orders,
                    COALESCE(SUM(price), 0) AS total_spend,
-                   COUNT(CASE WHEN completion_status='completed' THEN 1 END) AS completed,
+                   COUNT(CASE WHEN (status = 'completed' OR COALESCE(completion_status, '') = 'completed') THEN 1 END) AS completed,
                    COUNT(CASE WHEN status='pending_approval' THEN 1 END) AS pending_approvals
             FROM course_orders WHERE company_id = %s AND status NOT IN ('cancelled','rejected')
         """, (g.company_id,))
@@ -1540,6 +1525,107 @@ def get_orders():
         })
     except Exception:
         return jsonify({'error': 'Ordrer kunne ikke hentes'}), 500
+
+
+@api_enterprise_bp.route('/api/v1/orders/<order_id>/changes')
+@require_api_auth('read:orders')
+def get_order_changes(order_id):
+    """Cancellation, reschedule and substitution requests on one of the company's orders
+    (what the order.change_requested / order.change_resolved webhooks announce)."""
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        try:
+            cur.execute("SELECT order_id FROM course_orders WHERE order_id = %s AND company_id = %s",
+                        (order_id, g.company_id))
+            if not cur.fetchone():
+                return jsonify({'error': 'Bestillingen blev ikke fundet'}), 404
+            cur.execute(
+                "SELECT id, kind, status, requested_kind AS requested_by, decision_note, created_at, resolved_at "
+                "FROM course_order_changes WHERE order_id = %s AND company_id = %s ORDER BY id",
+                (order_id, g.company_id))
+            changes = cur.fetchall()
+        finally:
+            cur.close()
+        return jsonify({'success': True, 'data': changes})
+    except Exception:
+        return jsonify({'error': 'Ændringerne kunne ikke hentes'}), 500
+
+
+@api_enterprise_bp.route('/api/v1/learning-paths/assignments')
+@require_api_auth('read:learning')
+def get_learning_path_assignments():
+    """Learning paths assigned to the company's employees, with progress."""
+    try:
+        page = max(1, int(request.args.get('page', 1)))
+        per_page = max(1, min(int(request.args.get('per_page', 50)), 100))
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        try:
+            cur.execute("SELECT COUNT(*) AS total FROM employee_learning_progress elp "
+                        "JOIN learning_paths lp ON lp.id = elp.learning_path_id AND lp.company_id = elp.company_id "
+                        "WHERE elp.company_id = %s AND elp.learning_path_id IS NOT NULL", (g.company_id,))
+            total = cur.fetchone()['total']
+            cur.execute(
+                "SELECT elp.id AS assignment_id, elp.user_id AS employee_id, elp.learning_path_id, lp.path_name, "
+                "elp.status, elp.progress_percentage, elp.due_date, elp.ordering_mode, elp.started_at, "
+                "(SELECT COUNT(*) FROM learning_assignment_steps s WHERE s.progress_id = elp.id AND s.company_id = elp.company_id) AS steps_total, "
+                "(SELECT COUNT(*) FROM learning_assignment_steps s WHERE s.progress_id = elp.id AND s.company_id = elp.company_id "
+                " AND s.status IN ('completed', 'skipped')) AS steps_done "
+                "FROM employee_learning_progress elp JOIN learning_paths lp ON lp.id = elp.learning_path_id AND lp.company_id = elp.company_id "
+                "WHERE elp.company_id = %s AND elp.learning_path_id IS NOT NULL ORDER BY elp.id DESC LIMIT %s OFFSET %s",
+                (g.company_id, per_page, (page - 1) * per_page))
+            rows = cur.fetchall()
+        finally:
+            cur.close()
+        return jsonify({'success': True, 'data': rows,
+                        'pagination': {'page': page, 'per_page': per_page, 'total': total,
+                                       'pages': (total + per_page - 1) // per_page}})
+    except ValueError:
+        return jsonify({'error': 'page og per_page skal være heltal'}), 400
+    except Exception:
+        return jsonify({'error': 'Tildelingerne kunne ikke hentes'}), 500
+
+
+@api_enterprise_bp.route('/api/v1/compliance')
+@require_api_auth('read:analytics')
+def get_compliance_state():
+    """Per-requirement compliance counts: the same derivation the HR matrix shows.
+
+    Aggregate only (compliant, expiring, overdue, missing per requirement); no
+    person is listed. Certificates with an expiry date count as coverage."""
+    try:
+        import hr_tools
+        state = hr_tools.derive_company_compliance(
+            current_app.mysql.connection, g.company_id,
+            department=request.args.get('department', ''), only_gaps=request.args.get('only_gaps') in ('1', 'true'))
+        if state.get('error'):
+            return jsonify({'error': 'Compliance-status kunne ikke beregnes'}), 500
+        return jsonify({'success': True, 'data': {
+            'department': state.get('department'), 'overall_compliance_pct': state.get('overall_compliance_pct'),
+            'total_requirements': state.get('total_requirements'), 'statutory_requirements': state.get('statutory_requirements'),
+            'requirements': state.get('requirements') or []}})
+    except Exception:
+        return jsonify({'error': 'Compliance-status kunne ikke beregnes'}), 500
+
+
+@api_enterprise_bp.route('/api/v1/role-frameworks')
+@require_api_auth('read:learning')
+def get_role_frameworks():
+    """Published role frameworks (newest version of each) with their competency requirements."""
+    try:
+        import talent_service
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        try:
+            data = []
+            for r in talent_service.latest_roles(cur, g.company_id):
+                data.append({'role_id': r['role_id'], 'version_id': r['id'], 'version': r['version'], 'title': r['title'],
+                             'requirements': [{'competency': q.get('skill'), 'competency_id': q.get('competency_id'),
+                                               'target_level': q.get('target_level'), 'required_people': q.get('required_people')}
+                                              for q in r.get('requirements') or []]})
+        finally:
+            cur.close()
+        return jsonify({'success': True, 'data': data})
+    except Exception:
+        return jsonify({'error': 'Rollerammerne kunne ikke hentes'}), 500
 
 
 @api_enterprise_bp.route('/api/v1/orders', methods=['POST'])
@@ -2422,6 +2508,54 @@ def _build_openapi_spec():
                     '400': _err('Invalid report type.'), **common_errors,
                 },
             }
+        },
+        '/api/v1/orders/{order_id}/changes': {
+            'get': {
+                'tags': ['Orders'], 'summary': 'List change requests on an order',
+                'description': ('Cancellation, reschedule and substitution requests and how each was resolved. '
+                                'A booking stays in force until its change is accepted.'),
+                'security': _scoped('read:orders'),
+                'parameters': [{'name': 'order_id', 'in': 'path', 'required': True, 'schema': {'type': 'string'}}],
+                'responses': {
+                    '200': _ok_object({'data': {'type': 'array', 'items': {'type': 'object', 'properties': {
+                        'id': {'type': 'integer'}, 'kind': {'type': 'string', 'enum': ['cancel', 'reschedule', 'substitute']},
+                        'status': {'type': 'string'}, 'requested_by': {'type': 'string'},
+                        'decision_note': {'type': 'string', 'nullable': True},
+                        'created_at': {'type': 'string'}, 'resolved_at': {'type': 'string', 'nullable': True}}}}}),
+                    '404': _err('Order not found.'), **common_errors,
+                },
+            },
+        },
+        '/api/v1/learning-paths/assignments': {
+            'get': {
+                'tags': ['Learning'], 'summary': 'List learning-path assignments',
+                'security': _scoped('read:learning'),
+                'parameters': [page_param, per_page_param],
+                'responses': {
+                    '200': _ok_object({
+                        'data': {'type': 'array', 'items': {'type': 'object'}},
+                        'pagination': {'$ref': '#/components/schemas/Pagination'},
+                    }), **common_errors,
+                },
+            },
+        },
+        '/api/v1/compliance': {
+            'get': {
+                'tags': ['Analytics'], 'summary': 'Compliance state per requirement (aggregate counts, nobody listed)',
+                'security': _scoped('read:analytics'),
+                'parameters': [
+                    {'name': 'department', 'in': 'query', 'schema': {'type': 'string'}},
+                    {'name': 'only_gaps', 'in': 'query', 'schema': {'type': 'string', 'enum': ['1', 'true']}},
+                ],
+                'responses': {'200': _ok_object({'data': {'type': 'object'}}), **common_errors},
+            },
+        },
+        '/api/v1/role-frameworks': {
+            'get': {
+                'tags': ['Learning'], 'summary': 'Published role frameworks with competency requirements',
+                'security': _scoped('read:learning'),
+                'responses': {'200': _ok_object({'data': {'type': 'array', 'items': {'type': 'object'}}}), **common_errors},
+            },
         },
         '/api/v1/orders': {
             'get': {

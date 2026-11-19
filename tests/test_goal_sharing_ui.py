@@ -6,6 +6,7 @@ import unittest
 os.environ.setdefault("SANDBOX", "1")
 
 
+import goal_service  # noqa: E402
 import goal_sharing_ui as gs  # noqa: E402
 from tests.sqlite_mysql import SqliteMysql  # noqa: E402
 
@@ -26,14 +27,14 @@ class GoalSharingTests(unittest.TestCase):
         self.assertFalse(res["shared"])
         shared, private = gs.list_goals_for_hr(self.cur, 7, 1)
         self.assertEqual((len(shared), len(private)), (0, 1))
-        self.assertEqual(gs.shared_goals_for_learner(self.cur, 1, 7), [])      # learner sees nothing
+        self.assertEqual(goal_service.shared_hr_goals(self.cur, 7, 1), [])      # learner sees nothing
 
     def test_sharing_moves_goal_notifies_learner_and_is_audited(self):
         gid = gs.add_goal(self.cur, company_id=7, employee_id=1, title="PRINCE2", actor_user_id=2)["goal_id"]
         res = gs.set_shared(self.cur, company_id=7, goal_id=gid, shared=True, actor_user_id=2, note="Fint mål til efteråret")
         self.assertTrue(res["shared"])
-        learner = gs.shared_goals_for_learner(self.cur, 1, 7)
-        self.assertEqual([g["goal_title"] for g in learner], ["PRINCE2"])
+        learner = goal_service.shared_hr_goals(self.cur, 7, 1)
+        self.assertEqual([g["title"] for g in learner], ["PRINCE2"])
         self.assertEqual(learner[0]["share_note"], "Fint mål til efteråret")
         n = self.db.one("SELECT user_id, action_url, title FROM notifications")
         self.assertEqual((n["user_id"], n["action_url"]), ("ada", "/mine-maal"))
@@ -42,16 +43,16 @@ class GoalSharingTests(unittest.TestCase):
 
     def test_unsharing_removes_it_from_the_learner_again(self):
         gid = gs.add_goal(self.cur, company_id=7, employee_id=1, title="X", share=True, actor_user_id=2)["goal_id"]
-        self.assertEqual(len(gs.shared_goals_for_learner(self.cur, 1, 7)), 1)
+        self.assertEqual(len(goal_service.shared_hr_goals(self.cur, 7, 1)), 1)
         gs.set_shared(self.cur, company_id=7, goal_id=gid, shared=False, actor_user_id=2)
-        self.assertEqual(gs.shared_goals_for_learner(self.cur, 1, 7), [])
+        self.assertEqual(goal_service.shared_hr_goals(self.cur, 7, 1), [])
         self.assertIn("goal.unshared", [r["action_type"] for r in self.db.query("SELECT action_type FROM audit_log")])
 
     def test_cross_tenant_goal_cannot_be_shared(self):
         gid = gs.add_goal(self.cur, company_id=8, employee_id=3, title="Andet firma")["goal_id"]
         res = gs.set_shared(self.cur, company_id=7, goal_id=gid, shared=True, actor_user_id=2)
         self.assertEqual(res["error"], "not_found")
-        self.assertEqual(gs.shared_goals_for_learner(self.cur, 3, 8), [])
+        self.assertEqual(goal_service.shared_hr_goals(self.cur, 8, 3), [])
 
     def test_employee_lookup_is_company_scoped(self):
         self.assertIsNotNone(gs.employee_in_company(self.cur, 7, 1))
@@ -66,8 +67,10 @@ class GoalSharingTests(unittest.TestCase):
         self.assertIsNotNone(gs.employee_in_company(self.cur, 7, 4))
 
     def test_learner_ai_context_only_reads_shared_goals(self):
+        # The sharing rule lives in goal_service alone; learner_context reads through it.
         src = open(os.path.join(os.path.dirname(__file__), "..", "learner_context.py"), encoding="utf-8").read()
-        self.assertIn("shared_with_employee = 1", src)
+        self.assertIn("goal_service.shared_hr_goals", src)
+        self.assertNotIn("FROM employee_goals", src)
 
 
 class GoalRoutePermissionTests(unittest.TestCase):

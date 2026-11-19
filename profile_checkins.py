@@ -23,7 +23,11 @@ Guard rails (this is the "never a form-filler" surface, keep it that way):
 * at most ``MAX_OPEN`` open items per person, ``MAX_SHOWN`` shown per conversation,
   an asked item rests ``CHECKIN_COOLDOWN_DAYS`` and gives up after ``CHECKIN_MAX_ASKS``
   asks; unanswered items expire after ``CHECKIN_TTL_DAYS``;
-* the person can switch it off (``set_checkins_muted``, tool outcome ``stop_all``);
+* the person can switch it off and on again: in account settings (``/indstillinger``,
+  "Opfølgning fra AI-assistenten") or by telling the assistant (``set_checkins_muted``,
+  tool outcome ``stop_all``);
+* by default nothing reaches the person outside the assistant. A company's HR can
+  switch on a weekly notification (``notify_checkin``, opt-in on ``/hr/engagement``);
 * ``AI_PROFILE_CHECKINS=0`` is the platform kill switch;
 * rows are the person's own, erased/exported by ``gdpr_service``; HR never sees them.
 
@@ -93,6 +97,8 @@ def build_candidates(*, goals=(), completed_courses=(), target_role="", has_prof
     for _age, title in sorted(recent)[:2]:
         out.append({
             "kind": KIND_PROGRESS, "ref": title,
+            "nudge": f"Du gennemførte «{title}» for nylig. Fik du det ud af det, du håbede? "
+                     "Tag en kort snak med AI-assistenten om, hvad det kan føre videre til.",
             "topic": f"Opfølgning på kurset «{title}»",
             "reason": ("De har gennemført kurset for nylig. Hør naturligt, om de har fået noget ud af det, "
                        "brugt det i praksis eller delt det med kolleger, og om det peger videre mod et næste skridt."),
@@ -106,6 +112,8 @@ def build_candidates(*, goals=(), completed_courses=(), target_role="", has_prof
         if title and age is not None and age >= GOAL_STALE_DAYS:
             out.append({
                 "kind": KIND_GOAL, "ref": f"goal:{g.get('id')}",
+                "nudge": f"Dit mål «{title}» har ligget stille et stykke tid. Passer det stadig, "
+                         "og skal vi finde et næste skridt?",
                 "topic": f"Status på målet «{title}»",
                 "reason": (f"Målet er ikke opdateret i ca. {max(1, age // 7)} uger. Hør, om det stadig passer, "
                            "hvad der er sket siden, og om der er noget, du kan hjælpe med."),
@@ -116,6 +124,7 @@ def build_candidates(*, goals=(), completed_courses=(), target_role="", has_prof
     if not role and has_profile_depth:
         out.append({
             "kind": KIND_DIRECTION, "ref": "target_role",
+            "nudge": "Hvor vil du gerne hen? Fortæl AI-assistenten det, så bliver kurser og råd mere præcise.",
             "topic": "Hvor vil de gerne hen?",
             "reason": ("Retningen er ukendt. Den afgør, hvilke kompetencegab og kurser der betyder noget, "
                        "så den er ofte det mest værdifulde at finde ud af."),
@@ -186,13 +195,55 @@ def queue_for_user(db, username, summary=None):
         has_profile_depth=depth,
         completeness=completeness,
     )
-    added = 0
+    added, nudge = 0, None
     for cand in candidates:
         if added >= room:
             break
         if db.add_checkin(username, cand["kind"], cand["ref"], cand["topic"], cand["reason"]):
             added += 1
+            nudge = nudge or cand.get("nudge")
+    if nudge and notify_checkin(username, nudge) and summary is not None:
+        summary["notified"] = summary.get("notified", 0) + 1
     return added
+
+
+def notify_checkin(username, text, now=None):
+    """Tell the person, once a week at most, that the assistant has something to
+    follow up on. Only for members of a company whose HR switched this on
+    (``company_settings.ai_checkin_notifications_enabled``, default off); a person
+    who muted check-ins is never reached because nothing is queued for them.
+
+    The card opens the assistant, which already has the open items as background.
+    A profile-gap item never produces a card: that would be nagging, not help.
+    Returns True when a notification was created. Never raises."""
+    try:
+        import MySQLdb.cursors
+        from flask import current_app
+        from notification_service import notify_user
+        conn = current_app.mysql.connection
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        try:
+            cur.execute(
+                "SELECT cu.company_id, cu.user_id FROM users u "
+                "JOIN company_users cu ON cu.user_id = u.id AND cu.status = 'active' "
+                "JOIN company_settings cs ON cs.company_id = cu.company_id "
+                "WHERE u.username = %s AND cs.ai_checkin_notifications_enabled = 1 LIMIT 1", (username,))
+            member = cur.fetchone()
+            if not member:
+                return False
+            week = (now or _dt.datetime.now()).strftime("%G-%V")
+            created = notify_user(
+                cur, title="En opfølgning fra din AI-assistent", message=text,
+                user_id=member["user_id"], company_id=member["company_id"],
+                action_url="/chat?from=checkin", dedupe_key="checkin-nudge:%s:%s" % (username, week),
+                dedupe_hours=24 * 6)
+            conn.commit()
+            return bool(created)
+        finally:
+            cur.close()
+    except Exception as exc:
+        print(f"[Check-in notification] {username}: {exc}")
+        return False
 
 
 def checkin_layer(rows):

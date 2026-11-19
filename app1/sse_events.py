@@ -92,6 +92,8 @@ UI_ACTIONS = frozenset({
     "open_my_learning", # open the employee learning home (/min-laering)
     "open_goals",       # open the development-goals dashboard (/mine-maal)
     "open_timeline",    # open the personal deadline/approval timeline (/min-tidslinje)
+    "open_development",    # open the development workspace (/udvikling): role, competencies, goals
+    "open_opportunities",  # open internal opportunities (/muligheder), where a person applies
 })
 
 
@@ -123,6 +125,9 @@ HR_DESTINATIONS = {
     "engagement":         ("hr_ext.engagement", "/hr/engagement", "Engagement"),
     "ai_quality":         ("hr_ext.ai_quality", "/hr/ai-quality", "AI-kvalitet"),
     "reports":            ("hr_dashboard.reports", "/hr/reports", "Rapporter & eksport"),
+    "talent":             ("talent.hr", "/hr/talent", "Talent og udvikling"),
+    "onboarding":         ("customer_success.readiness", "/hr/kom-i-gang", "Kom i gang"),
+    "mail":               ("mail_delivery.deliveries", "/hr/leveringer", "Mail og leveringer"),
 }
 
 # The HR advisor may also send the manager to a catalog surface (public routes,

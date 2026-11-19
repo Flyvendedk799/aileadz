@@ -33,6 +33,36 @@ TERMINAL_STATUSES = frozenset({COMPLETED, REJECTED, CANCELLED})
 # Statuses that hold a budget charge (a seat that will be paid for).
 CHARGED_STATUSES = frozenset({APPROVED, BOOKED, COMPLETED})
 
+# KPI definitions shared by every report, dashboard and assistant tool, as SQL
+# literals for "status [NOT] IN ...". Spend, revenue and order counts leave out
+# rejected and cancelled orders (DECISIONS.md, item 3); "in progress" is an
+# order that is approved or booked but not yet held.
+NOT_COUNTED_STATUSES = frozenset({REJECTED, CANCELLED})
+SQL_NOT_COUNTED = "('cancelled', 'rejected')"
+SQL_IN_PROGRESS = "('approved', 'booked')"
+
+
+# "Is this order completed / under way / overdue?" as SQL, the ONE wording every
+# query uses. ``completion_status`` is only ever written as 'completed' (it is NULL
+# for every other order), so a test like ``completion_status != 'completed'`` matches
+# nothing; the status column is the truth and the old column is honoured for rows
+# completed before the lifecycle existed. Queries carry this text literally
+# (tests/test_kpi_definitions.py keeps them identical); ``alias`` is the table alias.
+def sql_completed(alias=""):
+    p = (alias + ".") if alias else ""
+    return "(%sstatus = 'completed' OR COALESCE(%scompletion_status, '') = 'completed')" % (p, p)
+
+
+def sql_in_progress(alias=""):
+    p = (alias + ".") if alias else ""
+    return "(%sstatus IN ('approved', 'booked') AND COALESCE(%scompletion_status, '') <> 'completed')" % (p, p)
+
+
+def sql_still_open(alias=""):
+    """Not completed and not called off: what a deadline can still be overdue for."""
+    p = (alias + ".") if alias else ""
+    return "(NOT %s AND %sstatus NOT IN ('cancelled', 'rejected'))" % (sql_completed(alias), p)
+
 # Statuses that older rows / older code paths still use. Reads normalise them so
 # an unmigrated row renders correctly; schema_registry migrates the data once.
 LEGACY_ALIASES = {
@@ -70,12 +100,63 @@ STATUS_LABELS_SHORT = {
 # One-line explanation shown to the learner under the status.
 STATUS_HINTS = {
     PENDING_APPROVAL: "Din leder eller HR skal godkende bestillingen.",
-    APPROVED: "Bestillingen er godkendt. Udbyderen bekræfter din plads.",
+    APPROVED: "Bestillingen er godkendt. HR eller udbyderen bekræfter din plads.",
     BOOKED: "Din plads er bekræftet.",
     COMPLETED: "Kurset er gennemført.",
     REJECTED: "Bestillingen blev afvist.",
     CANCELLED: "Bestillingen er annulleret.",
 }
+
+# ── Where a request stands and who acts next ────────────────────────────────
+# One reading of an order for everyone who asks about it: the learner, HR, the
+# provider, and the three assistants. ``waiting_on`` is the party whose move it
+# is ('approver', 'booker', 'learner', 'verifier', 'manager') or None when nobody
+# has to do anything.
+_CASE = {
+    "approver": ("lederen eller HR", "Bestillingen venter på godkendelse fra lederen eller HR."),
+    "booker": ("HR eller udbyderen", "Bestillingen er godkendt og venter på, at HR eller udbyderen bekræfter pladsen."),
+    "change": ("HR eller udbyderen", "Et ændringsønske venter på svar. Bookingen og budgettet gælder, indtil det er accepteret."),
+    "course": (None, "Pladsen er bekræftet. Der sker ikke mere, før kurset har fundet sted."),
+    "learner": ("deltageren", "Kurset har fundet sted. Deltageren kan nu indsende sin deltagelse."),
+    "verifier": ("HR eller udbyderen", "Deltagelsen er indsendt og venter på, at HR eller udbyderen bekræfter den."),
+    "outcome": ("nærmeste leder", "Kurset er gennemført. Nærmeste leder kan vurdere kursusudbyttet."),
+    "done": (None, "Kurset er gennemført."),
+    "rejected": (None, "Bestillingen blev afvist. Der er ikke trukket noget fra budgettet."),
+    "cancelled": (None, "Bestillingen er annulleret."),
+}
+
+
+def case_state(status, *, pending_change=False, taken_place=False, attendance_reported=False, outcome_pending=False):
+    """``{status, status_label, stage, waiting_on, waiting_on_label, next_step}`` for an order.
+
+    Pure: the caller supplies the facts (an open change request, whether the course
+    has taken place, whether attendance was reported, whether an outcome review is
+    open). The wording is the same for every role, in the third person, so an
+    assistant can say it to whoever asks."""
+    status = normalize_status(status) if status else status
+    if status == PENDING_APPROVAL:
+        stage, who = "approver", "approver"
+    elif status == APPROVED:
+        stage, who = "booker", "booker"
+    elif status == BOOKED:
+        if pending_change:
+            stage, who = "change", "booker"
+        elif attendance_reported:
+            stage, who = "verifier", "verifier"
+        elif taken_place:
+            stage, who = "learner", "learner"
+        else:
+            stage, who = "course", None
+    elif status == COMPLETED:
+        stage, who = ("outcome", "manager") if outcome_pending else ("done", None)
+    elif status == REJECTED:
+        stage, who = "rejected", None
+    else:
+        stage, who = "cancelled", None
+    label, step = _CASE[stage]
+    return {"status": status, "status_label": STATUS_LABELS.get(status, status or ""), "stage": stage,
+            "waiting_on": who, "waiting_on_label": label, "next_step": step}
+
 
 # Learner-facing bucket for grouping/colouring the timeline.
 LEARNER_BUCKETS = {

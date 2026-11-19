@@ -763,6 +763,10 @@ def ask():
         # `mode` is accepted for older pages but no longer picks a persona; an
         # anonymous caller has no profile to build on and gets the plain advisor.
         mode = "assistant" if session.get("user") else "default"
+        import rate_limit
+        actor = ("user:%s" % session.get("user")) if session.get("user") else ("anon:%s" % (request.remote_addr or "-"))
+        if not rate_limit.ai_turn_allowed(actor, scale=1 if session.get("user") else rate_limit.ANON_SHARED_ADDRESS_SCALE):
+            return jsonify({"answers": [{"type": "text", "content": rate_limit.AI_TURN_MESSAGE}], "rate_limited": True}), 429
         # "seed" = a UI-generated opener (profiler Start/Fortsæt), not user text.
         turn_kind = (request.json.get("kind") or "message").strip().lower()
         if turn_kind not in ("message", "seed"):

@@ -76,3 +76,26 @@ function verify(secret, header, rawBody, tolerance = 300) {
 The previous `X-Webhook-Signature` was a bare HMAC of the body with no timestamp.
 It is no longer sent. Update your receiver to the format above; the secret does
 not change.
+
+## Events
+
+Chosen per webhook under Virksomhedsindstillinger, Webhooks (`enterprise_company_settings.WEBHOOK_EVENT_CHOICES`);
+`*` subscribes to all of them. `data` always carries the ids needed to fetch the full record
+from the API; treat unknown fields as additions, never as errors.
+
+| Event | When |
+|---|---|
+| `order.created`, `order.needs_approval`, `order.auto_approved` | an order is placed, with or without a pending approval |
+| `order.approved`, `order.rejected`, `order.booked`, `order.completed`, `order.cancelled` | each status change; `order.updated` fires on every one of them |
+| `order.change_requested`, `order.change_resolved` | a cancellation, reschedule or participant substitution is asked for on a booked order, then accepted or rejected (`data.kind`, `data.accepted`) |
+| `order.billing_changed` | the tracked billing status changes (billing itself is off-platform) |
+| `course.completed` | a course is verified as completed for a person |
+| `budget.overrun` | a department passes its budget |
+| `employee.added`, `employee.updated` | a member is added or changed |
+| `employee.placed` | HR confirms an internal move: a new role (`data.job_title`, `data.department`) or a project |
+| `scim.user.provisioned`, `scim.user.deprovisioned` | a user arrives or leaves through SCIM |
+| `ping` | the test button |
+
+Goals, assessments and applications are not published: they are the person's or HR's own, and a
+shared goal is shared with HR, not with an integration.
+

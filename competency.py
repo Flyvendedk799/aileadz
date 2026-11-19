@@ -31,6 +31,7 @@ Design constraints (mirror ``skill_history`` / the DB layer):
 """
 
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -476,6 +477,23 @@ def compute_skill_gaps(username, profile=None, *, limit=12, company_id=None, use
         reverse=True,
     )
     return gaps[:limit] if limit is not None else gaps
+
+
+def gaps_matched_by(gaps, *texts, limit=3):
+    """The gaps a course speaks to: those whose skill is named in the course's
+    title or tags. A whole-word match (common Danish endings allowed) on purpose: it only ever says "this course
+    is about a skill you are working towards", never that it closes the gap."""
+    hay = " ".join(str(t or "") for t in texts).casefold()
+    if not hay.strip():
+        return []
+    out = []
+    for g in gaps or []:
+        key = skill_key(g.get("skill") or "")
+        if len(key) >= 3 and re.search(r"(?<![\wæøå])" + re.escape(key) + r"(?:e?ns?|e?ts?|er|ne|e|s)?(?![\wæøå])", hay):
+            out.append(g)
+        if len(out) >= limit:
+            break
+    return out
 
 
 def gaps_to_query(gaps, *, limit=4):

@@ -19,6 +19,8 @@ def order_focus(order_id, *, manager=False):
     try:
         cur.execute("SELECT id,kind,status FROM course_order_changes WHERE order_id=%s AND status='pending'", (order_id,))
         data['pending_changes'] = cur.fetchall() or []
+        # Where it stands and whose move it is: the same reading for every role (order_lifecycle.case_state).
+        data['case'] = order_fulfillment.case_states(cur, [row]).get(order_id)
     finally:
         cur.close()
     return {'kind':'order', 'lines':[json.dumps(data, ensure_ascii=False, default=str)]}

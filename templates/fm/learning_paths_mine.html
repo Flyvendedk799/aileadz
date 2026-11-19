@@ -1,0 +1,53 @@
+{% extends "fm_base.html" %}
+{% from 'fm/_macros.html' import crumbs, related, empty %}
+{% block page_id %}emphome{% endblock %}
+{% block title %}Mine læringsforløb{% endblock %}
+{% block topbar_title %}Mine læringsforløb{% endblock %}
+{% block topbar_sub %}Forløb, HR har tildelt dig, og de læringsstier, du selv har bygget.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+  {{ crumbs([('Min læring', url_for('futurematch.employee_home')), ('Mine læringsforløb', '')]) }}
+
+  {% set assigned = paths | selectattr('kind', 'equalto', 'assigned') | list %}
+  {% set personal = paths | selectattr('kind', 'equalto', 'personal') | list %}
+
+  {% macro path_card(p) %}
+  <article class="fm-card" style="padding:16px 18px;margin-bottom:12px">
+    <div class="fm-spread" style="gap:12px;flex-wrap:wrap;align-items:flex-start">
+      <div style="min-width:220px;flex:1">
+        <h3 style="margin:0;font-size:16px">{{ p.title }}</h3>
+        <div class="muted" style="font-size:12.5px;margin-top:4px">
+          {% if p.total %}{{ p.done }} af {{ p.total }} trin gennemført{% else %}Ingen trin endnu{% endif %}{% if p.due_date %} · frist {{ p.due_date|dkdate(style='long') }}{% endif %}
+        </div>
+      </div>
+      <span class="fm-badge {{ 'green' if p.completed else 'teal' }}">{{ 'Gennemført' if p.completed else 'I gang' }}</span>
+    </div>
+    {% if p.steps %}
+    <ol style="margin:12px 0 0;padding-left:20px;font-size:13.5px;line-height:1.7">
+      {% for s in p.steps[:8] %}<li{% if s.done %} style="color:var(--fm-ink-3)"{% endif %}>{{ s.title }}{% if s.done %} <i class="fa-solid fa-check" aria-label="gennemført"></i>{% endif %}</li>{% endfor %}
+      {% if p.steps|length > 8 %}<li class="muted" style="list-style:none">og {{ p.steps|length - 8 }} trin mere</li>{% endif %}
+    </ol>
+    {% endif %}
+    <div style="margin-top:12px"><a class="btn btn-ghost btn-sm" href="{{ p.url }}">{{ 'Åbn forløbet' if p.kind == 'assigned' else 'Åbn på profilen' }}</a></div>
+  </article>
+  {% endmacro %}
+
+  <div class="fm-section-head"><div><span class="fm-eyebrow clay"><i class="fa-solid fa-user-tie"></i> Fra HR</span><h2 class="fm-section-title">Tildelt af HR</h2></div></div>
+  {% for p in assigned %}{{ path_card(p) }}{% else %}
+  {{ empty('Ingen tildelte forløb', 'Når HR tildeler dig et læringsforløb, vises det her med trin og frist.', 'fa-list-check') }}
+  {% endfor %}
+
+  <div class="fm-section-head" style="margin-top:22px"><div><span class="fm-eyebrow"><i class="fa-solid fa-route"></i> Dine egne</span><h2 class="fm-section-title">Mine læringsstier</h2></div></div>
+  {% for p in personal %}{{ path_card(p) }}{% else %}
+  {{ empty('Ingen læringsstier endnu', 'Bed AI-assistenten om at bygge en sti mod dit mål, så samler den de rigtige kurser i rækkefølge.', 'fa-route', url_for('futurematch.chat') ~ '?intent=' ~ ('Byg en læringssti til mine mål'|urlencode), 'Byg en sti med AI') }}
+  {% endfor %}
+
+  <div style="margin-top:22px">
+  {{ related([
+      ('Mine bestillinger', url_for('futurematch.timeline'), 'fa-receipt'),
+      ('Udviklingsmål', url_for('futurematch.learning_goals'), 'fa-bullseye'),
+      ('Kursuskatalog', url_for('catalog.catalog_index'), 'fa-graduation-cap'),
+  ]) }}
+  </div>
+</div>
+{% endblock %}

@@ -53,9 +53,10 @@ case "${1:-help}" in
   down)   docker rm -f "$NAME" >/dev/null 2>&1 || true; echo "stopped (data volume kept)" ;;
   reset)  docker rm -f "$NAME" >/dev/null 2>&1 || true; docker volume rm "$VOL" >/dev/null 2>&1 || true; start_db; wait_db ;;
   init)   $PY run_sandbox.py init ;;
+  demo)   $PY run_sandbox.py demo ;;
   run)    $PY run_sandbox.py run ;;
   smoke)  $PY run_sandbox.py smoke ;;
   mysql)  docker exec -it "$NAME" mysql -ufm -pfm futurematch_sandbox ;;
   logs)   docker logs -f "$NAME" ;;
-  *) echo "usage: ./sandbox.sh {up|init|run|smoke|mysql|logs|down|reset}" ;;
+  *) echo "usage: ./sandbox.sh {up|init|demo|run|smoke|mysql|logs|down|reset}" ;;
 esac

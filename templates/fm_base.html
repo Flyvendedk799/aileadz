@@ -35,8 +35,9 @@
 {% set platform_tagline = company_branding.tagline if white_label_active and company_branding.tagline else 'Læring & HR' %}
 {% set _uname = session.get('user') or 'Gæst' %}
 {% set _initials = (_uname[:2] | upper) if _uname else 'FM' %}
-{% set _usermeta = (session.get('company_name') ~ ' · ' ~ (session.get('company_role') or 'Bruger')) if session.get('company_name') else 'Futurematch' %}
+{% set _usermeta = (session.get('company_name') ~ ' · ' ~ role_label(session.get('company_role'))) if session.get('company_name') else 'Futurematch' %}
 <body data-page="{% block page_id %}{% endblock %}" data-role="{{ _role }}" data-auth="{{ '1' if session.get('user') else '0' }}" data-brand-server="1" class="{% block body_class %}{% endblock %}">
+<a class="fm-skip" href="#fm-main">Spring til indhold</a>
 
 {# The server decides the brand. A white-label tenant pushes its brand into the
    browser (for the live preview in the branding editor); everyone else clears any
@@ -63,7 +64,7 @@
   {% if session.get('user') %}
   <aside class="fm-side" id="fmSide" aria-label="Primær navigation">
     <div class="fm-side-head">
-      <a class="fm-brand" href="{{ url_for('futurematch.employee_home') if session.get('user') else url_for('dashboard.dashboard') }}">
+      <a class="fm-brand" href="{{ url_for('dashboard.dashboard') }}">
         {% if white_label_active and company_branding.company_logo %}
         <span class="fm-mark"><img src="{{ company_branding.company_logo }}" alt="{{ platform_name }}" style="width:100%;height:100%;object-fit:contain;border-radius:inherit"></span>
         {% else %}
@@ -88,6 +89,13 @@
       {# Every learner gets "Min læring" (employees, managers and solo users alike). #}
       {# Platform admins start with the learner and company sections folded; the Admin section is open.
          shell.js remembers each section's state (localStorage) and keeps the current page's section open. #}
+      {# Managers and platform admins land on the workspace overview after login; it is their home. #}
+      {% set _has_home = can('company.workspace') or _is_admin %}
+      {% if _has_home %}
+      <ul class="fm-nav-list">
+        <li><a class="fm-nav-link {{ 'active' if _nav == 'home' }}" href="{{ url_for('dashboard.dashboard') }}"><i class="fa-solid fa-gauge-high"></i><span>Forside</span></a></li>
+      </ul>
+      {% endif %}
       <div data-section="learn" {% if _is_admin %}data-default="closed"{% endif %} class="fm-nav-label">Min læring</div>
       <ul class="fm-nav-list">
         <li><a class="fm-nav-link {{ 'active' if _nav == 'emphome' }}" href="{{ url_for('futurematch.employee_home') }}"><i class="fa-solid fa-house"></i><span>Min læring</span></a></li>
@@ -138,6 +146,7 @@
         <li><a class="fm-nav-link {{ 'active' if _nav == 'notifications' }}" href="{{ url_for('pages.notifications') }}"><i class="fa-solid fa-bell"></i><span>Notifikationer</span><span class="fm-nav-badge" data-notif-badge hidden></span></a></li>
         <li><a class="fm-nav-link {{ 'active' if _nav == 'profile' }}" href="{{ url_for('pages.profile') }}"><i class="fa-solid fa-id-card"></i><span>Profil</span></a></li>
         {% if has_endpoint('talent.workspace') and session.get('company_id') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'development' }}" href="{{ url_for('talent.workspace') }}"><i class="fa-solid fa-seedling"></i><span>Min udvikling</span></a></li>{% endif %}
+        {% if has_endpoint('talent.opportunities') and session.get('company_id') and talent_modules is defined and talent_modules().get('mobility_enabled') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'opportunities' }}" href="{{ url_for('talent.opportunities') }}"><i class="fa-solid fa-arrow-up-right-dots"></i><span>Interne muligheder</span></a></li>{% endif %}
         <li><a class="fm-nav-link {{ 'active' if _nav == 'cv' }}" href="{{ url_for('futurematch.my_cv') }}"><i class="fa-solid fa-file-lines"></i><span>Mit CV</span></a></li>
         {% if session.get('user') %}<li><a class="fm-nav-link {{ 'active' if _nav == 'usage' }}" href="{{ url_for('pages.analytics') }}"><i class="fa-solid fa-coins"></i><span>Mit forbrug</span></a></li>{% endif %}
         <li><a class="fm-nav-link {{ 'active' if _nav == 'settings' }}" href="{{ url_for('pages.settings') }}"><i class="fa-solid fa-sliders"></i><span>Indstillinger</span></a></li>
@@ -232,6 +241,7 @@
       <div class="fm-top-actions">
         {% block topbar_extra %}{% endblock %}
         {% if session.get('user') %}
+        <button class="fm-icon-btn" type="button" data-cmdk-open aria-label="Søg" title="Søg (Ctrl+K)"><i class="fa-solid fa-magnifying-glass"></i></button>
         <button class="fm-icon-btn" data-theme-toggle aria-label="Tema"><i class="fa-solid fa-moon"></i></button>
         <a class="fm-icon-btn" href="{{ url_for('pages.notifications') }}" aria-label="Notifikationer"><i class="fa-solid fa-bell"></i><span class="dot" data-notif-dot hidden></span><span class="fm-bell-count" data-notif-count hidden></span></a>
         {# The credits balance means something to credit managers and platform admins only; employees have "Mit forbrug" in the menu. #}
@@ -244,7 +254,7 @@
     {# Conversation history for the AI pages: a floating panel opened from the header (see ai-sidebar.js). #}
     {% if _in_ai and session.get('user') %}{% include 'fm/_ai_sidebar.html' %}{% endif %}
 
-    <main class="fm-content">
+    <main class="fm-content" id="fm-main" tabindex="-1">
       {% if session.get('admin_acting_company_id') %}
       <div class="fm-wrap" style="padding-bottom:0">
         <div role="status" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;border-radius:var(--r-md);margin-bottom:12px;border:1px solid color-mix(in srgb,var(--fm-clay) 40%,var(--fm-line));background:color-mix(in srgb,var(--fm-clay) 12%,var(--fm-surface));color:var(--fm-ink)">

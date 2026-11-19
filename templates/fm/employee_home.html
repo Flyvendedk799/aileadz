@@ -179,7 +179,7 @@
                   <i class="fa-solid fa-chevron-right" style="font-size:11px;color:var(--fm-ink-3)" aria-hidden="true"></i>
                 </a>
                 {% endfor %}
-                <div style="text-align:center;padding-top:12px"><a href="{{ url_for('futurematch.timeline') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-timeline"></i> Se alle på tidslinjen</a></div>
+                <div style="text-align:center;padding-top:12px"><a href="{{ url_for('futurematch.timeline') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-timeline"></i> Se alle bestillinger</a></div>
               {% else %}
               <div class="muted" style="text-align:center;font-size:13.5px;padding:24px 16px;color:var(--fm-ink-3)">Ingen bestillinger endnu. Find et kursus i kataloget, eller spørg AI-assistenten, hvad der passer til dig.
                 <div style="margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><a class="btn btn-primary btn-sm" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-graduation-cap"></i> Udforsk kataloget</a><a class="btn btn-ghost btn-sm" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comment-dots"></i> Spørg AI-assistenten</a></div>
@@ -220,6 +220,21 @@
               </div>
             </div>
           </div>
+        </div>
+
+        {# Where the learner goes from here: the rest of their own workspace. Links with no
+           destination for this person (no company, module off) drop out by themselves. #}
+        {% from 'fm/_macros.html' import related %}
+        <div style="margin-top:22px">
+        {{ related([
+            ('Min udvikling', url_for('talent.workspace') if has_endpoint('talent.workspace') and session.get('company_id') else '', 'fa-seedling'),
+            ('Interne muligheder', url_for('talent.opportunities') if has_endpoint('talent.opportunities') and session.get('company_id') and talent_modules is defined and talent_modules().get('mobility_enabled') else '', 'fa-arrow-up-right-dots'),
+            ('Mine læringsforløb', url_for('learning.my_paths') if has_endpoint('learning.my_paths') else '', 'fa-route'),
+            ('Udviklingsmål', url_for('futurematch.learning_goals'), 'fa-bullseye'),
+            ('Mit CV', url_for('futurematch.my_cv'), 'fa-file-lines'),
+            ('Mind-Map', url_for('futurematch.mind_map'), 'fa-brain'),
+            ('Kollega-chat', url_for('futurematch.company_chat') if session.get('company_id') else '', 'fa-comments'),
+        ], title='Dit næste skridt') }}
         </div>
 
       </div>

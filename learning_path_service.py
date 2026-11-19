@@ -568,7 +568,7 @@ def preview_course_assignment(cur, company_id, quote, user_ids):
     return review
 
 
-def assignments_for_learner(cur, user_id, company_id):
+def assignments_for_learner(cur, user_id, company_id, limit=10):
     """ "Tildelt af HR": the learner's assigned paths with due date and progress."""
     if not user_id or not company_id:
         return []
@@ -579,8 +579,8 @@ def assignments_for_learner(cur, user_id, company_id):
                FROM employee_learning_progress elp
                JOIN learning_paths lp ON lp.id = elp.learning_path_id
                WHERE elp.user_id = %s AND elp.company_id = %s AND elp.learning_path_id IS NOT NULL
-               ORDER BY (elp.status = 'completed') ASC, (elp.due_date IS NULL) ASC, elp.due_date ASC LIMIT 10""",
-            (user_id, company_id),
+               ORDER BY (elp.status = 'completed') ASC, (elp.due_date IS NULL) ASC, elp.due_date ASC LIMIT %s""",
+            (user_id, company_id, int(limit)),
         )
         rows = list(cur.fetchall() or [])
     except Exception as e:
@@ -592,6 +592,41 @@ def assignments_for_learner(cur, user_id, company_id):
         )
         r["steps"] = list(cur.fetchall() or [])
     return rows
+
+
+def paths_for_learner(cur, username, user_id=None, company_id=None):
+    """Every learning path a person has, in one shape: the paths HR assigned
+    ("læringsforløb", company-scoped, each step following its order) and the
+    personal ones they built with the assistant ("læringsstier").
+
+    ``[{kind: 'assigned'|'personal', id, title, done, total, completed, due_date, url, steps}]``
+    with ``steps`` = ``[{title, done}]``. The two kinds still live in different tables
+    (ROADMAP T1-7); this is the one reader pages and tools should use to list them."""
+    out = []
+    for a in assignments_for_learner(cur, user_id, company_id, limit=200):
+        steps = [{"title": s.get("title") or "", "done": s.get("status") in ("completed", "skipped")} for s in a.get("steps") or []]
+        out.append({
+            "kind": "assigned", "id": a["id"], "title": a.get("path_name") or "Læringsforløb",
+            "done": sum(1 for s in steps if s["done"]), "total": len(steps),
+            "completed": a.get("status") == "completed", "due_date": a.get("due_date"),
+            "url": "/min-laering/forloeb/%s" % a["id"], "steps": steps,
+        })
+    try:
+        from app1.user_profile_db import get_learning_paths
+        personal = get_learning_paths(username, limit=200) if username else []
+    except Exception as e:
+        logger.warning("learning_path_service: personal paths unavailable: %s", e)
+        personal = []
+    for p in personal:
+        steps = [{"title": (s.get("title") or s.get("course_title") or s.get("handle") or "") if isinstance(s, dict) else str(s),
+                  "done": bool(isinstance(s, dict) and (s.get("completed") or s.get("done")))} for s in p.get("steps") or []]
+        out.append({
+            "kind": "personal", "id": p["id"], "title": p.get("title") or "Din læringssti",
+            "done": sum(1 for s in steps if s["done"]), "total": len(steps),
+            "completed": p.get("status") == "fuldfoert", "due_date": None,
+            "url": "/profil#paths", "steps": steps,
+        })
+    return out
 
 
 def assignment_detail(cur, company_id, user_id, progress_id):

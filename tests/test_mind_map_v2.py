@@ -106,7 +106,7 @@ def template_bindings(tpl):
     literals = {"true", "false", "null", "undefined"}
     used = set()
     for expr in re.findall(r"\{\{(.*?)\}\}", tpl, re.S):
-        head = re.split(r"[.\[\s(]", expr.strip(), 1)[0]
+        head = re.split(r"[.\[\s(]", expr.strip(), maxsplit=1)[0]
         if head and head not in literals and not head[0].isdigit():
             used.add(head)
     return used - loopvars

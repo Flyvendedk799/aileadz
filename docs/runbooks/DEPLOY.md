@@ -5,8 +5,13 @@ which supervises two services from this repo:
 
 | Service | Start command | Role |
 |---|---|---|
-| web | `gunicorn wsgi:application --bind 0.0.0.0:$PORT` | the Flask app (`create_app()` in `run.py`, wrapped by `wsgi.py`) |
+| web | `gunicorn -c deploy/gunicorn.conf.py wsgi:application --bind 0.0.0.0:$PORT` | the Flask app (`create_app()` in `run.py`, wrapped by `wsgi.py`) |
 | worker | `python drain_worker.py --loop` | scheduled jobs: webhooks, digests, retention, Shopify sync (see JOB_RUNNER.md) |
+
+The `-c deploy/gunicorn.conf.py` part matters: without it gunicorn runs one sync
+worker with a 30 s timeout, so one chat stream blocks every other request and long
+answers are cut off. The config uses threaded workers (`WEB_THREADS`, default 16) in
+one process (`WEB_CONCURRENCY`, default 1; read ROADMAP T4-1 before raising it).
 
 Both need the SAME environment (the worker also runs `create_app()`). The canonical
 variable list, with defaults and comments, is `.env.example`: never commit real
@@ -24,6 +29,7 @@ and 301-redirects `www.<host>` to `<host>` (`CANONICAL_WWW_REDIRECT=0` disables)
 | [SECRET_ROTATION.md](SECRET_ROTATION.md) | Rotate `SECRET_KEY`, DB password, API keys, Fernet keys. |
 | [GIT_HISTORY_PURGE.md](GIT_HISTORY_PURGE.md) | Scrub old leaked secrets from git history. Not done yet. **Owner go-ahead required**; rewrites history. |
 | [LAUNCH_WORKFLOWS.md](LAUNCH_WORKFLOWS.md) | deploy and verify assignments, bookings, delivery recovery and customer handover |
+| [BACKUP_RESTORE.md](BACKUP_RESTORE.md) | Daily and pre-deploy backup, restore, rollback. |
 | [JOB_RUNNER.md](JOB_RUNNER.md) | The worker service, the job registry, `SCHEDULER_OPPORTUNISTIC`. |
 | [EMAIL_SETUP.md](EMAIL_SETUP.md) | Configure SMTP so branded order/welcome/reset mails actually send. |
 | [CATALOG_REBUILD.md](CATALOG_REBUILD.md) | Catalog source, search index and embeddings; the offline `app1/build_index.py`. |
@@ -40,6 +46,8 @@ and 301-redirects `www.<host>` to `<host>` (`CANONICAL_WWW_REDIRECT=0` disables)
 | `MAIL_*` / `SMTP_*` | No mail leaves without a server and a sender (EMAIL_SETUP.md). |
 | `APP_BASE_URL` | Absolute links in e-mails. |
 | `SCHEDULER_OPPORTUNISTIC` | `0` on the web service once the worker runs (JOB_RUNNER.md). |
+| `BACKUP_DIR` | Where `scripts/backup.sh` writes; Systemstatus then shows backup freshness (BACKUP_RESTORE.md). |
+| `AI_EVAL_DIR` | Result directory of the nightly AI eval; Systemstatus shows it (AI_EVAL_NIGHTLY.md). |
 | `HEALTH_TOKEN` | Lets a monitor read the detailed `/readyz` body via `X-Health-Token`. |
 | `TWOFA_ENFORCE_ADMIN`, `CSP_ENFORCE`, `HSTS_*` | Security switches; the defaults are the safe production values. |
 
@@ -66,12 +74,13 @@ and 301-redirects `www.<host>` to `<host>` (`CANONICAL_WWW_REDIRECT=0` disables)
 
 ## Runtime state that is not in git
 
-Back these up; a fresh clone does not have them (`.gitignore`: `*.json`, `*.db`,
+Back these up with `scripts/backup.sh` ([BACKUP_RESTORE.md](BACKUP_RESTORE.md)); a fresh clone does not have them (`.gitignore`: `*.json`, `*.db`,
 `instance/`, `static/uploads/`, `static/temp/`):
 
 - `instance/`: catalog admin overlay, CSV imports, category overrides, import/AI-category
   drafts, the embeddings sidecar `catalog_embeddings.json`.
 - `static/uploads/`: admin/user uploads (needs a persisted path on the host).
+- `static/brand_assets/`: each company's white-label assets (same).
 - `app1/shopify_products_all_pages.json` (or `CATALOG_SOURCE_FILE`) and
   `app1/shopify_products_augmented.json`: the catalog (CATALOG_REBUILD.md).
 - `app1/ai_memory.db`: SQLite fallback of the AI store; production uses MySQL

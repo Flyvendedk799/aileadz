@@ -206,7 +206,7 @@ def process_order_query():
             
             if last_product:
                 response['type'] = 'order_prompt'
-                response['content'] = f"Fantastisk! Du ønsker at bestille kurset. Jeg skal bare bruge nogle oplysninger fra dig."
+                response['content'] = "Fantastisk! Du ønsker at bestille kurset. Jeg skal bare bruge nogle oplysninger fra dig."
                 response['action'] = 'collect_user_info'
                 response['product_handle'] = last_product
             else:

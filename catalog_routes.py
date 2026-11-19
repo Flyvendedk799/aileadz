@@ -266,7 +266,7 @@ def _user_reviewable_orders(handle):
                FROM course_orders co
                LEFT JOIN course_reviews cr ON cr.order_id = co.order_id
                WHERE co.product_handle = %s
-                 AND (co.status = 'completed' OR co.completion_status = 'completed')
+                 AND ((co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed'))
                  AND ( (%s IS NOT NULL AND co.user_id = %s)
                        OR (%s <> '' AND co.username = %s) )
                  AND cr.id IS NULL
@@ -295,7 +295,7 @@ def _completed_count(handle):
         cur.execute(
             """SELECT COUNT(*) AS c FROM course_orders
                WHERE product_handle = %s
-                 AND (status = 'completed' OR completion_status = 'completed')""",
+                 AND ((status = 'completed' OR COALESCE(completion_status, '') = 'completed'))""",
             (handle,),
         )
         row = cur.fetchone() or {}
@@ -468,6 +468,23 @@ def _department_budget(department):
     }
 
 
+def _my_gaps_for(product):
+    """Which of the signed-in person's own skill gaps this course is about (may be empty).
+    Their own data only; never raises, never slows an anonymous visit."""
+    username = session.get("user")
+    if not username:
+        return []
+    try:
+        import competency
+        gaps = competency.compute_skill_gaps(username, company_id=session.get("company_id"),
+                                             user_id=session.get("user_id"), limit=None)
+        tags = product.get("tags")
+        return competency.gaps_matched_by(gaps, product.get("title"), " ".join(tags) if isinstance(tags, (list, tuple)) else tags)
+    except Exception as exc:
+        current_app.logger.debug("product gap hint skipped: %s", exc)
+        return []
+
+
 @catalog_bp.route("/products/<handle>")
 def product_detail(handle):
     product = catalog.get_product(handle)
@@ -495,6 +512,7 @@ def product_detail(handle):
     existing_order = _user_open_order(handle)
     return render_template(
         "fm/product_detail.html",
+        my_gaps=_my_gaps_for(product),
         existing_order=existing_order,
         ordered_session_id=_ordered_session_id(product, request.args.get("order")),
         request_flow=_request_flow(),
@@ -654,7 +672,7 @@ def request_product(handle):
     # The product page shows one "Anmodningen er registreret" banner for ``order``, so a
     # success flash would only repeat it; a duplicate has no new order to announce.
     if result.get("duplicate"):
-        flash("Du har allerede anmodet om dette kursus. Se status på din tidslinje.", "info")
+        flash("Du har allerede anmodet om dette kursus. Se status under Mine bestillinger.", "info")
     return redirect(url_for("catalog.product_detail", handle=handle, order=order_id))
 
 

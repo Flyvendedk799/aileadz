@@ -243,7 +243,7 @@
   {% if request.args.get('order') %}
   <div class="fm-card" style="padding:14px 18px;margin-bottom:18px;border-left:3px solid var(--fm-success);background:color-mix(in srgb,var(--fm-success) 8%,var(--fm-surface))">
     <i class="fa-solid fa-circle-check" style="color:var(--fm-success)"></i> Anmodningen er registreret med reference <strong>{{ request.args.get('order')[:8] }}</strong>{% if existing_order %} ({{ existing_order.label|lower }}){% endif %}.
-    <a href="{{ url_for('futurematch.my_order', order_id=request.args.get('order')) }}" style="margin-left:8px;font-weight:600">Se status på din tidslinje <i class="fa-solid fa-arrow-right"></i></a>
+    <a href="{{ url_for('futurematch.my_order', order_id=request.args.get('order')) }}" style="margin-left:8px;font-weight:600">Se status på bestillingen <i class="fa-solid fa-arrow-right"></i></a>
   </div>
   {% elif existing_order %}
   <div class="fm-card" style="padding:14px 18px;margin-bottom:18px;border-left:3px solid var(--fm-primary);background:var(--fm-primary-tint)">
@@ -557,6 +557,17 @@
         <div class="pd-warn">
           <i class="fa-solid fa-triangle-exclamation"></i>
           <span>Leverandøren er deaktiveret for din virksomhed. HR kan aktivere den under {% if can('company.workspace') %}<a href="{{ url_for('hr_dashboard.supplier_management') }}">Leverandører</a>{% else %}leverandørstyring{% endif %}.</span>
+        </div>
+        {% endif %}
+
+        {# The person's own skill gaps this course is about (their data, shown only to them). #}
+        {% if my_gaps %}
+        <div class="pd-gaps" style="margin:0 0 12px;padding:10px 12px;border:1px solid var(--fm-line);border-radius:var(--r-ctrl);background:var(--fm-primary-tint);font-size:13px;line-height:1.5">
+          <strong><i class="fa-solid fa-seedling"></i> Passer til det, du arbejder hen imod</strong>
+          <ul style="margin:6px 0 0;padding-left:18px">
+            {% for g in my_gaps %}<li>{{ g.skill }}: {% if g.current_level is not none %}niveau {{ g.current_level }} i dag, {% endif %}mål {{ g.target_level }} af 5</li>{% endfor %}
+          </ul>
+          {% if has_endpoint('talent.workspace') and session.get('company_id') %}<a href="{{ url_for('talent.workspace') }}" style="font-weight:600">Se Min udvikling</a>{% endif %}
         </div>
         {% endif %}
 

@@ -25,18 +25,10 @@ PURPOSES = ("reset", "invite")
 
 _TABLE_READY = False
 
-_DDL = """CREATE TABLE IF NOT EXISTS password_reset_tokens (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    token_hash CHAR(64) NOT NULL,
-    account_type VARCHAR(10) NOT NULL,
-    account_id INT NOT NULL,
-    purpose VARCHAR(10) NOT NULL DEFAULT 'reset',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    expires_at DATETIME NOT NULL,
-    used_at DATETIME NULL,
-    UNIQUE KEY uk_token_hash (token_hash),
-    INDEX idx_account (account_type, account_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
+def _ddl():
+    """Defined once, in schema_registry."""
+    import schema_registry
+    return schema_registry.ddl('password_reset_tokens')
 
 
 def hash_token(raw):
@@ -49,7 +41,7 @@ def ensure_table(conn):
         return
     cur = conn.cursor()
     try:
-        cur.execute(_DDL)
+        cur.execute(_ddl())
         conn.commit()
         _TABLE_READY = True
     finally:

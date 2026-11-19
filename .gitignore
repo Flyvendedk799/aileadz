@@ -18,9 +18,11 @@ docs/PLATFORM_ROADMAP.md
 # stray run log (contains old creds; untracked, pending history purge)
 run_history.txt
 
-# AI eval run artifacts (regenerated; baseline established in-environment)
+# AI eval run artifacts (regenerated). The reviewed per-provider baselines the nightly
+# gate uses are committed (docs/runbooks/AI_EVAL_NIGHTLY.md).
 ai_eval/last_run.json
 ai_eval/baseline.json
+!ai_eval/baselines/*.json
 
 # 17 MB Shopify export: lives on the data volume (CATALOG_SOURCE_FILE) and is refreshed by the shopify_sync job
 app1/shopify_products_all_pages.json

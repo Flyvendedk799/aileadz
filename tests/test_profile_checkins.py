@@ -353,3 +353,77 @@ class ChipEventTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NotificationOptInTests(unittest.TestCase):
+    """A weekly card only for members of a company whose HR switched it on."""
+
+    def setUp(self):
+        from tests.sqlite_platform import PlatformDB, make_app
+        self.db = PlatformDB()
+        self.db.raw.execute("ALTER TABLE company_settings ADD COLUMN ai_checkin_notifications_enabled INTEGER DEFAULT 0")
+        self.db.execute("INSERT INTO users (id,username) VALUES (1,'ada')")
+        self.db.execute("INSERT INTO company_users (company_id,user_id,username,role) VALUES (7,1,'ada','employee')")
+        self.db.execute("INSERT INTO company_settings (company_id) VALUES (7)")
+        self.app = make_app(self.db)
+
+    def cards(self):
+        return self.db.query("SELECT title,message,action_url FROM notifications WHERE user_id='ada'")
+
+    def test_off_by_default_then_one_card_a_week(self):
+        import datetime
+        import profile_checkins as pc
+        now = datetime.datetime(2026, 11, 18, 9, 0)
+        with self.app.app_context():
+            self.assertFalse(pc.notify_checkin("ada", "Hej", now=now))
+            self.assertEqual(self.cards(), [])
+            self.db.execute("UPDATE company_settings SET ai_checkin_notifications_enabled=1 WHERE company_id=7")
+            self.assertTrue(pc.notify_checkin("ada", "Dit mål har ligget stille.", now=now))
+            self.assertFalse(pc.notify_checkin("ada", "Igen samme uge.", now=now))
+        cards = self.cards()
+        self.assertEqual(len(cards), 1)
+        self.assertEqual(cards[0]["action_url"], "/chat?from=checkin")
+        self.assertIn("ligget stille", cards[0]["message"])
+
+    def test_a_person_outside_an_opted_in_company_gets_nothing(self):
+        import profile_checkins as pc
+        self.db.execute("INSERT INTO users (id,username) VALUES (2,'solo')")
+        with self.app.app_context():
+            self.assertFalse(pc.notify_checkin("solo", "Hej"))
+
+    def test_profile_gap_items_never_carry_a_nudge(self):
+        import profile_checkins as pc
+        found = pc.build_candidates(
+            goals=[], completed_courses=[], target_role="Leder", has_profile_depth=True,
+            completeness={"sections": [{"key": "skills", "label": "Kompetencer", "strength": 0.1}]})
+        gaps = [c for c in found if c["kind"] == pc.KIND_GAP]
+        self.assertTrue(gaps)
+        self.assertTrue(all("nudge" not in c for c in gaps))
+
+
+class FollowupSettingTests(unittest.TestCase):
+    """A person switches the assistant's follow-ups off and on in account settings."""
+
+    def test_the_switch_only_writes_when_the_wish_differs(self):
+        import pages
+        from flask import Flask
+        app = Flask(__name__)
+        calls = []
+        store = {"muted": False}
+        fake = mock.Mock()
+        fake.checkins_muted.side_effect = lambda u: store["muted"]
+
+        def set_muted(u, muted):
+            calls.append(muted)
+            store["muted"] = muted
+        fake.set_checkins_muted.side_effect = set_muted
+        with app.app_context(), mock.patch.dict("sys.modules", {"app1.user_profile_db": fake}), \
+                mock.patch("app1.user_profile_db", fake, create=True):
+            pages._save_followup_choice("ada", True)       # already on: nothing written
+            self.assertTrue(pages._followups_on("ada"))
+            pages._save_followup_choice("ada", False)      # switch off
+            self.assertFalse(pages._followups_on("ada"))
+            pages._save_followup_choice("ada", False)      # still off: nothing written
+            pages._save_followup_choice("ada", True)       # back on
+            self.assertTrue(pages._followups_on("ada"))
+        self.assertEqual(calls, [True, False])

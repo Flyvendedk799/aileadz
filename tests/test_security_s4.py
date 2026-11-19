@@ -574,6 +574,7 @@ class _GoalCur:
                     g.update(shared_with_employee=0, shared_by=None, share_note=None)
                     self.rowcount += 1
         elif "from employee_goals where employee_id = %s and company_id = %s and shared_with_employee = 1" in s:
+            # goal_service.shared_hr_goals, the one learner-facing reader
             self._res = [g for g in db.goals if g["employee_id"] == params[0] and g["company_id"] == params[1]
                          and g["shared_with_employee"]]
         elif s.startswith("select id, goal_title") and "from employee_goals where employee_id" in s:
@@ -604,7 +605,8 @@ class S44_GoalSharing(unittest.TestCase):
     def test_new_goals_are_private_by_default(self):
         self.gs.create_goal(self.db, company_id=7, employee_user_id=11, title="Bliv teamleder")
         self.assertEqual(self.db.goals[0]["shared_with_employee"], 0)
-        self.assertEqual(self.gs.list_shared_goals_for_learner(self.db, 11, 7), [])
+        import goal_service
+        self.assertEqual(goal_service.shared_hr_goals(self.db.cursor(), 7, 11), [])
         sections = self.gs.list_goals_for_hr(self.db, 7, 11)
         self.assertEqual(len(sections["hr_only"]), 1)
         self.assertEqual(sections["shared"], [])
@@ -613,7 +615,8 @@ class S44_GoalSharing(unittest.TestCase):
         self.gs.create_goal(self.db, company_id=7, employee_user_id=11, title="HR-notat: performance")
         self.gs.create_goal(self.db, company_id=7, employee_user_id=11, title="Lær Excel", shared=True,
                                 actor_user_id=13)
-        titles = [r["goal_title"] for r in self.gs.list_shared_goals_for_learner(self.db, 11, 7)]
+        import goal_service
+        titles = [r["title"] for r in goal_service.shared_hr_goals(self.db.cursor(), 7, 11)]
         self.assertEqual(titles, ["Lær Excel"])
         self.assertNotIn("HR-notat: performance", titles)
 
@@ -649,7 +652,10 @@ class S44_GoalSharing(unittest.TestCase):
     def test_every_learner_facing_goal_query_uses_the_shared_predicate(self):
         """Structural guard: any SELECT on employee_goals outside HR/analytics
         code must carry the sharing predicate."""
-        allowed = {"goal_sharing.py", "enterprise_analytics", "gdpr_service.py", "enterprise_tables.py"}
+        # goal_service.py owns goal visibility for both sides: its HR readers see every
+        # HR-written goal by design, and tests/test_goal_service.py pins that its
+        # learner reader returns shared goals only.
+        allowed = {"goal_sharing.py", "goal_service.py", "enterprise_analytics", "gdpr_service.py", "enterprise_tables.py"}
         offenders = []
         for root, dirs, files in os.walk(secapp._REPO_ROOT):
             dirs[:] = [d for d in dirs if d not in {".git", "node_modules", "__pycache__", ".claude", "tests", "sandbox"}]
@@ -691,13 +697,14 @@ class S44_GoalSharing(unittest.TestCase):
 
     def test_learner_api_returns_only_shared_goals(self):
         app = get_app()
-        rows = [{"id": 1, "goal_title": "Lær Excel", "goal_description": "", "target_date": None,
+        rows = [{"id": 1, "title": "Lær Excel", "description": "", "target_date": None,
                  "status": "active", "progress": 10, "share_note": "Godt"}]
         fake, p = patch_mysql(app)
-        with p, mock.patch("goal_sharing.list_shared_goals_for_learner", return_value=rows) as lst:
+        with p, mock.patch("goal_sharing.ensure_schema"), \
+                mock.patch("goal_service.shared_hr_goals", return_value=rows) as lst:
             r = client_as(app, "employee").get("/api/my/manager-goals")
         self.assertEqual(r.get_json()["goals"][0]["title"], "Lær Excel")
-        self.assertEqual(lst.call_args.args[1:], (11, 7))        # the caller's OWN user + company
+        self.assertEqual(lst.call_args.args[1:], (7, 11))        # the caller's OWN company + user
         self.assertEqual(client_as(app, "anon").get("/api/my/manager-goals").status_code, 401)
 
     # -- HR endpoints: permission boundary --------------------------------

@@ -302,26 +302,22 @@ def _load_dept_targets(username, current_levels, company_id=None):
 
 
 def _load_hr_goals(user_id, company_id):
-    rows = _fetch(
-        """
-        SELECT goal_title, goal_description, target_date, status, progress
-        FROM employee_goals
-        WHERE employee_id = %s AND company_id = %s
-          AND shared_with_employee = 1
-          AND status IN ('active', 'in_progress')
-          AND shared_with_employee = 1
-        ORDER BY (target_date IS NULL), target_date ASC
-        LIMIT %s
-        """,
-        (user_id, company_id, _GOAL_LIMIT),
-    )
+    """The open HR goals shared with this learner, read through goal_service
+    (which owns the sharing rule), earliest target date first."""
+    import goal_service
+    cur = None
+    try:
+        cur = _cursor()
+        goals = goal_service.shared_hr_goals(cur, company_id, user_id)
+    finally:
+        _close(cur)
     return [{
-        "title": r.get("goal_title") or "",
-        "description": r.get("goal_description") or "",
-        "target_date": r.get("target_date"),
-        "status": r.get("status"),
-        "progress": r.get("progress"),
-    } for r in rows]
+        "title": g["title"],
+        "description": g["description"],
+        "target_date": g["target_date"],
+        "status": g["status"],
+        "progress": g["progress"],
+    } for g in goals if g["status"] == "active"][:_GOAL_LIMIT]
 
 
 # ── Public builder ─────────────────────────────────────────────────────────

@@ -70,14 +70,8 @@ def _ensure_table(conn):
         return True
     try:
         cur = conn.cursor()
-        cur.execute(
-            """CREATE TABLE IF NOT EXISTS auth_login_attempts (
-                   key_hash VARCHAR(80) NOT NULL PRIMARY KEY,
-                   failed_count INT NOT NULL DEFAULT 0,
-                   first_failed_at BIGINT NOT NULL DEFAULT 0,
-                   locked_until BIGINT NOT NULL DEFAULT 0
-               ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
-        )
+        import schema_registry
+        cur.execute(schema_registry.ddl("auth_login_attempts"))  # defined once, in the registry
         conn.commit()
         cur.close()
         _TABLE_READY = True

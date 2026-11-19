@@ -23,7 +23,7 @@ worker service (`.env.example` lists every variable).
 | Monitor / drain tokens | `HEALTH_TOKEN`, `OUTBOX_DRAIN_TOKEN` | `health.py`, `enterprise_api` | Shared secrets: change on both sides. |
 | Sentry / Redis | `SENTRY_DSN`, `REDIS_URL` | `observability.py`, `perf_cache.py` | Credentials may be embedded in the URL. |
 | Dev SSH tunnel | `SSH_PASSWORD` / `SSH_PKEY` | `run.py` `main()` | Local development only. |
-| CI | repo secrets `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `EVAL_VENDOR_EMAIL`, `EVAL_VENDOR_PASSWORD` | `.github/workflows/ai-eval-nightly.yml` | GitHub -> Settings -> Secrets. |
+| Nightly eval | reads `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` from the running web service | `/usr/local/bin/aileadz-ai-eval.sh` (AI_EVAL_NIGHTLY.md) | Nothing extra: rotating the web service's key covers it. |
 
 ## Recommended order
 

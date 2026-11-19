@@ -807,6 +807,8 @@ EXTRA_SPECS = [
     dict(kind="anonymise", table="talent_opportunities", match=[("owner_user_id", "user_id")], set="owner_user_id=NULL, hiring_team_json='[]'"),
     dict(kind="delete", table="ai_actions", match=[("username", "username")]),
     dict(kind="anonymise", table="company_launch_checks", match=[("confirmed_by","user_id")], set="confirmed_by=NULL"),
+    # A company document is the company's; only who uploaded it is personal.
+    dict(kind="anonymise", table="company_documents", match=[("uploaded_by", "user_id")], set="uploaded_by=NULL"),
     dict(kind="delete", table="customer_requests", match=[("user_id","user_id")]),
     dict(kind="delete", table="sales_enquiries", match=[("email","email")]),
     dict(kind="delete", table="mail_outbox", match=[("to_email","email")]),
@@ -999,6 +1001,8 @@ COVERAGE = {
     "talent_opportunities": _cov("anonymise", "Internal opportunity; remove hiring owner"),
     "customer_accounts": _cov("retain", "Company contract and professional account-contact configuration"),
     "company_launch_checks": _cov("anonymise", "Company setup review audit; confirming actor id is removed"),
+    "company_documents": _cov("anonymise", "The company's own policy/handbook text; the uploader's id is removed"),
+    "company_document_chunks": _cov("retain", "Passages of the company's own documents; no person key. HR removes a document, with its passages, in settings"),
     "customer_requests": _cov("delete"),
     "sales_enquiries": _cov("delete"),
     "mail_outbox": _cov("delete"),

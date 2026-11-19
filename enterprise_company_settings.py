@@ -346,7 +346,7 @@ class EnterpriseSettingsManager:
                     self.log_settings_change(
                         company_id, field, 
                         str(current_settings[field]), str(value),
-                        f"Updated via settings panel"
+                        "Updated via settings panel"
                     )
                     
                     update_fields.append(f"{field} = %s")
@@ -741,17 +741,23 @@ def export_settings():
 WEBHOOK_EVENT_CHOICES = [
     ('order.created', 'Ordre oprettet'),
     ('order.needs_approval', 'Ordre afventer godkendelse'),
+    ('order.auto_approved', 'Ordre godkendt automatisk (regel)'),
     ('order.approved', 'Ordre godkendt'),
     ('order.rejected', 'Ordre afvist'),
     ('order.booked', 'Plads bekræftet af udbyder'),
     ('order.completed', 'Ordre gennemført'),
     ('order.cancelled', 'Ordre annulleret'),
     ('order.updated', 'Ordre opdateret (alle statusskift)'),
+    ('order.change_requested', 'Ændring af booking ønsket (afbestilling, ombooking, ny deltager)'),
+    ('order.change_resolved', 'Ændring af booking accepteret eller afvist'),
     ('order.billing_changed', 'Fakturering ændret'),
     ('budget.overrun', 'Afdelingsbudget overskredet'),
     ('employee.added', 'Medarbejder tilføjet'),
     ('employee.updated', 'Medarbejder opdateret'),
+    ('employee.placed', 'Medarbejder placeret i ny rolle eller projekt (intern mobilitet)'),
     ('course.completed', 'Kursus gennemført'),
+    ('scim.user.provisioned', 'Bruger oprettet via SCIM'),
+    ('scim.user.deprovisioned', 'Bruger fjernet via SCIM'),
     ('ping', 'Test / ping'),
 ]
 _VALID_WEBHOOK_EVENTS = {name for name, _ in WEBHOOK_EVENT_CHOICES}

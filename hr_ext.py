@@ -200,6 +200,7 @@ def engagement():
         'fm/engagement.html',
         company=_company(), non_starters=non_starters, inactive=inactive,
         deadline_reminders_enabled=_deadline_reminders_enabled(),
+        checkin_notifications_enabled=_checkin_notifications_enabled(),
     )
 
 
@@ -242,6 +243,58 @@ def set_deadline_reminders():
         return jsonify({'success': True, 'enabled': bool(enabled)})
     except Exception as e:
         logger.error("hr_ext: set_deadline_reminders failed: %s", e)
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'message': 'Kunne ikke gemme indstillingen'}), 500
+
+
+def _checkin_notifications_enabled():
+    """The company's opt-in for weekly follow-up notifications from the AI assistant (default off)."""
+    try:
+        cur = current_app.mysql.connection.cursor()
+        cur.execute("SELECT ai_checkin_notifications_enabled FROM company_settings WHERE company_id = %s",
+                    (session.get('company_id'),))
+        row = cur.fetchone()
+        cur.close()
+        if not row:
+            return False
+        val = row.get('ai_checkin_notifications_enabled') if isinstance(row, dict) else row[0]
+        return int(val or 0) == 1
+    except Exception as e:
+        logger.warning("hr_ext: check-in opt-in read failed: %s", e)
+        return False
+
+
+@hr_ext_bp.route('/engagement/checkin-notifications', methods=['POST'])
+def set_checkin_notifications():
+    """HR opt-in: may the AI assistant send each employee a weekly follow-up
+    notification (a recent course, a goal that has gone quiet)? Off by default;
+    every employee can still switch follow-ups off for themselves."""
+    if not _hr_ok('company.settings'):
+        return jsonify({'success': False, 'message': 'Ikke autoriseret'}), 401
+    data = request.get_json(silent=True) or request.form
+    enabled = 1 if str(data.get('enabled')).lower() in ('1', 'true', 'on', 'yes') else 0
+    company_id = session.get('company_id')
+    try:
+        cur = current_app.mysql.connection.cursor()
+        cur.execute(
+            "INSERT INTO company_settings (company_id, ai_checkin_notifications_enabled) VALUES (%s, %s) "
+            "ON DUPLICATE KEY UPDATE ai_checkin_notifications_enabled = VALUES(ai_checkin_notifications_enabled)",
+            (company_id, enabled))
+        try:
+            from order_service import _write_audit
+            _write_audit(cur, company_id=company_id, user_id=session.get('user_id'),
+                         action="engagement.checkin_notifications", resource_id=str(enabled),
+                         description=f"AI follow-up notifications {'enabled' if enabled else 'disabled'}")
+        except Exception:
+            pass
+        current_app.mysql.connection.commit()
+        cur.close()
+        return jsonify({'success': True, 'enabled': bool(enabled)})
+    except Exception as e:
+        logger.error("hr_ext: set_checkin_notifications failed: %s", e)
         try:
             current_app.mysql.connection.rollback()
         except Exception:

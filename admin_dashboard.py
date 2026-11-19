@@ -156,7 +156,8 @@ def _admin_home_data():
                 FROM company_users GROUP BY company_id
             ) emp ON emp.company_id = c.id
             LEFT JOIN (
-                SELECT company_id, COUNT(*) AS order_count, COALESCE(SUM(price), 0) AS revenue
+                SELECT company_id, COUNT(*) AS order_count,
+                       COALESCE(SUM(CASE WHEN status NOT IN ('cancelled', 'rejected') THEN price END), 0) AS revenue
                 FROM course_orders GROUP BY company_id
             ) ord ON ord.company_id = c.id
             ORDER BY c.created_at DESC LIMIT 20
@@ -773,8 +774,8 @@ def _email_vendor_submission_result_for_job(job_id, approved, note=None):
 def _send_submission_mail(row, approved, note):
     if not row or not row.get('contact_email'):
         return
-    from email_service import send_branded_email
-    send_branded_email(
+    from mail_delivery import enqueue
+    enqueue(
         row['contact_email'],
         "Dit katalog er godkendt og importeret" if approved else "Dit katalog blev ikke godkendt",
         'vendor_submission_result', {},
@@ -1406,9 +1407,23 @@ def admin_system_health():
     except Exception as e:
         logging.warning("system-health: job status unavailable: %s", e)
 
+    backup = {}
+    try:
+        import backup_status
+        backup = backup_status.status()
+    except Exception as e:
+        logging.warning("system-health: backup status unavailable: %s", e)
+
+    ai_eval = []
+    try:
+        import eval_status
+        ai_eval = eval_status.status()
+    except Exception as e:
+        logging.warning("system-health: AI eval status unavailable: %s", e)
+
     return render_template('fm/admin_system_health.html',
                            features=features, outbox=outbox, snapshot=snapshot,
-                           mail=mail, jobs=jobs)
+                           mail=mail, jobs=jobs, backup=backup, ai_eval=ai_eval)
 
 
 # ---------------------------------------------------------------------------

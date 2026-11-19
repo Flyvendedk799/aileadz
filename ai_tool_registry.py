@@ -193,6 +193,22 @@ _EMPLOYEE_META = {
         "update_learning_goal", auth_required=True, side_effect=True, parallel_safe=False,
         toolset_tags=("profile", "goals"),
     ),
+    # Own goal visibility: private until the owner shares it with their company's HR.
+    "share_learning_goal": ToolMeta(
+        "share_learning_goal", auth_required=True, company_required=True,
+        side_effect=True, parallel_safe=False, confirm_required=True,
+        toolset_tags=("profile", "goals", "mutation"),
+    ),
+    # Read-only: the company's own uploaded documents (company_documents.py), company-scoped.
+    "search_company_documents": ToolMeta(
+        "search_company_documents", auth_required=True, company_required=True,
+        toolset_tags=("company", "documents"), cache_ttl=60,
+    ),
+    # Read-only: own role readiness, development goals, internal opportunities and applications.
+    "get_my_development": ToolMeta(
+        "get_my_development", auth_required=True, company_required=True,
+        toolset_tags=("profile", "goals", "talent"), cache_ttl=20,
+    ),
     # --- Specialised employee tools (keyword-gated, NOT in core seed) ---
     "get_my_course_status": ToolMeta(
         "get_my_course_status", auth_required=True, toolset_tags=("course", "status"), cache_ttl=30,
@@ -325,6 +341,27 @@ _HR_META = {
     ),
     # AI empowerment pass: read-only cross-surface navigation for the HR panel.
     # No company scope required — it navigates, it never reads tenant data.
+    "hr_search_platform_help": ToolMeta("hr_search_platform_help", "hr", company_required=False, cache_ttl=600, toolset_tags=("help",)),
+    "hr_talent_overview": ToolMeta("hr_talent_overview", "hr", company_required=True, cache_ttl=30, toolset_tags=("talent",)),
+    # T3-2: HR prepares talent work behind a confirm card; both save drafts only.
+    "hr_draft_role_framework": ToolMeta(
+        "hr_draft_role_framework", "hr",
+        company_required=True, side_effect=True, parallel_safe=False,
+        confirm_required=True, manager_only=True, audit_action="hr_draft_role_framework",
+        toolset_tags=("talent", "mutation"),
+    ),
+    "hr_run_capability_scenario": ToolMeta(
+        "hr_run_capability_scenario", "hr",
+        company_required=True, side_effect=True, parallel_safe=False,
+        confirm_required=True, manager_only=True, audit_action="hr_run_capability_scenario",
+        toolset_tags=("talent", "mutation"),
+    ),
+    "hr_onboarding_readiness": ToolMeta("hr_onboarding_readiness", "hr", company_required=True, cache_ttl=60, toolset_tags=("onboarding",)),
+    "hr_mail_delivery_status": ToolMeta("hr_mail_delivery_status", "hr", company_required=True, cache_ttl=30, toolset_tags=("mail",)),
+    "hr_search_company_documents": ToolMeta(
+        "hr_search_company_documents", "hr", company_required=True, cache_ttl=60,
+        toolset_tags=("company", "documents"),
+    ),
     "hr_open_in_app": ToolMeta(
         "hr_open_in_app", "hr", company_required=False,
         toolset_tags=("navigation", "ui"), cache_ttl=0,
@@ -339,6 +376,7 @@ _HR_META = {
 
 _VENDOR_META = {
     'vendor_booking_work': ToolMeta('vendor_booking_work', 'vendor', auth_required=True, toolset_tags=('vendor','order')),
+    'vendor_search_help': ToolMeta('vendor_search_help', 'vendor', toolset_tags=('vendor', 'help'), cache_ttl=600),
     'vendor_propose_catalog_correction': ToolMeta('vendor_propose_catalog_correction', 'vendor', auth_required=True,
                                                 side_effect=True, parallel_safe=False, confirm_required=True, toolset_tags=('vendor','catalog')),
     "vendor_performance_summary": ToolMeta(
@@ -410,6 +448,9 @@ _TOOL_LABELS = {
     "update_learning_path": "Opdater læringssti",
     "set_learning_goal": "Opret mål",
     "get_learning_goals": "Hent mål",
+    "share_learning_goal": "Del mål med HR",
+    "get_my_development": "Min udvikling",
+    "search_company_documents": "Virksomhedens dokumenter",
     "update_learning_goal": "Opdater mål",
     "get_my_course_status": "Kursusstatus",
     "get_negotiated_discount": "Aftalepris",
@@ -461,6 +502,13 @@ _TOOL_LABELS = {
     "send_deadline_reminders": "Send påmindelser",
     "create_order_for_employee": "Bestil for medarbejder",
     "hr_open_in_app": "Åbn HR-side",
+    "hr_search_company_documents": "Virksomhedens dokumenter",
+    "hr_onboarding_readiness": "Kom i gang",
+    "hr_talent_overview": "Talent og roller",
+    "hr_draft_role_framework": "Rolleramme som kladde",
+    "hr_run_capability_scenario": "Kapacitetsscenarie",
+    "hr_search_platform_help": "Hjælpeartikler",
+    "hr_mail_delivery_status": "Mail og leveringer",
     # Vendor tools
     "vendor_performance_summary": "Salgsperformance",
     "get_demand_by_category": "Markedsefterspørgsel",
@@ -1138,6 +1186,8 @@ def get_employee_tool_selection(
             "forget_about_user", "show_mindmap_preview",
             "resolve_checkin", "record_learning_outcome",
         })
+        if company_id:
+            names.add("get_my_development")
 
     # Pure small-talk fast-path: only for genuine greetings/thanks with NO substantive
     # signal. Anything mentioning the catalog OR the user's own background falls through
@@ -1255,6 +1305,28 @@ def get_employee_tool_selection(
                 "vil gerne lære", "vil gerne laere", "vil gerne blive", "karriere", "udvikle mig",
                 "lære at", "laere at", "sæt et mål", "saet et maal", "mit mål", "mine mål")):
             names.update({"set_learning_goal", "get_learning_goals", "update_learning_goal", "recommend_for_profile", "catalog_search", "show_skill_gaps"})
+        # Own development in the company: role readiness, development goals, internal
+        # opportunities, applications. Read-only, so it may ride along on career talk.
+        if company_id and _has_any(query, (
+                "min rolle", "min nuværende rolle", "for at blive", "næste rolle", "naeste rolle", "næste skridt",
+                "naeste skridt", "min udvikling", "udvikle mig", "karriere", "interne muligheder", "intern mulighed",
+                "internt job", "interne stillinger", "min ansøgning", "min ansoegning", "ansøgning", "ansoegning",
+                "kompetencekrav", "klar til", "rollebeskrivelse")):
+            names.add("get_my_development")
+        # "What applies here?" -> the company's own uploaded documents (read-only, company-scoped).
+        if company_id and _has_any(query, ("personalehåndbog", "personalehaandbog", "håndbog", "haandbog", "politik", "retningslinje",
+                "retningslinjer", "vores regler", "reglerne her", "hvad gælder", "hvad gaelder", "hos os", "her i virksomheden",
+                "i virksomheden", "procedure", "barsel", "ferie", "sygdom", "hjemmearbejde", "overarbejde", "opsigelse",
+                "uddannelsespolitik", "kursuspolitik", "har jeg ret til", "må jeg", "maa jeg", "hvem skal jeg spørge",
+                "står der i", "staar der i", "dokument")):
+            names.add("search_company_documents")
+        # Goal visibility is the owner's call: the share tool only shows a confirm card.
+        if company_id and _has_any(query, (
+                "del mit mål", "del mit maal", "del målet", "del maalet", "dele mit mål", "dele målet", "del med hr",
+                "dele med hr", "må hr se", "maa hr se", "kan hr se", "kan min leder se", "min leder må gerne se",
+                "gør målet privat", "goer maalet privat", "gør mit mål privat", "privat igen", "hvem kan se mine mål",
+                "hvem kan se mit mål", "stop deling")):
+            names.update({"get_learning_goals", "share_learning_goal"})
         # Dedicated gap gate: "hvad mangler jeg / hvilke kompetencer skal jeg
         # udvikle / what should I learn" → the gap card + a gap-closing rec.
         if _has_any(query, (
@@ -1377,7 +1449,7 @@ def get_employee_tool_selection(
                 "create_course_order", "update_user_profile", "mark_course_complete", "remember_about_user",
                 # AI Tooler 2 (Phase 7): self-scoped, confirm-gated employee writes — reach
                 # the menu on their keyword so the model can surface a confirm card.
-                "manage_my_order", "request_manager_approval",
+                "manage_my_order", "request_manager_approval", "share_learning_goal",
                 # Learning-path lifecycle: user-scoped writes that modify the user's
                 # own learning plan. Needed in profiler mode on every turn.
                 "save_learning_path", "update_learning_path",
@@ -1421,6 +1493,9 @@ _HR_PAGE_TOOLS = {
     "dashboard": ("get_pending_actions", "hr_explain_insights"),
     "team": ("get_team_training_status", "get_team_non_starters"),
     "employees": ("get_employee_overview", "hr_inactive_employees"),
+    "talent": ("hr_talent_overview", "get_employee_overview", "get_company_skill_gaps"),
+    "onboarding": ("hr_onboarding_readiness",),
+    "mail": ("hr_mail_delivery_status",),
     "departments": ("get_team_training_status", "get_budget_overview"),
     "approvals": ("get_pending_actions", "get_training_report"),
     "approval_policies": ("get_pending_actions",),
@@ -1480,6 +1555,44 @@ def get_hr_tool_selection(
         forced_candidates.append("get_company_skill_gaps")
     if _has_any(query, ("træning", "training", "status", "gennemført", "igang", "medarbejder")):
         names.update({"get_team_training_status", "get_employee_overview"})
+    if _has_any(query, ("personalehåndbog", "personalehaandbog", "håndbog", "haandbog", "politik", "retningslinje",
+            "retningslinjer", "vores regler", "reglerne her", "hvad gælder", "hvad gaelder", "hos os", "her i virksomheden",
+            "i virksomheden", "procedure", "barsel", "ferie", "sygdom", "hjemmearbejde", "overarbejde", "opsigelse",
+            "uddannelsespolitik", "kursuspolitik", "har jeg ret til", "må jeg", "maa jeg", "hvem skal jeg spørge",
+            "står der i", "staar der i", "dokument")):
+        names.add("hr_search_company_documents")
+    try:
+        from app1.help_kb import help_kb_enabled
+        if help_kb_enabled() and _has_any(query, ("hvordan ", "hvor finder", "hvor kan jeg", "hvor ser jeg", "hvad betyder",
+                                                  "how do i", "hvordan gør", "hvordan goer")):
+            names.add("hr_search_platform_help")
+    except Exception:
+        pass
+    if _has_any(query, ("kom i gang", "komme i gang", "er vi klar", "hvad mangler vi", "opsætning", "opsaetning",
+                        "onboarding", "sat op", "næste skridt for os", "pilot")):
+        names.add("hr_onboarding_readiness")
+    if _has_any(query, ("rolleramme", "rollekrav", "rolleprofil", "intern stilling", "interne stilling", "interne mulighed",
+                        "ansøgning", "ansoegning", "ansættelsesteam", "kapacitetsscenarie", "scenarie", "talent")):
+        names.add("hr_talent_overview")
+    # T3-2: the two talent writes reach the menu when HR wants to prepare something,
+    # never on a question about what exists (they are confirm-gated drafts anyway).
+    if _has_any(query, ("opret en rolle", "opret rolle", "lav en rolle", "beskriv rollen", "beskriv en rolle",
+                        "rolleramme for", "rolleramme til", "ny rolleramme", "lav en rolleramme", "opret rolleramme",
+                        "udkast til en rolle", "kladde til en rolle", "rollekrav til", "kompetencekrav til rollen",
+                        "ny version af rollen", "opdater rollen")):
+        names.update({"hr_draft_role_framework", "hr_talent_overview"})
+    if _has_any(query, ("kør et scenarie", "koer et scenarie", "kør scenarie", "kapacitetsscenarie for", "kapacitetsscenarie til", "nyt scenarie",
+                        "lav et scenarie", "opret scenarie", "regn på om", "har vi folkene", "har vi nok folk",
+                        "har vi nok medarbejdere", "hvor mange mangler vi", "kan vi bemande", "kapacitet til")):
+        names.update({"hr_run_capability_scenario", "hr_talent_overview"})
+    if _has_any(query, ("mail", "e-mail", "email", "fik de", "fået besked", "faaet besked", "ikke modtaget",
+                        "leveringer", "levering", "ikke sendt", "fejler")):
+        names.add("hr_mail_delivery_status")
+    # One person's goals and role readiness live on the employee lookup.
+    if _has_any(query, ("udviklingsmål", "udviklingsmaal", "delt mål", "delte mål", "hans mål", "hendes mål",
+                        "deres mål", "mål for ", "udviklingssamtale", "mus-samtale", "mus samtale",
+                        "klar til rollen", "dækker rollen", "rollekrav", "kompetencekrav")):
+        names.add("get_employee_overview")
     if _has_any(query, ("rapport", "roi", "spend", "udgifter", "effekt")):
         names.add("get_training_report")
     if _has_any(query, ("kursus", "kurser", "anbefal", "plan", "uddannelse")):

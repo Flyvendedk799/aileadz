@@ -13,7 +13,7 @@ For the AI internals see [ai-framework.md](ai-framework.md). For standing constr
 - **Boot guards:** `create_app()` refuses to start without `SECRET_KEY` unless `SANDBOX=1`. Optional subsystems register inside `try/except` and log a warning instead of crashing boot (`feature_status.py` reports what degraded).
 - **Auth:** `auth_decorators.py` is the single place for guards and the role matrix (`login_required`, `require_role`, `require_company`, `require_company_role`, `require_capability`, `requires_feature`). Roles: `admin` (platform), `company_admin`, `hr_manager`, `department_head`, learner. Templates and nav ask `capabilities.can("company.approvals")`, never compare role names. Vendors have an isolated session (`vendor_auth.py`) and never get `session['user']`.
 - **Background work:** `scheduler.py` holds the `JOBS` registry and the `scheduled_job_runs` table. Driven by `drain_worker.py` (`--loop` worker or single pass) and, best-effort, an `after_request` hook (`SCHEDULER_OPPORTUNISTIC=0` turns it off). See [runbooks/JOB_RUNNER.md](runbooks/JOB_RUNNER.md).
-- **Integration events:** `event_bus.emit_event` writes to the `event_outbox` table; `drain_outbox` delivers to company webhooks (HMAC-signed by `webhook_signing.py`, SSRF-guarded by `safe_http.py`).
+- **Domain events:** `event_bus.emit_event` writes to the `event_outbox` table and then runs the in-process subscribers registered in `domain_reactions.register()` (post-commit, each failure-isolated; `event_bus.publish_internal` runs subscribers without an outbox row). `drain_outbox` delivers outbox rows to company webhooks (HMAC-signed by `webhook_signing.py`, SSRF-guarded by `safe_http.py`). A cross-module reaction belongs in `domain_reactions.py`, not inside the emitting service.
 
 ## The core domain: orders
 
@@ -30,7 +30,7 @@ For the AI internals see [ai-framework.md](ai-framework.md). For standing constr
 | `error_pages.py`, `health.py` (`/healthz`, `/readyz`), `observability.py`, `feature_status.py` | error pages, probes, request ids / structured logs, degraded-subsystem status |
 | `perf_cache.py`, `response_compression.py`, `asset_version.py`, `performance_indexes.py` | TTL cache, gzip, content-hash `?v=` for static files, idempotent DB indexes |
 | `notification_service.py`, `email_service.py`, `mail_delivery.py`, `delivery_routes.py` | notifications, SMTP transport and durable business-mail delivery/recovery |
-| `scheduler.py`, `drain_worker.py`, `event_bus.py` | job registry + worker, webhook outbox |
+| `scheduler.py`, `drain_worker.py`, `event_bus.py`, `domain_reactions.py` | job registry + worker, webhook outbox and in-process event subscribers |
 
 ### Learner experience
 | Module | Role |
@@ -40,7 +40,8 @@ For the AI internals see [ai-framework.md](ai-framework.md). For standing constr
 | `public_dashboard.py` | the logged-out `/` page: popular courses, categories and upcoming sessions from `catalog_service` at list prices, cached 5 min; no personal or company data |
 | `catalog_service.py`, `catalog_routes.py`, `catalog_admin_routes.py`, `catalog_freshness.py`, `shopify_sync.py` | the ONE course catalog (source file `CATALOG_SOURCE_FILE`, vendor submissions, Shopify sync) |
 | `enrollment_service.py`, `order_fulfillment.py`, `fulfillment_routes.py`, `learning_routes.py` | canonical quotes, confirmed booking/change outcomes, attendance evidence and internal-course enrolment; `fulfillment_routes.order_sections()` + `templates/fm/order_sections/` are the one order console embedded in `/min-ordre/<id>`, `/hr/order/<id>/details` and `/vendor/orders/<id>/booking` (`/ordre/<id>/booking` only redirects) |
-| `learner_orders.py`, `learner_context.py`, `completion_service.py`, `competency.py`, `skill_history.py`, `learning_path_service.py`, `goal_sharing.py`, `goal_sharing_ui.py` | learner order detail, learner view of own HR data, completion moment, skills |
+| `learning_path_service.py` (`paths_for_learner`), `learning_routes.py` | a learner's paths in one list, assigned by HR and personal (`/min-laering/forloeb`), and each assigned path's page |
+| `learner_orders.py`, `learner_context.py`, `completion_service.py`, `competency.py`, `skill_history.py`, `learning_path_service.py`, `goal_service.py`, `goal_sharing.py`, `goal_sharing_ui.py` | learner order detail, learner view of own HR data, completion moment, skills |
 | `cv_service.py` | the one CV: assembled from the whole platform (profile, verified courses, HR-rated skills, certs, work in progress, role fit), quality analysis, exports; serves the CV studio `/profil/cv`, `/api/cv/*` and `show_cv_summary` |
 | `cv_ingest.py`, `cv_parse_store.py` | CV / job-ad ingestion and the section coach behind the CV studio's import |
 | `profile_checkins.py` | weekly heartbeat: queues reasoned follow-ups (recent course, stale goal, unknown direction) the assistant may raise next time; `resolve_checkin` / `record_learning_outcome` tools |
@@ -57,6 +58,7 @@ recruitment and capability scenarios. Contracts and module rollout: [TALENT.md](
 | `hr_dashboard/` (largest file), `hr_ext.py`, `hr_course_assign.py`, `compliance_*.py`, `deadline_service.py`, `cert_expiry_service.py`, `digest_service.py`, `department_service.py`, `team_order_policy.py`, `bulk_invite.py` | HR workspace, assignments, compliance, reminders, weekly digest |
 | `customer_success.py`, `customer_routes.py`, `launch_followup.py` | evidence-based onboarding, customer/account handover and stalled-work follow-up |
 | `companies/`, `settings_hub.py`, `enterprise_company_settings.py`, `branding_service.py`, `seat_governance.py` | company admin, settings hub (`/virksomhed/indstillinger`), white-label, seats |
+| `company_documents.py` | the company's own policies and handbooks for the assistants: upload, passages, company-scoped lexical search (settings tab "Dokumenter til AI") |
 | `enterprise_api/`, `enterprise_sso/`, `scim_api.py`, `scim_groups.py`, `api_keys_ui.py` | public API v1 + OpenAPI, OIDC SSO, SCIM 2.0, API keys |
 | `enterprise_analytics/`, `multitenant_reports.py`, `report_query.py`, `report_exports.py`, `scheduled_reports.py`, `reports.py`, `admin_reports.py`, `benchmarking.py`, `insights_engine.py`, `kanon.py` | analytics and reporting; `kanon.py` enforces k-anonymity floors; `enterprise_analytics` is the ML "Avanceret" view linked from Læringsanalyse (`company.analytics_advanced`, env `ADVANCED_ANALYTICS_ENABLED`, aggregates only) |
 | `order_service.py`, `order_lifecycle.py`, `billing_service.py`, `credit_service.py`, `credit_routes.py` | orders, billing view, AI-usage credits |
@@ -78,25 +80,26 @@ recruitment and capability scenarios. Contracts and module rollout: [TALENT.md](
 
 | File | Lines |
 |---|---|
-| `app1/tools.py` | ~6.5k |
-| `hr_dashboard/__init__.py` | ~5.3k |
+| `app1/tools.py` | ~7.6k |
+| `hr_dashboard/__init__.py` | ~5.7k |
 | `hr_tools.py` | ~4.3k |
-| `app1/agent.py` | ~3.5k |
+| `app1/agent.py` | ~4.1k |
 | `enterprise_api/__init__.py` | ~3k |
-| `ai_runtime.py` | ~3k |
-| `app1/__init__.py` | ~2.4k |
+| `ai_runtime.py` | ~3.2k |
+| `app1/__init__.py` | ~2.6k |
 
 Find a symbol with Grep, then read only that range. Module docstrings at the top of every service module state its contract.
 
 ## Static assets and templates
 
 - `templates/fm/` — all current pages (extend `templates/fm_base.html`); `app1/templates/` — legacy chat shell, widget, admin log; `templates/*.html` — a few top-level pages.
-- Navigation: the sidebar in `fm_base.html` plus one sub-nav per section — `fm/_hr_subnav.html`, `fm/_admin_subnav.html`, `fm/_vendor_nav.html` (vendor portal), `fm/_settings_tabs.html` (company settings hub). The HR sub-nav has two rows: six groups (`futurematch_ui.HR_GROUPS`: Overblik, Organisation, Bestillinger, Læring, Økonomi, Indsigt; one `<select>` on phones) and the tabs of the active group only (`HR_TAB_GROUP`). Each sidebar entry under "Virksomhed" is one group with the group's label and icon, plus "Kom i gang" and "Mail og leveringer", which own an entry; the "Admin" entries carry the same label and icon as their sub-nav tab. An entry stays lit on every tab of its section. The current location comes from `futurematch_ui.nav_state()` (request endpoint → sidebar section and sub-nav tab; an explicit `active_hr_page`/`active_admin_page` wins, `page_id` is the fallback). Links are gated with `can(...)` on the capability the route's guard checks. `tests/test_site_cohesion.py` pins all of this, plus "no full page without a template link". Shared page helpers (`crumbs`, `related`, `empty` with a next-step action) live in `fm/_macros.html`.
+- Navigation: the sidebar in `fm_base.html` plus one sub-nav per section — `fm/_hr_subnav.html`, `fm/_admin_subnav.html`, `fm/_vendor_nav.html` (vendor portal; every signed-in vendor page extends `fm/vendor_base.html`, which loads `vendor-portal.css` and never the company shell), `fm/_settings_tabs.html` (company settings hub). The HR sub-nav has two rows: six groups (`futurematch_ui.HR_GROUPS`: Overblik, Organisation, Bestillinger, Læring, Økonomi, Indsigt; one `<select>` on phones) and the tabs of the active group only (`HR_TAB_GROUP`). Managers and platform admins have "Forside" (`/dashboard`, the workspace overview they land on after login) above the sections; the logo leads to `/dashboard`, which sends learners on to "Min læring". Each sidebar entry under "Virksomhed" is one group with the group's label and icon, plus "Kom i gang" and "Mail og leveringer", which own an entry; the "Admin" entries carry the same label and icon as their sub-nav tab. An entry stays lit on every tab of its section. The current location comes from `futurematch_ui.nav_state()` (request endpoint → sidebar section and sub-nav tab; an explicit `active_hr_page`/`active_admin_page` wins, `page_id` is the fallback). Links are gated with `can(...)` on the capability the route's guard checks. `tests/test_site_cohesion.py` pins all of this, plus "no full page without a template link". Shared page helpers (`crumbs`, `related`, `empty` with a next-step action) live in `fm/_macros.html`. Search: the top-bar button and Ctrl/⌘+K open the palette in `shell.js`; `search_api.py` (`/api/search`) returns courses, the person's own orders and goals, and by role employees, companies and users. The shell starts with a skip link to `#fm-main`.
+- `static/futurematch/vendor/` — Chart.js, marked and QRCode.js, served by the app (versions, licences and hashes in its README). Only the mind map still uses CDNs (React, three.js, Babel), each pinned to an exact version with Subresource Integrity; `tests/test_frontend_supply_chain.py` fails on an external script without both.
 - `static/futurematch/assets/` — `fm.css`, `fm-pages.css`, `chat.css`, `shell.js`, `chat.js`, `ai-stream.js`, `ai-sidebar.js`, `fm-charts.js`, ... Reference with `?v={{ asset_version('futurematch/assets/x.js') }}`.
-- Charts: every chart goes through `window.FMChart` (`fm-charts.js`), loaded by including `templates/fm/_charts.html` in `extra_scripts` before the page script. The loader brings `fm-charts.css` (validated categorical palette `--fm-chart-1..6`, light and dark), Chart.js pinned to 4.4.0, and the helpers (`line`, `bar`, `stackedBar`, `hbarRanked`, `doughnut`, `radar`, `sparkline`). The helpers own Danish number/date formatting, live re-theming on dark-mode toggle, `role="img"` summaries plus a hidden data table, and the empty state. Options are documented in the header of `fm-charts.js`. Templates never call `new Chart(` directly (`tests/test_charts_layer.py`).
+- Charts: every chart goes through `window.FMChart` (`fm-charts.js`), loaded by including `templates/fm/_charts.html` in `extra_scripts` before the page script. The loader brings `fm-charts.css` (validated categorical palette `--fm-chart-1..6`, light and dark), Chart.js 4.4.0 served from `static/futurematch/vendor/`, and the helpers (`line`, `bar`, `stackedBar`, `hbarRanked`, `doughnut`, `radar`, `sparkline`). The helpers own Danish number/date formatting, live re-theming on dark-mode toggle, `role="img"` summaries plus a hidden data table, and the empty state. Options are documented in the header of `fm-charts.js`. Templates never call `new Chart(` directly (`tests/test_charts_layer.py`).
 
 ## Tooling
 
-- Lint: `ruff check .` (gate in CI: syntax, undefined names, redefinitions, unused imports/variables; see `ruff.toml`).
-- CI: `.github/workflows/ci.yml` (gitleaks, ruff, boot smoke + pytest against MySQL 8), `security.yml`, `ai-eval-nightly.yml`.
+- Lint: `ruff check .` (gate in CI: syntax, all of pyflakes, pylint's error class and a set of bugbear checks; see `ruff.toml`).
+- CI: `.survhub/ci.yml` runs on ServerHoster for pushes to `main` and pull requests (gitleaks on new commits, ruff, boot smoke, pytest against MySQL 8, the Node transport tests). One GitHub Actions workflow remains: `.github/workflows/security.yml` (weekly full-history gitleaks, pip-audit). The live AI eval runs nightly on the server, gated against `ai_eval/baselines/` (runbooks/AI_EVAL_NIGHTLY.md).
 - Local MySQL sandbox: [../sandbox/README.md](../sandbox/README.md).

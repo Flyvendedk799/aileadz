@@ -84,6 +84,10 @@ links open the existing participant/cost/budget review and do not purchase anyth
 Publishing a scenario explicitly updates company/department proficiency targets. Required
 headcount remains a planning goal, not a claim about current staffing.
 
+The HR assistant can draft a role framework and run a scenario behind a confirm card
+(`hr_draft_role_framework`, `hr_run_capability_scenario` in `hr_tools.py`). Both save drafts
+through this service and use the page's coverage (`scenario_coverage`); neither publishes.
+
 ## Rollout and data lifecycle
 
 The single schema registry owns additive talent tables; normal enterprise schema sync

@@ -71,6 +71,7 @@ HVAD DU KAN:
 - Lave træningsplaner, der binder kompetencegab, budget og kursuskatalog sammen
 - Vise chatbot-brugsstatistik og identificere inaktive medarbejdere og risikoområder
 - Generere træningsrapporter
+- Forberede talentarbejde: skitsere en rolleramme ud fra det, rollen skal kunne, eller regne på, om virksomheden har folkene til et mål inden en dato. Begge dele gemmes som kladde, som HR selv offentliggør
 - Åbne den rigtige HR-side (hr_open_in_app) i stedet for kun at fortælle, hvor den ligger
 
 SAMTALEN:

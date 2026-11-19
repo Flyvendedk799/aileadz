@@ -420,12 +420,24 @@ def coverage(states, reqs, k):
     return result
 
 
+def scenario_coverage(cur, company_id, people, department, reqs, k):
+    """Coverage of a scenario's requirements over the active people in its scope
+    (all of ``people`` when ``department`` is empty). ``None`` above the bounded pilot
+    workload: a partial cohort is never presented as the whole workforce."""
+    in_scope = [p for p in people if not department or p.get('department') == department]
+    if len(in_scope) > 500:
+        return None
+    return coverage(cohort_states(cur, company_id, in_scope), reqs, k)
+
+
 def save_scenario(cur, company_id, data):
     reqs = requirements(data['requirements'])
     if not data['title'].strip() or date(data['target_date']) < dt.date.today():
         raise ValueError('Angiv titel og en fremtidig måldato.')
+    sid = uid()
     cur.execute('INSERT INTO talent_scenarios (id,company_id,title,department,target_date,requirements_json,actions_json) VALUES (%s,%s,%s,%s,%s,%s,%s)',
-                (uid(), company_id, data['title'][:255], data.get('department','')[:100], date(data['target_date']), dump(reqs), dump(data.get('actions', []))))
+                (sid, company_id, data['title'][:255], data.get('department','')[:100], date(data['target_date']), dump(reqs), dump(data.get('actions', []))))
+    return sid
 
 
 def publish_scenario(cur, company_id, scenario_id):

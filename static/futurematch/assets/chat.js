@@ -867,6 +867,8 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
     send_company_email: "Send virksomhedsmail",
     send_deadline_reminders: "Send påmindelser",
     create_order_for_employee: "Opret medarbejderordre",
+    hr_draft_role_framework: "Rolleramme som kladde",
+    hr_run_capability_scenario: "Kapacitetsscenarie",
     save_course_for_later: "Gem til senere",
     set_course_reminder: "Sæt påmindelse",
     manage_my_order: "Administrer ordre",

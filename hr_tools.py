@@ -1000,6 +1000,67 @@ HR_TOOLS.append({
     },
 })
 
+_TALENT_REQUIREMENTS_SCHEMA = {
+    "type": "array",
+    "description": "Kompetencekravene, højst én gang pr. kompetence.",
+    "items": {
+        "type": "object",
+        "properties": {
+            "skill": {"type": "string", "description": "Kompetencens navn, fx 'Python' eller 'Ledelse'."},
+            "target_level": {"type": "integer", "description": "Forventet niveau 1-5."},
+            "required_people": {"type": "integer", "description": "Hvor mange der skal have niveauet (standard 1)."},
+        },
+        "required": ["skill", "target_level"],
+    },
+}
+
+HR_TOOLS.append({
+    "type": "function",
+    "function": {
+        "name": "hr_draft_role_framework",
+        "description": (
+            "Gem et udkast til en rolleramme: en rolletitel og de kompetencer med niveau 1-5, rollen kræver. "
+            "Brug det, når HR vil have en rolle beskrevet eller en eksisterende rolle opdateret (based_on giver en "
+            "ny version af den rolle). Udkastet gemmes som kladde og bliver ikke offentliggjort; HR offentliggør det "
+            "selv på Talent-siden. Viser et bekræftelseskort, før noget gemmes."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Rollens titel."},
+                "requirements": _TALENT_REQUIREMENTS_SCHEMA,
+                "based_on": {"type": "string", "description": "Valgfri: titlen på en eksisterende rolle, der skal have en ny version."},
+                "confirm": {"type": "boolean", "description": "Sættes kun af bekræftelseskortet."},
+            },
+            "required": ["title", "requirements"],
+        },
+    },
+})
+
+HR_TOOLS.append({
+    "type": "function",
+    "function": {
+        "name": "hr_run_capability_scenario",
+        "description": (
+            "Regn et kapacitetsscenarie igennem: hvor mange i virksomheden (eller en afdeling) der allerede har de "
+            "kompetencer og niveauer, et mål kræver inden en dato, og hvor mange der mangler. Brug det, når HR vil "
+            "vide, om de har folkene til en plan. Svaret er tal, aldrig navne, og små grupper skjules. Viser et "
+            "bekræftelseskort; bekræftet gemmes scenariet som kladde på Talent-siden og ændrer ingen kompetencemål."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Scenariets navn, fx 'Dataklar salgsafdeling 2027'."},
+                "target_date": {"type": "string", "description": "Måldato som ÅÅÅÅ-MM-DD, i fremtiden."},
+                "department": {"type": "string", "description": "Valgfri afdeling. Udeladt = hele virksomheden."},
+                "requirements": _TALENT_REQUIREMENTS_SCHEMA,
+                "confirm": {"type": "boolean", "description": "Sættes kun af bekræftelseskortet."},
+            },
+            "required": ["title", "target_date", "requirements"],
+        },
+    },
+})
+
 HR_TOOLS.append({
     "type": "function",
     "function": {
@@ -1126,6 +1187,188 @@ def _execute_hr_talent_overview(args):
     finally:
         cur.close()
     return json.dumps(out, ensure_ascii=False, default=str)
+
+
+def _talent_writer(module):
+    """Who may prepare talent work from the HR chat, and where: the same gate as the
+    talent page's HR actions (``company.employees``, checked by ``ai_permissions`` before
+    any tool runs; an active member of the company or a platform admin acting in its
+    workspace; the module switched on), plus the shared manager guard. Returns
+    ``(ctx, company_id, cursor, error_json)``; the caller closes the cursor."""
+    company_id = session.get('company_id')
+    if not company_id:
+        return None, None, None, json.dumps({"error": "Ingen virksomhed fundet."})
+    ctx, err = _hr_manager_ctx("Kun HR-ledere kan forberede rollerammer og scenarier.")
+    if err:
+        return ctx, company_id, None, err
+    import talent_service
+    cur = _get_cursor()
+    try:
+        try:
+            talent_service.member(cur, company_id, session.get('user_id'))
+        except ValueError:
+            from talent_routes import acting_admin
+            if not acting_admin():
+                cur.close()
+                return ctx, company_id, None, json.dumps({"error": "not_authorized", "message": "Du er ikke aktiv i virksomheden."},
+                                                         ensure_ascii=False)
+        if not talent_service.flags(cur, company_id).get(module + '_enabled'):
+            label = {"roles": "Roller", "planning": "Planlægning"}[module]
+            cur.close()
+            return ctx, company_id, None, json.dumps({
+                "error": "module_off", "page": "/hr/talent",
+                "message": f"Modulet '{label}' er ikke slået til for virksomheden. Det slås til under Talent-indstillinger.",
+            }, ensure_ascii=False)
+    except Exception:
+        cur.close()
+        raise
+    return ctx, company_id, cur, None
+
+
+def _talent_requirements(value):
+    """The requirement list in the shapes models send (a list, a JSON string, or the
+    page's 'skill | level | people' lines), validated by ``talent_service.requirements``."""
+    import talent_service
+    if isinstance(value, str) and value.strip().startswith('['):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            pass
+    if isinstance(value, list):
+        value = [dict(item, target_level=item.get('target_level', item.get('level'))) if isinstance(item, dict) else item
+                 for item in value]
+    return talent_service.requirements(value if value is not None else [])
+
+
+def _execute_hr_draft_role_framework(args):
+    """MUTATION, confirm-gated: save a role framework as an unpublished draft through
+    ``talent_service.save_role``. A ``based_on`` role in the same company gets a new
+    version; the assistant never publishes (that stays a click on /hr/talent)."""
+    from tool_confirm import needs_confirmation_payload
+    import talent_service
+
+    ctx, company_id, cur, err = _talent_writer("roles")
+    if err:
+        return err
+    try:
+        title = (args.get('title') or '').strip()[:255]
+        if not title:
+            return json.dumps({"error": "Angiv en rolletitel."}, ensure_ascii=False)
+        try:
+            reqs = _talent_requirements(args.get('requirements'))
+        except ValueError as exc:
+            return json.dumps({"error": str(exc)}, ensure_ascii=False)
+        base, wanted = None, (args.get('based_on') or '').strip().casefold()
+        if wanted:
+            existing = talent_service.latest_roles(cur, company_id, published=False)
+            base = next((r for r in existing if (r.get('title') or '').casefold() == wanted), None) \
+                or next((r for r in existing if wanted in (r.get('title') or '').casefold()), None)
+            if not base:
+                return json.dumps({"error": "role_not_found", "message": f"Der er ingen rolle, der hedder '{args.get('based_on')}'.",
+                                   "roles": [r.get('title') for r in existing][:25]}, ensure_ascii=False)
+        version = int(base['version']) + 1 if base else 1
+        details = {"title": title, "version": version, "based_on": base.get('title') if base else None,
+                   "requirements": [{"skill": r['skill'], "target_level": r['target_level'],
+                                     "required_people": r['required_people']} for r in reqs],
+                   "published": False}
+        if not bool(args.get('confirm')):
+            lines = ", ".join(f"{r['skill']} niveau {r['target_level']}" for r in reqs)
+            return json.dumps(needs_confirmation_payload(
+                action="hr_draft_role_framework",
+                summary_da=(f"Gem rollen '{title}' (version {version}) som kladde med kravene: {lines}. "
+                            "Den offentliggøres ikke; det gør du selv på Talent-siden."),
+                details=details,
+            ), ensure_ascii=False, default=str)
+        try:
+            version_id = talent_service.save_role(cur, company_id, title, reqs, base['role_id'] if base else None)
+            _hr_write_audit(cur, company_id=company_id, user_id=getattr(ctx, 'user_id', None),
+                            action="hr_draft_role_framework", resource_id=version_id,
+                            description=f"{title} v{version} (kladde)")
+            current_app.mysql.connection.commit()
+        except ValueError as exc:
+            current_app.mysql.connection.rollback()
+            return json.dumps({"error": str(exc)}, ensure_ascii=False)
+        except Exception:
+            current_app.mysql.connection.rollback()
+            raise
+        return json.dumps({"success": True, **details, "page": "/hr/talent",
+                           "message_da": f"Rollen '{title}' er gemt som kladde (version {version}). Den kan gennemgås og "
+                                         "offentliggøres på Talent-siden."}, ensure_ascii=False, default=str)
+    finally:
+        cur.close()
+
+
+def _execute_hr_run_capability_scenario(args):
+    """MUTATION, confirm-gated: run a capability scenario. The preview already holds the
+    coverage (``talent_service.scenario_coverage``: counts per requirement, suppressed
+    under the k-anonymity floor, never a name); the confirmed call saves the scenario as
+    a draft through ``talent_service.save_scenario``. Publishing it, which writes the
+    company's skill targets, stays a click on /hr/talent."""
+    import datetime as _dt
+    from tool_confirm import needs_confirmation_payload
+    from kanon import _resolve_k_default
+    import talent_service
+
+    ctx, company_id, cur, err = _talent_writer("planning")
+    if err:
+        return err
+    try:
+        title = (args.get('title') or '').strip()[:255]
+        department = (args.get('department') or '').strip()[:100]
+        try:
+            reqs = _talent_requirements(args.get('requirements'))
+            target = talent_service.date(args.get('target_date'))
+            if not title or target < _dt.date.today():
+                raise ValueError('Angiv titel og en fremtidig måldato.')
+        except ValueError as exc:
+            return json.dumps({"error": str(exc)}, ensure_ascii=False)
+        cur.execute("SELECT u.id, cu.department FROM users u JOIN company_users cu ON cu.user_id=u.id "
+                    "WHERE cu.company_id=%s AND cu.status='active'", (company_id,))
+        people = list(cur.fetchall() or [])
+        if department and not any(p.get('department') == department for p in people):
+            departments = sorted({p.get('department') for p in people if p.get('department')})
+            return json.dumps({"error": "department_not_found",
+                               "message": f"Afdelingen '{department}' har ingen aktive medarbejdere.",
+                               "departments": departments[:40]}, ensure_ascii=False)
+        cells = talent_service.scenario_coverage(cur, company_id, people, department, reqs, _resolve_k_default())
+        result = {
+            "title": title, "target_date": str(target), "department": department or "hele virksomheden",
+            "coverage": None if cells is None else [
+                {"skill": c['skill'], "target_level": c['target_level'], "required_people": c['required_people'],
+                 "assessed_at_level": (c['counts'] or {}).get('assessed'),
+                 "self_assessed_only": (c['counts'] or {}).get('provisional'),
+                 "below_level": (c['counts'] or {}).get('below'), "unknown": (c['counts'] or {}).get('unknown'),
+                 "still_needed": c['remaining'], "hidden_small_group": c['suppressed']} for c in cells],
+            "coverage_note": ("For mange medarbejdere til en samlet beregning her; afgræns til en afdeling."
+                              if cells is None else
+                              "Tal skjules, når en gruppe er så lille, at enkeltpersoner kunne genkendes."),
+        }
+        if not bool(args.get('confirm')):
+            return json.dumps(needs_confirmation_payload(
+                action="hr_run_capability_scenario",
+                summary_da=(f"Gem scenariet '{title}' for {result['department']} med måldato {target} som kladde. "
+                            "Kompetencemålene ændres først, hvis du offentliggør det på Talent-siden."),
+                details={k: result[k] for k in ("title", "target_date", "department")},
+                **{k: result[k] for k in ("coverage", "coverage_note")},
+            ), ensure_ascii=False, default=str)
+        try:
+            scenario_id = talent_service.save_scenario(cur, company_id, {
+                "title": title, "department": department, "target_date": str(target), "requirements": reqs, "actions": []})
+            _hr_write_audit(cur, company_id=company_id, user_id=getattr(ctx, 'user_id', None),
+                            action="hr_run_capability_scenario", resource_id=scenario_id,
+                            description=f"{title} ({result['department']}, {target}, kladde)")
+            current_app.mysql.connection.commit()
+        except ValueError as exc:
+            current_app.mysql.connection.rollback()
+            return json.dumps({"error": str(exc)}, ensure_ascii=False)
+        except Exception:
+            current_app.mysql.connection.rollback()
+            raise
+        return json.dumps({"success": True, **result, "status": "draft", "page": "/hr/talent",
+                           "message_da": f"Scenariet '{title}' er gemt som kladde på Talent-siden."},
+                          ensure_ascii=False, default=str)
+    finally:
+        cur.close()
 
 
 def _execute_hr_onboarding_readiness(args):
@@ -4527,6 +4770,8 @@ def execute_hr_tool(tool_call):
         "hr_search_company_documents": _execute_hr_search_company_documents,
         "hr_onboarding_readiness": _execute_hr_onboarding_readiness,
         "hr_talent_overview": _execute_hr_talent_overview,
+        "hr_draft_role_framework": _execute_hr_draft_role_framework,
+        "hr_run_capability_scenario": _execute_hr_run_capability_scenario,
         "hr_search_platform_help": _execute_hr_search_platform_help,
         "hr_mail_delivery_status": _execute_hr_mail_delivery_status,
     }

@@ -171,6 +171,41 @@ class CustomerLaunchTests(unittest.TestCase):
         self.assertEqual([c["kind"] for c in mine.get_json()["data"]], ["cancel"])
         self.assertEqual(theirs[1], 404, "another company's order does not exist for this key")
 
+    def test_api_role_frameworks_are_published_newest_and_company_scoped(self):
+        import inspect
+        from flask import g
+        import enterprise_api
+
+        self.db.raw.execute("CREATE TABLE IF NOT EXISTS talent_role_versions (id TEXT PRIMARY KEY, company_id INTEGER, role_id TEXT, "
+                            "version INTEGER, title TEXT, requirements_json TEXT, published INTEGER DEFAULT 0)")
+        reqs = '[{"skill":"Salg","competency_id":"salg","target_level":3,"required_people":2}]'
+        for vid, cid, rid, version, published in (("a1", 7, "r1", 1, 1), ("a2", 7, "r1", 2, 1), ("a3", 7, "r2", 1, 0), ("b1", 8, "r9", 1, 1)):
+            self.db.execute("INSERT INTO talent_role_versions(id,company_id,role_id,version,title,requirements_json,published) "
+                            "VALUES(%s,%s,%s,%s,'Sælger',%s,%s)", (vid, cid, rid, version, reqs, published))
+        with self.app.test_request_context("/api/v1/role-frameworks"):
+            g.company_id = 7
+            data = inspect.unwrap(enterprise_api.get_role_frameworks)().get_json()["data"]
+        self.assertEqual([(r["role_id"], r["version"]) for r in data], [("r1", 2)], "drafts, older versions and other companies stay out")
+        self.assertEqual(data[0]["requirements"][0], {"competency": "Salg", "competency_id": "salg", "target_level": 3, "required_people": 2})
+
+    def test_api_compliance_returns_aggregates_from_the_shared_derivation(self):
+        import inspect
+        from unittest import mock
+        from flask import g
+        import enterprise_api
+        import hr_tools
+
+        derived = {"department": "Alle", "overall_compliance_pct": 50.0, "total_requirements": 1, "statutory_requirements": 1,
+                   "requirements": [{"id": 1, "title": "GDPR", "compliant": 1, "missing": 1}], "summary_da": "x"}
+        with self.app.test_request_context("/api/v1/compliance?only_gaps=1"), \
+                mock.patch.object(hr_tools, "derive_company_compliance", return_value=derived) as derive:
+            g.company_id = 7
+            body = inspect.unwrap(enterprise_api.get_compliance_state)().get_json()
+        self.assertEqual(derive.call_args.args[1], 7)
+        self.assertTrue(derive.call_args.kwargs["only_gaps"])
+        self.assertEqual(body["data"]["requirements"][0]["title"], "GDPR")
+        self.assertNotIn("summary_da", body["data"])
+
     def test_api_bulk_failure_is_not_reported_as_success(self):
         import inspect
         from flask import g

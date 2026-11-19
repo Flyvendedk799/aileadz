@@ -1584,6 +1584,52 @@ def get_learning_path_assignments():
         return jsonify({'error': 'Assignments could not be fetched'}), 500
 
 
+@api_enterprise_bp.route('/api/v1/compliance')
+@require_api_auth('read:analytics')
+def get_compliance_state():
+    """Per-requirement compliance counts: the same derivation the HR matrix shows.
+
+    Aggregate only (compliant, expiring, overdue, missing per requirement); no
+    person is listed. Certificates with an expiry date count as coverage."""
+    try:
+        import hr_tools
+        state = hr_tools.derive_company_compliance(
+            current_app.mysql.connection, g.company_id,
+            department=request.args.get('department', ''), only_gaps=request.args.get('only_gaps') in ('1', 'true'))
+        if state.get('error'):
+            return jsonify({'error': 'Compliance could not be derived'}), 500
+        return jsonify({'success': True, 'data': {
+            'department': state.get('department'), 'overall_compliance_pct': state.get('overall_compliance_pct'),
+            'total_requirements': state.get('total_requirements'), 'statutory_requirements': state.get('statutory_requirements'),
+            'requirements': state.get('requirements') or []}})
+    except Exception:
+        return jsonify({'error': 'Compliance could not be derived'}), 500
+
+
+@api_enterprise_bp.route('/api/v1/role-frameworks')
+@require_api_auth('read:learning')
+def get_role_frameworks():
+    """Published role frameworks (newest version of each) with their competency requirements."""
+    try:
+        import talent_service
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        try:
+            seen, data = set(), []
+            for r in talent_service.roles(cur, g.company_id):
+                if r['role_id'] in seen:
+                    continue
+                seen.add(r['role_id'])
+                data.append({'role_id': r['role_id'], 'version_id': r['id'], 'version': r['version'], 'title': r['title'],
+                             'requirements': [{'competency': q.get('skill'), 'competency_id': q.get('competency_id'),
+                                               'target_level': q.get('target_level'), 'required_people': q.get('required_people')}
+                                              for q in r.get('requirements') or []]})
+        finally:
+            cur.close()
+        return jsonify({'success': True, 'data': data})
+    except Exception:
+        return jsonify({'error': 'Role frameworks could not be fetched'}), 500
+
+
 @api_enterprise_bp.route('/api/v1/orders', methods=['POST'])
 @require_api_auth('write:orders')
 def create_order_api():
@@ -2493,6 +2539,24 @@ def _build_openapi_spec():
                         'pagination': {'$ref': '#/components/schemas/Pagination'},
                     }), **common_errors,
                 },
+            },
+        },
+        '/api/v1/compliance': {
+            'get': {
+                'tags': ['Analytics'], 'summary': 'Compliance state per requirement (aggregate counts, nobody listed)',
+                'security': _scoped('read:analytics'),
+                'parameters': [
+                    {'name': 'department', 'in': 'query', 'schema': {'type': 'string'}},
+                    {'name': 'only_gaps', 'in': 'query', 'schema': {'type': 'string', 'enum': ['1', 'true']}},
+                ],
+                'responses': {'200': _ok_object({'data': {'type': 'object'}}), **common_errors},
+            },
+        },
+        '/api/v1/role-frameworks': {
+            'get': {
+                'tags': ['Learning'], 'summary': 'Published role frameworks with competency requirements',
+                'security': _scoped('read:learning'),
+                'responses': {'200': _ok_object({'data': {'type': 'array', 'items': {'type': 'object'}}}), **common_errors},
             },
         },
         '/api/v1/orders': {

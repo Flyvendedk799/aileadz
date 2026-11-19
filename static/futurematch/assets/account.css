@@ -1,0 +1,46 @@
+body { background: var(--fm-bg); }
+.auth { display: grid; grid-template-columns: 1.05fr 1fr; min-height: 100vh; }
+.auth-brand { position: relative; padding: clamp(28px, 4vw, 64px); display: flex; flex-direction: column; color: white;
+  background: linear-gradient(0deg, #102f25 2%, rgba(16,47,37,.95) 28%, rgba(16,47,37,.14) 78%), url("coast.webp") 60% center / cover; }
+.ab-logo { align-self: flex-start; border-radius: var(--r-md); padding: 8px 14px 8px 8px; background: #173f31; display: flex; align-items: center; gap: 12px; }
+.ab-mark { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; font-family: var(--ff-display); font-weight: 800; font-size: 19px; color: #173f31; background: #dbe9a8; }
+.ab-name { font-family: var(--ff-display); font-size: 19px; font-weight: 700; letter-spacing: -.02em; color: #fff; }
+.ab-sub { font-size: 11.5px; color: #dce6dc; }
+.ab-mid { margin-top: auto; }
+.ab-eyebrow { font-family: var(--ff-mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #dbe9a8; margin-bottom: 18px; }
+.ab-head { font-family: var(--ff-display); font-size: clamp(30px,3.4vw,44px); font-weight: 700; letter-spacing: -.03em; line-height: 1.06; color: #fff; max-width: 16ch; }
+.ab-copy { margin-top: 16px; font-size: 15px; color: rgba(234,243,241,.78); max-width: 42ch; line-height: 1.6; }
+.ab-stats { display: flex; gap: 36px; margin-top: 38px; }
+.ab-stats .n { font-family: var(--ff-display); font-size: 26px; font-weight: 700; color: #fff; }
+.ab-stats .l { font-size: 12px; color: #c6d3c9; }
+.ab-list { margin-top: 26px; display: flex; flex-direction: column; gap: 12px; font-size: 14.5px; color: rgba(234,243,241,.85); }
+.ab-list i { color: #dbe9a8; margin-right: 8px; }
+.ab-foot { margin-top: 40px; font-size: 12px; color: #c6d3c9; }
+.auth-form { display: flex; align-items: center; justify-content: center; padding: 40px; position: relative; }
+.form-card { width: 100%; max-width: 400px; }
+.fc-head { margin-bottom: 28px; }
+.fc-head h1 { font-size: clamp(30px, 3vw, 40px); line-height: 1.1; letter-spacing: -.04em; }
+.fc-head p { color: var(--fm-ink-2); font-size: 14.5px; margin-top: 6px; }
+.input-wrap { position: relative; }
+.input-wrap > i { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--fm-ink-3); font-size: 14px; }
+.input-wrap .fm-input { padding-left: 42px; }
+.input-wrap .eye { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--fm-ink-3); cursor: pointer; padding: 6px; }
+.input-wrap .eye:hover { color: var(--fm-primary); }
+.form-row { display: flex; align-items: center; justify-content: space-between; margin: -4px 0 18px; }
+.remember { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--fm-ink-2); cursor: pointer; }
+.remember input { width: 16px; height: 16px; accent-color: var(--fm-primary); }
+.forgot { font-size: 13px; color: var(--fm-primary); font-weight: 600; }
+.sso { display: flex; gap: 10px; margin-top: 14px; }
+.sso-btn { flex: 1; height: 44px; border: 1px solid var(--fm-line); border-radius: var(--r-ctrl); background: var(--fm-surface); color: var(--fm-ink); font-weight: 600; font-size: 13.5px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; cursor: pointer; transition: var(--t); text-decoration: none; }
+.sso-btn:hover { border-color: var(--fm-line-2); }
+.divider { display: flex; align-items: center; gap: 14px; margin: 24px 0; color: var(--fm-ink-3); font-size: 12px; font-family: var(--ff-mono); letter-spacing: .05em; }
+.divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--fm-line); }
+.fc-foot { text-align: center; margin-top: 26px; font-size: 13.5px; color: var(--fm-ink-2); }
+.fc-foot a { color: var(--fm-primary); font-weight: 650; }
+.top-toggle { position: absolute; top: 24px; right: 28px; }
+@media (max-width: 900px) {
+  .auth { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .auth-brand { padding: 12px 18px; background: #173f31; }
+  .auth-brand > :not(.ab-logo) { display: none; }
+  .auth-form { padding: 64px 22px 36px; }
+}

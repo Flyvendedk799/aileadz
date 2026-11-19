@@ -12,6 +12,7 @@
   .adm-rt { min-width: 0; }
   .adm-rt .nm { font-size: 13.5px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .adm-rt .mt { font-size: 11.5px; color: var(--fm-ink-3); margin-top: 2px; }
+  .adm-company { font-weight: 700; color: var(--fm-primary); text-decoration: underline; text-underline-offset: 3px; }
   .adm-end { text-align: right; white-space: nowrap; }
   @media (max-width: 1100px) { .adm-split { grid-template-columns: 1fr; } }
 </style>
@@ -20,6 +21,7 @@
 <div class="fm-wrap">
 {% set active_admin_page = 'home' %}{% include 'fm/_admin_subnav.html' %}
 
+  <h1 class="workspace-heading">Platformsoverblik</h1>
   <div class="kpi-row">
     <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-users"></i></span><div><div class="kl">Brugere i alt</div><div class="kv tnum">{{ total_users }}</div><div class="kd">{{ new_users_month }} nye denne måned · {{ total_admins }} admins</div></div></div>
     <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-building"></i></span><div><div class="kl">Virksomheder</div><div class="kv tnum">{{ total_companies }}</div><div class="kd">{{ active_users_7d }} aktive brugere (7d)</div></div></div>
@@ -27,7 +29,7 @@
     <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Omsætning</div><div class="kv tnum">{{ total_revenue|dkmoney }}</div><div class="kd">{{ revenue_this_month|dkmoney }} denne måned · {{ revenue_invoiced|default(0)|dkmoney }} faktureret · {{ revenue_paid|default(0)|dkmoney }} betalt</div></div></div>
   </div>
 
-  <div class="kpi-row" style="grid-template-columns:repeat(2,1fr)">
+  <div class="kpi-row k2">
     <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-robot"></i></span><div><div class="kl">Chatbot-forespørgsler</div><div class="kv tnum">{{ total_chatbot_queries }}</div><div class="kd">{{ queries_this_week }} denne uge</div></div></div>
     <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-user-clock"></i></span><div><div class="kl">Aktive brugere (7 dage)</div><div class="kv tnum">{{ active_users_7d }}</div><div class="kd">Baseret på chatbotaktivitet</div></div></div>
   </div>
@@ -42,9 +44,9 @@
             <thead><tr><th>Virksomhed</th><th>Branche</th><th style="text-align:center">Brugere</th><th style="text-align:right">Omsætning</th><th style="text-align:center">Status</th></tr></thead>
             <tbody>
               {% for c in companies %}
-              <tr style="cursor:pointer" onclick="window.location='{{ url_for('companies.admin_company_detail', company_id=c.id) }}'">
+              <tr>
                 <td>
-                  <div style="font-weight:650">{{ c.company_name }}</div>
+                  <a class="adm-company" href="{{ url_for('companies.admin_company_detail', company_id=c.id) }}">{{ c.company_name }}</a>
                   <div class="muted" style="font-size:11.5px">{{ c.created_at.strftime('%d/%m/%Y') if c.created_at else 'Ingen dato' }}</div>
                 </td>
                 <td class="muted">{{ c.industry or '-' }}</td>

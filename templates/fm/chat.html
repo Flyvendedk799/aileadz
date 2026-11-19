@@ -1,7 +1,6 @@
 {% extends "fm_base.html" %}
 {% block page_id %}chat{% endblock %}
 {% block title %}AI-assistent · Futurematch{% endblock %}
-{# The page needs no heading of its own: the topbar carries the tabs and the profile pill, nothing else. #}
 {% block topbar_title %}{% include 'fm/_ai_modebar.html' %}{% endblock %}
 {% block topbar_sub %}{% endblock %}
 {% block topbar_lead %}{% include 'fm/_ai_header_lead.html' %}{% endblock %}
@@ -23,9 +22,7 @@
 {% block extra_head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/chat.css') }}?v={{ asset_version('futurematch/assets/chat.css') }}" />
 <style>
-  /* chat.css is a self-contained dark theme driven entirely by CSS variables.
-     Remap those variables to the platform's light --fm-* tokens so the chat
-     matches the shared sidebar + header. chat.css itself is untouched. */
+  /* Bridge standalone chat components to the active workspace theme. */
   body.chat-page {
     --bg: var(--fm-bg);
     --rail: var(--fm-surface);
@@ -60,12 +57,12 @@
      viewport makes the whole shell grow and the inner .scroll never becomes the
      overflow region (it can't scroll, and body{overflow:hidden} clips the rest).
      Pin the shell to a definite viewport height here so .scroll owns the overflow. */
-  body.chat-page .fm-shell { height: 100vh; min-height: 0; overflow: hidden; }
+  body.chat-page .fm-shell { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; }
   body.chat-page .fm-main { min-height: 0; }
   body.chat-page .fm-content { padding: 0; min-height: 0; display: flex; flex-direction: column; }
   body.chat-page .fm-foot { display: none; }
 
-  .chatx { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--fm-surface); }
+  .chatx { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--fm-bg); }
   .chatx .scroll { flex: 1; min-height: 0; }
 </style>
 {% endblock %}
@@ -82,13 +79,13 @@
 
   <div class="scroll" id="scroll">
     <div class="thread" id="thread"></div>
-    <button class="fab" id="fab" aria-label="Scroll ned"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+    <button class="fab" id="fab" aria-label="Gå til seneste besked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
   </div>
 
   <div class="input-wrap">
     <div class="ref-bar" id="refBar"></div>
     <div class="composer">
-      <textarea id="input" rows="1" placeholder="Spørg om kurser, kompetencer eller hold…"></textarea>
+      <textarea aria-label="Besked til AI-assistenten" id="input" rows="1" placeholder="Spørg om kurser, kompetencer eller hold…"></textarea>
       <button class="stop" id="stop"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="6" width="12" height="12" rx="2"/></svg> Stop</button>
       <button class="send" id="send" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>
     </div>

@@ -7,5 +7,13 @@
 {% if r %}<p>{% if r.available %}<strong>{{ r.counts.satisfied }} af {{ r.total }}</strong> krav dækket · {{ r.counts.unknown }} ukendte · {{ r.counts.provisional }} foreløbige selvvurderinger{% else %}Vurderingerne kan ikke indlæses lige nu.{% endif %}</p>
 <ul class="talent-requirements">{% for item in r.requirements %}<li><span>{{ item.skill }}</span><span>{{ item.current_level if item.current_level is not none else 'Ukendt' }} → {{ item.target_level }}/5{% if item.provisional %} · selvvurderet{% endif %}{% if links and (item.current_level is none or item.current_level < item.target_level) %} · <a href="{{ url_for('catalog.catalog_index', q=item.skill) }}">Find læring</a>{% endif %}</span></li>{% endfor %}</ul>{% endif %}
 {% endmacro %}
-{% macro nav() %}<nav class="talent-tabs" aria-label="Min udvikling"><a href="{{ url_for('futurematch.employee_home') }}">Overblik</a><a href="{{ url_for('pages.profile') }}">Profil</a><a href="{{ url_for('talent.workspace') }}#kompetencer">Kompetencer</a><a href="{{ url_for('talent.workspace') }}">Udvikling</a><a href="{{ url_for('futurematch.my_cv') }}">CV</a></nav>{% endmacro %}
+{% macro nav() %}
+<nav class="pg-subnav talent-tabs" aria-label="Min udvikling">
+  <a class="pg-tab" href="{{ url_for('futurematch.employee_home') }}">Overblik</a>
+  <a class="pg-tab" href="{{ url_for('pages.profile') }}">Profil</a>
+  <a class="pg-tab" href="{{ url_for('talent.workspace') }}#kompetencer">Kompetencer</a>
+  <a class="pg-tab{% if request.endpoint == 'talent.workspace' %} active{% endif %}" href="{{ url_for('talent.workspace') }}"{% if request.endpoint == 'talent.workspace' %} aria-current="page"{% endif %}>Udvikling</a>
+  <a class="pg-tab" href="{{ url_for('futurematch.my_cv') }}">CV</a>
+</nav>
+{% endmacro %}
 {% macro styles() %}<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/talent.css') }}?v={{ asset_version('futurematch/assets/talent.css') }}">{% endmacro %}

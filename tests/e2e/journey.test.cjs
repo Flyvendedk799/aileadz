@@ -218,7 +218,8 @@ test('search finds a course, the person\'s own order and own goal, and the skip 
   await page.go('/min-laering');
   await page.keyboard.press('Tab');
   assert.equal(await page.evaluate(() => document.activeElement.textContent.trim()), 'Spring til indhold');
-  await page.getByRole('button', { name: 'Søg' }).click();
+  // The top-bar button; the sidebar has its own "Søg i arbejdsområdet".
+  await page.getByRole('button', { name: 'Søg', exact: true }).click();
   await page.fill('#cmdkInput', 'python');
   await assert.doesNotReject(page.locator('#cmdkList .cmdk-group', { hasText: 'Kurser' }).waitFor());
   await assert.doesNotReject(page.locator('#cmdkList .cmdk-group', { hasText: 'Mine bestillinger' }).waitFor());

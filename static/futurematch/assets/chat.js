@@ -231,6 +231,8 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
   function addUser(text) {
     const r = document.createElement("div");
     r.className = "msg user";
+    r.setAttribute("role", "group");
+    r.setAttribute("aria-label", "Dig");
     r.innerHTML = `<div class="bubble"></div>`;
     r.querySelector(".bubble").textContent = text;
     thread.appendChild(r); down(false, true);
@@ -253,6 +255,8 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
   function addBot() {
     const r = document.createElement("div");
     r.className = "msg bot";
+    r.setAttribute("role", "group");
+    r.setAttribute("aria-label", "AI-assistent");
     r.innerHTML = `<div class="av-bot">${BOT}</div><div class="bot-body">${ZONES.map((z) => `<div class="tb tb-${z}"></div>`).join("")}</div>`;
     thread.appendChild(r);
     return r.querySelector(".bot-body");
@@ -2010,19 +2014,19 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
           <button class="w-card" data-q="Hvilke kurser findes der inden for Excel?"><span class="ic"><i class="fa-solid fa-table"></i></span><span><div class="t">Digitale kompetencer</div><div class="h">Excel, data og IT</div></span></button>`;
     }
     return `
-          <button class="w-card" data-q="Vis mig populære projektledelseskurser"><span class="ic"><i class="fa-solid fa-diagram-project"></i></span><span><div class="t">Populære kurser</div><div class="h">Se hvad andre vælger</div></span></button>
+          <button class="w-card" data-q="Vis mig populære kurser"><span class="ic"><i class="fa-solid fa-diagram-project"></i></span><span><div class="t">Populære kurser</div><div class="h">Se hvad andre vælger</div></span></button>
           <button class="w-card" data-q="Jeg vil gerne tale om, hvor jeg vil hen i min karriere"><span class="ic"><i class="fa-solid fa-compass"></i></span><span><div class="t">Min retning</div><div class="h">Sparring om næste skridt</div></span></button>
           <button class="w-card" data-q="Hvilke kompetencer mangler jeg for at nå mit mål?"><span class="ic"><i class="fa-solid fa-layer-group"></i></span><span><div class="t">Mine kompetencegab</div><div class="h">Se hvad der mangler</div></span></button>
-          <button class="w-card" data-q="Opdater mit CV — jeg har erfaring med projektledelse og teamledelse"><span class="ic"><i class="fa-solid fa-id-card"></i></span><span><div class="t">Opdater dit CV</div><div class="h">Fortæl mig om din erfaring</div></span></button>`;
+          <button class="w-card" data-q="Hjælp mig med at opdatere mit CV"><span class="ic"><i class="fa-solid fa-id-card"></i></span><span><div class="t">Opdater dit CV</div><div class="h">Fortæl mig om din erfaring</div></span></button>`;
   }
   function welcome() {
     thread.innerHTML = `
       <div class="welcome">
-        <div class="w-logo">${BOT}</div>
-        <div class="w-eyebrow">Futurematch AI-assistent</div>
-        <div class="w-title">Hvad vil du gerne hjælpes med?</div>
-        <div class="w-sub">Fortæl, hvor du står og hvor du vil hen, eller beskriv et behov, en rolle eller en kompetence. Så finder jeg kurser, sammenligner muligheder og husker det vigtige på din profil.</div>
-        <div class="w-hint">${chatCfg().loggedIn ? "Anbefalinger tilpasses din profil" : "Log ind for anbefalinger, der passer til din profil"}</div>
+        <div class="w-intro">
+          <div class="w-logo" aria-hidden="true">${BOT}</div>
+          <h1 class="w-title">Hvad vil du gerne lære?</h1>
+          <p class="w-sub">${chatCfg().loggedIn ? "Find et kursus, udforsk dine kompetencer, eller planlæg dit næste skridt." : "Find kurser, sammenlign priser, og få hjælp til at vælge."}</p>
+        </div>
         <div class="w-grid">${welcomeCards()}</div>
         <div class="w-recent" id="wRecent" hidden></div>
       </div>`;

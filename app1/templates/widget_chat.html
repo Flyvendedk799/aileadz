@@ -2,11 +2,11 @@
 <html lang="da">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ widget.widget_title or 'Chat' }}</title>
     <style>
         :root {
-            --widget-primary: {{ widget.theme_primary_color or '#0b6b63' }};
+            --widget-primary: {{ widget.theme_primary_color or '#265b47' }};
             --widget-text: {{ widget.theme_text_color or '#FFFFFF' }};
             --widget-bg: {{ widget.theme_bg_color or '#FFFFFF' }};
         }
@@ -22,6 +22,7 @@
             background: var(--widget-bg);
             color: #1e293b;
             height: 100vh;
+            height: 100dvh;
             overflow: hidden;
             display: flex;
             flex-direction: column;
@@ -60,10 +61,6 @@
         .chat-header-title {
             font-size: 0.95rem;
             font-weight: 700;
-        }
-        .chat-header-status {
-            font-size: 0.7rem;
-            opacity: 0.8;
         }
         .chat-header-close {
             background: none;
@@ -126,7 +123,7 @@
         }
 
         .bot-bubble {
-            background: #f1f5f9;
+            background: color-mix(in srgb, var(--widget-primary) 7%, white);
             color: #1e293b;
             padding: 10px 14px;
             border-radius: 14px 14px 14px 4px;
@@ -176,7 +173,7 @@
             display: flex;
             gap: 4px;
             padding: 10px 14px;
-            background: #f1f5f9;
+            background: color-mix(in srgb, var(--widget-primary) 7%, white);
             border-radius: 14px 14px 14px 4px;
             width: fit-content;
         }
@@ -210,7 +207,7 @@
             font-size: 0.78rem;
             cursor: pointer;
             transition: all 0.15s;
-            white-space: nowrap;
+            max-width: 100%; overflow-wrap: anywhere; text-align: left;
         }
         .suggestion-chip:hover {
             background: var(--widget-primary);
@@ -229,11 +226,11 @@
             flex-shrink: 0;
         }
         .chat-input {
-            flex: 1;
-            border: 1px solid #e2e8f0;
+            min-width: 0; flex: 1;
+            border: 1px solid #aab7ae;
             border-radius: 20px;
             padding: 8px 14px;
-            font-size: 0.85rem;
+            font-size: 16px;
             outline: none;
             resize: none;
             max-height: 80px;
@@ -246,11 +243,11 @@
             border-color: var(--widget-primary);
         }
         .chat-input::placeholder {
-            color: #94a3b8;
+            color: #636e69;
         }
         .send-btn {
-            width: 36px;
-            height: 36px;
+            width: 42px;
+            height: 42px;
             border-radius: 50%;
             background: var(--widget-primary);
             border: none;
@@ -276,17 +273,24 @@
             cursor: not-allowed;
         }
 
+        .branding [data-chat-id-copy] {
+            padding: 4px 8px; border: 0; border-radius: 6px;
+            color: #4e5d55; background: transparent; font: inherit; cursor: pointer;
+        }
+        .branding [data-chat-id-copy]:enabled:hover { background: #eef3ef; }
+        .branding [data-chat-id-copy]:disabled { opacity: .6; cursor: default; }
+
         /* ── Branding ── */
         .branding {
             text-align: center;
             padding: 4px 0 6px;
             font-size: 0.65rem;
-            color: #94a3b8;
+            color: #636e69;
             background: var(--widget-bg);
             flex-shrink: 0;
         }
         .branding a {
-            color: #94a3b8;
+            color: #636e69;
             text-decoration: none;
         }
         .branding a:hover {
@@ -304,7 +308,13 @@
             max-width: 90%;
         }
 
-        /* ── Custom CSS ── */
+        :focus-visible { outline: 2px solid var(--widget-primary); outline-offset: 2px; }
+        .chat-header-close:focus-visible { outline-color: var(--widget-text); }
+        @media (prefers-reduced-motion: reduce) {
+            .msg-row, .typing-indicator span { animation: none; }
+            .chat-messages { scroll-behavior: auto; }
+        }
+        /* Tenant overrides */
         {{ widget.custom_css or '' }}
     </style>
 </head>
@@ -322,8 +332,7 @@
             </div>
             {% endif %}
             <div>
-                <div class="chat-header-title">{{ widget.widget_title or 'Chat' }}</div>
-                <div class="chat-header-status">Online</div>
+                <h1 class="chat-header-title">{{ widget.widget_title or 'Chat' }}</h1>
             </div>
         </div>
         <button class="chat-header-close" onclick="window.parent.postMessage({type:'widget-close'},'*')" title="Luk">
@@ -358,15 +367,15 @@
     {% endif %}
 
     <!-- Input -->
-    <div class="chat-input-area">
-        <textarea class="chat-input" id="chatInput" placeholder="Skriv en besked..." rows="1"></textarea>
-        <button class="send-btn" id="sendBtn" title="Send">
+    <form class="chat-input-area" id="chatForm">
+        <textarea class="chat-input" id="chatInput" aria-label="Besked til rådgiveren" placeholder="Skriv en besked..." rows="1"></textarea>
+        <button class="send-btn" type="submit" id="sendBtn" disabled aria-label="Send besked" title="Send">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="22" y1="2" x2="11" y2="13"></line>
                 <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
             </svg>
         </button>
-    </div>
+    </form>
 
     <div class="branding">
       <button type="button" data-chat-id-copy data-chat-scope="widget" disabled><span data-chat-id-label>Kopiér chat-id</span></button>
@@ -449,12 +458,17 @@
         }
 
         function updateSendBtn() {
-            sendBtn.classList.toggle('active', chatInput.value.trim().length > 0);
+            sendBtn.disabled = isSending || !chatInput.value.trim();
+            sendBtn.classList.toggle('active', !sendBtn.disabled);
         }
 
         chatInput.addEventListener('input', () => { autoResize(); updateSendBtn(); });
+        chatInput.form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            sendMessage();
+        });
         chatInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
                 e.preventDefault();
                 sendMessage();
             }
@@ -563,11 +577,9 @@
                 chip.className = 'suggestion-chip';
                 chip.textContent = s;
                 chip.addEventListener('click', () => {
-                    // Remove chips after click
+                    if (isSending) return;
                     chipsDiv.remove();
-                    chatInput.value = s;
-                    updateSendBtn();
-                    sendMessage();
+                    sendMessage(s);
                 });
                 chipsDiv.appendChild(chip);
             });
@@ -576,14 +588,16 @@
         }
 
         // ── Send message ──
-        async function sendMessage() {
-            const query = chatInput.value.trim();
+        async function sendMessage(suggestion) {
+            const query = (suggestion || chatInput.value).trim();
             if (!query || isSending) return;
             isSending = true;
 
             addUserMsg(query);
-            chatInput.value = '';
-            chatInput.style.height = 'auto';
+            if (!suggestion) {
+                chatInput.value = '';
+                autoResize();
+            }
             updateSendBtn();
 
             const botContent = addBotRow();
@@ -605,6 +619,7 @@
             }, {headers:{'X-Widget-Session':WIDGET_SESSION}});
 
             isSending = false;
+            updateSendBtn();
         }
 
         // ── Focus input on load ──

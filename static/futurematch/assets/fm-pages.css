@@ -20,7 +20,7 @@
 .pg-tab { height: 34px; padding: 0 14px; border-radius: 8px; border: none; background: transparent; color: var(--fm-ink-2); font-family: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; transition: var(--t); display: inline-flex; align-items: center; gap: 7px; }
 .pg-tab i { font-size: 12px; }
 .pg-tab:hover { color: var(--fm-ink); }
-.pg-tab.active { background: var(--fm-surface); color: var(--fm-primary); box-shadow: var(--sh-xs); }
+.pg-tab.active { background: var(--fm-surface); color: var(--fm-primary-700); box-shadow: inset 0 -2px var(--fm-primary), var(--sh-xs); }
 /* HR navigation: group row (first) + the active group's tabs (second row) */
 .pg-hrnav { margin-bottom: 22px; }
 .pg-hrnav .pg-subnav-wrap { margin-bottom: 0; }
@@ -38,12 +38,17 @@
 .crumb a:hover { color: var(--fm-primary); }
 .crumb i { font-size: 9px; }
 
-/* KPI row + tiles */
+/* Overview headings and metrics */
+.workspace-heading {
+  margin: 24px 0 18px; font-size: clamp(26px, 3vw, 38px);
+  line-height: 1.12; letter-spacing: -.04em; overflow-wrap: anywhere;
+}
 .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
 .kpi-row.k5 { grid-template-columns: repeat(5, 1fr); }
+.kpi-row.k2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .kpi-row.k3 { grid-template-columns: repeat(3, 1fr); }
 .kpi-tile { padding: 18px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-sm); transition: transform var(--t), box-shadow var(--t); }
-.kpi-tile:hover { transform: translateY(-2px); box-shadow: var(--sh-md); }
+.kpi-tile[href]:hover { transform: translateY(-2px); box-shadow: var(--sh-md); }
 .kpi-tile.ico { display: flex; gap: 14px; align-items: flex-start; }
 .kpi-tile .ki { width: 44px; height: 44px; flex: 0 0 44px; border-radius: 12px; display: grid; place-items: center; font-size: 17px; background: var(--fm-primary-tint); color: var(--fm-primary); }
 .kpi-tile .ki.clay { background: var(--fm-clay-tint); color: var(--fm-clay); }
@@ -51,7 +56,7 @@
 .kpi-tile .ki.gold { background: color-mix(in srgb,var(--fm-gold) 16%,transparent); color: var(--fm-gold); }
 .kpi-tile .ki.green { background: color-mix(in srgb,var(--fm-success) 14%,transparent); color: var(--fm-success); }
 .kpi-tile .kl { font-family: var(--ff-mono); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--fm-ink-3); }
-.kpi-tile .kv { font-family: var(--ff-display); font-size: 28px; font-weight: 700; letter-spacing: -.03em; line-height: 1.05; font-variant-numeric: tabular-nums; margin-top: 4px; }
+.kpi-tile .kv { font-family: var(--ff-display); font-size: clamp(26px, 2.6vw, 36px); font-weight: 700; letter-spacing: -.04em; line-height: 1.05; font-variant-numeric: tabular-nums; margin-top: 4px; }
 .kpi-tile .kd { font-size: 12px; color: var(--fm-ink-2); margin-top: 6px; }
 
 /* detail hero */
@@ -159,7 +164,7 @@
   .detail-actions { flex-direction: row; align-items: stretch; flex-wrap: wrap; }
 }
 @media (max-width: 640px) {
-  .kpi-row, .kpi-row.k5, .kpi-row.k3 { grid-template-columns: 1fr; }
+  .kpi-row, .kpi-row.k2, .kpi-row.k5, .kpi-row.k3 { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }
 }
 
@@ -239,18 +244,18 @@ body:has(.fm-aip) .fm-foot{padding-right:150px}
   background:var(--fm-surface);box-shadow:var(--sh-lg)}
 .fm-aip-panel[hidden]{display:none !important}
 .fm-aip-head{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;
-  font-weight:650;font-size:13.5px;color:#fff;background:linear-gradient(135deg,var(--fm-primary),var(--fm-clay))}
+  font-weight:650;font-size:13.5px;color:var(--fm-ink);background:var(--fm-primary-tint)}
 .fm-aip-hist{display:inline-flex;align-items:center;gap:2px}
 .fm-aip-hist button,.fm-aip-hist a{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;
-  border:none;border-radius:8px;background:none;color:#fff;cursor:pointer;font-size:14px;text-decoration:none}
+  border:none;border-radius:8px;background:none;color:var(--fm-primary);cursor:pointer;font-size:14px;text-decoration:none}
 .fm-aip-hist button:hover,.fm-aip-hist a:hover{background:rgba(255,255,255,.2)}
-.fm-aip-hist button:focus-visible,.fm-aip-hist a:focus-visible{outline:2px solid #fff;outline-offset:1px}
+.fm-aip-hist button:focus-visible,.fm-aip-hist a:focus-visible{outline:2px solid var(--fm-primary);outline-offset:1px}
 .fm-aip-x{font-size:16px}
 .fm-aip-body{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
 .fm-aip-hint{font-size:12.5px;color:var(--fm-ink-2)}
-.fm-aip-chips{display:flex;flex-wrap:wrap;gap:6px}
-.fm-aip-chip{border:1px solid var(--fm-line);background:var(--fm-surface-2);border-radius:999px;
-  padding:6px 11px;font-size:11.5px;cursor:pointer;color:var(--fm-ink-2)}
+.fm-aip-chips{display:flex;flex-direction:column;gap:6px}
+.fm-aip-chip{border:1px solid var(--fm-line);background:var(--fm-surface-2);border-radius:10px;text-align:left;
+  padding:9px 12px;font-size:13px;cursor:pointer;color:var(--fm-ink-2)}
 .fm-aip-chip:hover{border-color:var(--fm-primary);color:var(--fm-primary)}
 .fm-aip-msg{padding:9px 12px;border-radius:12px;font-size:13px;line-height:1.5;max-width:90%;white-space:pre-wrap}
 .fm-aip-msg.user{align-self:flex-end;background:var(--fm-primary);color:#fff;border-bottom-right-radius:4px}
@@ -262,7 +267,7 @@ body:has(.fm-aip) .fm-foot{padding-right:150px}
 .fm-aip-action::before{content:"\2192";font-weight:700}
 .fm-aip-action:hover{filter:brightness(1.07);text-decoration:none;color:#fff}
 .fm-aip-form{display:flex;gap:8px;padding:12px;border-top:1px solid var(--fm-line)}
-.fm-aip-form input{flex:1;border:1px solid var(--fm-line);border-radius:10px;padding:9px 12px;font-size:13px;
+.fm-aip-form input{min-width:0;flex:1;border:1px solid var(--fm-line);border-radius:10px;padding:9px 12px;font-size:13px;
   background:var(--fm-surface-2);color:var(--fm-ink)}
 .fm-aip-form button{border:none;background:var(--fm-primary);color:#fff;border-radius:10px;width:40px;cursor:pointer}
 
@@ -357,3 +362,5 @@ body:has(.fm-aip) .fm-foot{padding-right:150px}
 @media (max-width: 640px) {
   .ai-lead-btn[data-chat-id-copy] [data-chat-id-label] { display: none; }
 }
+
+[data-theme="dark"] .fm-aip :is(.fm-aip-msg.user, .fm-aip-form button, .fm-aip-action) { color: #102a20; }

@@ -75,9 +75,12 @@
           <span class="fm-brand-sub">{{ platform_tagline }}</span>
         </span>
       </a>
-      <button class="fm-side-toggle" id="fmSideToggle" aria-label="Fold panel"><i class="fa-solid fa-bars"></i></button>
+      <button class="fm-side-toggle" id="fmSideToggle" aria-controls="fmSide" aria-label="Fold panel"><i class="fa-solid fa-bars"></i></button>
     </div>
 
+    <button type="button" class="fm-nav-search" data-command-open aria-label="Søg i arbejdsområdet" aria-haspopup="dialog">
+      <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span>Søg i arbejdsområdet</span>
+    </button>
     <div class="fm-side-scroll">
       {% set page = self.page_id()|trim %}
       {% set _ai_pages = ['chat', 'mindmap'] %}
@@ -232,7 +235,7 @@
     </header>
     {% endif %}
     <header class="fm-top">
-      {% if session.get('user') %}<button class="fm-icon-btn fm-menu-btn" data-side-open aria-label="Menu"><i class="fa-solid fa-bars"></i></button>{% endif %}
+      {% if session.get('user') %}<button class="fm-icon-btn fm-menu-btn" data-side-open aria-controls="fmSide" aria-expanded="false" aria-label="Åbn menu"><i class="fa-solid fa-bars"></i></button>{% endif %}
       <div class="fm-top-lead">{% block topbar_lead %}{% endblock %}</div>
       <div class="fm-top-titles">
         <div class="fm-top-title">{% block topbar_title %}{% endblock %}</div>

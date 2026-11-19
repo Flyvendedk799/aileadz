@@ -590,5 +590,8 @@ class OwnSearchResultsTests(unittest.TestCase):
     def test_palette_renders_titles_as_text(self):
         import os
         src = open(os.path.join(secapp._REPO_ROOT, "static/futurematch/assets/shell.js"), encoding="utf-8").read()
-        self.assertIn('<span class="cmdk-t">${escHtml(r.title)}</span>', src)
+        # Built with DOM nodes: titles (course, order and goal names) go in as text.
+        self.assertIn("title.textContent = result.title;", src)
+        self.assertIn("detail.textContent = result.sub;", src)
         self.assertNotIn("${r.title}", src)
+        self.assertNotIn("${result.title}", src)

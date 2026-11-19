@@ -10,7 +10,7 @@ import re
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOMES = {"enterprise_tables.py", "schema_registry.py"}
-SKIP_DIRS = {".git", "__pycache__", "tests", "migrations", "sandbox", "scripts", "node_modules"}
+SKIP_DIRS = {".git", "__pycache__", "tests", "migrations", "sandbox", "scripts", "node_modules", ".venv", "venv"}
 
 # file -> number of CREATE TABLE statements it is still allowed to hold (ROADMAP T1-10)
 LEGACY = {

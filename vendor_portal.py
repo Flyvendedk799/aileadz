@@ -1026,6 +1026,9 @@ def vendor_ask():
 
     if len(user_query) > 5000:
         return jsonify(error='Beskeden må højst være 5000 tegn.'), 400
+    import rate_limit
+    if not rate_limit.ai_turn_allowed("vendor:%s" % vendor_id):
+        return jsonify({"error": rate_limit.AI_TURN_MESSAGE, "rate_limited": True}), 429
 
     # Lazy, guarded imports so a broken AI stack never crashes the portal.
     try:
@@ -1218,6 +1221,12 @@ def vendor_ask():
                         note = "\n\n" + verdict["disclaimer"]
                         full_text += note
                         yield _vendor_sse({"type": "text", "content": note})
+                pending_note = _grounding.pending_confirmation_note(
+                    full_text, [getattr(tr, "output", None) for tr in (runtime_result.tool_results or [])],
+                        [getattr(tr, "name", None) for tr in (runtime_result.tool_results or [])])
+                if pending_note:
+                    full_text += "\n\n" + pending_note
+                    yield _vendor_sse({"type": "text", "content": "\n\n" + pending_note})
             except Exception as _ge:
                 logger.debug("vendor grounding check skipped: %s", _ge)
 

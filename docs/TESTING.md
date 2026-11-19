@@ -1,6 +1,6 @@
 # Testing
 
-Over 2,200 tests, all runnable **offline**: no MySQL, no OpenAI/Anthropic key, no network. A full run takes about one minute.
+Over 2,600 tests, all runnable **offline**: no MySQL, no OpenAI/Anthropic key, no network. A full run takes about one minute.
 
 ```bash
 pip install -r requirements.txt pytest pytest-timeout
@@ -13,7 +13,7 @@ SANDBOX=1 AI_WARMUP_ON_IMPORT=0 py -c "from run import create_app; create_app()"
 
 `tests/conftest.py` sets the env for you (`SANDBOX=1`, `AI_WARMUP_ON_IMPORT=0`, `SCHEDULER_OPPORTUNISTIC=0`, `AI_MEMORY_BACKEND=sqlite`, `ENTERPRISE_TABLE_SYNC_SKIP=1`, `CATALOG_AUTO_EMBED=0`). If no MySQL answers on `MYSQL_HOST:MYSQL_PORT`, it makes `pymysql.connect` fail instantly so best-effort DB writes never hang a test. It also treats every session as an active membership and resets the confirm store between tests.
 
-CI (`.github/workflows/ci.yml`) additionally runs against a real MySQL 8 service; `tests/test_schema_baseline.py` and the disposable-sandbox concurrency regression in `tests/test_launch_mysql.py` need it (builds every table from scratch and asserts `verify_schema` finds nothing missing). A handful of tests skip when the real Shopify export or MySQL is absent (`test_catalog_service.py`, `test_ask_sse_offline.py`).
+CI (`.survhub/ci.yml`, on ServerHoster) additionally starts a real MySQL 8 inside the job; `tests/test_schema_baseline.py` and `tests/test_launch_mysql.py` (a concurrency regression and the legacy data migrations on legacy-shaped rows) need it (builds every table from scratch and asserts `verify_schema` finds nothing missing). A handful of tests skip when the real Shopify export or MySQL is absent (`test_catalog_service.py`, `test_ask_sse_offline.py`).
 
 ## Browser chat transport regressions
 
@@ -68,3 +68,11 @@ budget; it runs only against the explicitly named disposable `futurematch_sandbo
 Offline route tests render the actual Jinja templates but cannot establish visual
 quality or live SMTP/supplier delivery. Use the launch runbook for browser and
 real-recipient acceptance.
+
+## Browser journey (not part of pytest)
+
+`tests/e2e/journey.test.cjs` drives the real app in Chromium against the sandbox demo tenant on
+MySQL: request, approval, booking, attendance, completion, and goal privacy. It needs the sandbox
+server and Node with Playwright, so it stays outside the offline suite. How to run it and the rules
+for adding steps: [../tests/e2e/README.md](../tests/e2e/README.md). The tenant it runs on is
+`sandbox/demo_seed.py` ([../sandbox/README.md](../sandbox/README.md)).

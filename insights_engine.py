@@ -709,7 +709,7 @@ def get_roi_metrics(app, company_id, fiscal_year=None):
             cur.execute("""
                 SELECT COALESCE(SUM(price), 0) AS total_spend,
                        COUNT(DISTINCT user_id) AS employees_trained,
-                       COUNT(CASE WHEN completion_status = 'completed' THEN 1 END) AS completed,
+                       COUNT(CASE WHEN (status = 'completed' OR COALESCE(completion_status, '') = 'completed') THEN 1 END) AS completed,
                        COUNT(*) AS total_orders
                 FROM course_orders
                 WHERE company_id = %s
@@ -742,7 +742,7 @@ def get_roi_metrics(app, company_id, fiscal_year=None):
                 SELECT AVG(DATEDIFF(completion_date, created_at)) AS avg_days
                 FROM course_orders
                 WHERE company_id = %s
-                  AND completion_status = 'completed'
+                  AND (status = 'completed' OR COALESCE(completion_status, '') = 'completed')
                   AND completion_date IS NOT NULL
                   AND YEAR(created_at) = %s
             """, (company_id, fiscal_year))
@@ -754,7 +754,7 @@ def get_roi_metrics(app, company_id, fiscal_year=None):
                 SELECT co.department,
                        COALESCE(SUM(co.price), 0) AS dept_spend,
                        COUNT(DISTINCT co.user_id) AS dept_employees,
-                       COUNT(CASE WHEN co.completion_status = 'completed' THEN 1 END) AS dept_completed,
+                       COUNT(CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN 1 END) AS dept_completed,
                        COUNT(*) AS dept_total
                 FROM course_orders co
                 WHERE co.company_id = %s

@@ -96,6 +96,32 @@
     </div>
   </div>
 
+  {# ===================== Opfølgning fra AI-assistenten (opt-in) ===================== #}
+  <div class="fm-card" style="margin-top:4px;padding:18px">
+    <div class="fm-flex fm-ac fm-spread fm-gap12" style="flex-wrap:wrap">
+      <div class="fm-flex fm-ac fm-gap12">
+        <span class="fm-ch-icon"><i class="fa-solid fa-comment-dots"></i></span>
+        <div>
+          <h3 style="font-size:14.5px;font-weight:700;margin:0">Opfølgning fra AI-assistenten</h3>
+          <p style="font-size:12px;color:var(--fm-ink-2);margin:2px 0 0;max-width:62ch">
+            AI-assistenten følger op, når en medarbejder åbner den: på et kursus, de lige har gennemført, eller et mål,
+            der har ligget stille. Slå dette til for også at give medarbejderen højst én notifikation om ugen om det.
+            Indholdet er medarbejderens eget; HR ser det ikke, og hver medarbejder kan selv slå opfølgning fra.
+          </p>
+        </div>
+      </div>
+      <label class="eng-switch" for="checkinNotificationsToggle">
+        <input type="checkbox" id="checkinNotificationsToggle"
+               {% if checkin_notifications_enabled %}checked{% endif %}
+               aria-label="Slå ugentlige opfølgningsnotifikationer fra AI-assistenten til">
+        <span class="eng-track" aria-hidden="true"></span>
+        <span id="checkinNotificationsState" style="font-size:12.5px;font-weight:650;color:var(--fm-ink-2)">
+          {{ 'Til' if checkin_notifications_enabled else 'Fra' }}
+        </span>
+      </label>
+    </div>
+  </div>
+
   {# ===================== Inaktivitet fordelt på varighed ===================== #}
   {% if inact_list and not inact_err %}
   <div class="fm-card" style="margin-top:4px;padding:18px">
@@ -379,13 +405,15 @@
 
   // ---- HR opt-in toggle: direct per-learner deadline reminders ----
   var DEADLINE_URL = {{ url_for('hr_ext.set_deadline_reminders') | tojson | safe }};
-  var toggle = document.getElementById('deadlineRemindersToggle');
-  var stateLabel = document.getElementById('deadlineRemindersState');
-  if (toggle) {
+  // One opt-in switch: post the wanted state, show what the server stored.
+  function wireSwitch(toggleId, stateId, url, onText, offText) {
+    var toggle = document.getElementById(toggleId);
+    var stateLabel = document.getElementById(stateId);
+    if (!toggle) return;
     toggle.addEventListener('change', function () {
       var want = toggle.checked;
       toggle.disabled = true;
-      fetch(DEADLINE_URL, {
+      fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         credentials: 'same-origin',
@@ -397,8 +425,7 @@
           var on = !!res.body.enabled;
           toggle.checked = on;
           if (stateLabel) stateLabel.textContent = on ? 'Til' : 'Fra';
-          toast(on ? 'Direkte deadline-påmindelser er slået til.'
-                   : 'Direkte deadline-påmindelser er slået fra.', true);
+          toast(on ? onText : offText, true);
         } else {
           toggle.checked = !want; // revert
           toast((res.body && res.body.message) || 'Kunne ikke gemme indstillingen.', false);
@@ -408,6 +435,10 @@
       .finally(function () { toggle.disabled = false; });
     });
   }
+  wireSwitch('deadlineRemindersToggle', 'deadlineRemindersState', DEADLINE_URL,
+             'Direkte deadline-påmindelser er slået til.', 'Direkte deadline-påmindelser er slået fra.');
+  wireSwitch('checkinNotificationsToggle', 'checkinNotificationsState', {{ url_for('hr_ext.set_checkin_notifications')|tojson }},
+             'Ugentlig opfølgning fra AI-assistenten er slået til.', 'Ugentlig opfølgning fra AI-assistenten er slået fra.');
 })();
 </script>
 {% endblock %}

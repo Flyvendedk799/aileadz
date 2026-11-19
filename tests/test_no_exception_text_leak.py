@@ -58,3 +58,18 @@ class EnterpriseBrandingLeakTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HrToolLeakTests(unittest.TestCase):
+    def test_a_failing_hr_tool_gives_the_model_a_code_not_the_exception(self):
+        import json
+        import hr_tools
+        call = mock.Mock()
+        call.function.name = "hr_open_in_app"
+        call.function.arguments = "{}"
+        with mock.patch("ai_permissions.hr_arguments", side_effect=lambda name, args: (args, None)), \
+                mock.patch.object(hr_tools, "_execute_hr_open_in_app", side_effect=RuntimeError(SECRET)), \
+                self.assertLogs("hr_tools", level="ERROR"):
+            out = hr_tools.execute_hr_tool(call)
+        self.assertNotIn("prod.course_orders", out)
+        self.assertEqual(json.loads(out)["error_code"], "hr_open_in_app_failed")

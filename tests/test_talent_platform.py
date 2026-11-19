@@ -19,7 +19,7 @@ def env():
         db.raw.execute(ddl)
     db.raw.executescript('''
         CREATE TABLE user_skills (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT,skill_name TEXT,skill_level TEXT,numeric_level INTEGER,category TEXT,source TEXT,UNIQUE(username,skill_name));
-        CREATE TABLE user_learning_goals (id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT,title TEXT,status TEXT DEFAULT 'aktiv');
+        CREATE TABLE user_learning_goals (id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT,title TEXT,description TEXT,target_date TEXT,status TEXT DEFAULT 'aktiv',shared_with_hr INTEGER DEFAULT 0,shared_company_id INTEGER,shared_at TEXT,updated_at TEXT);
         CREATE TABLE company_skill_targets (id INTEGER PRIMARY KEY AUTOINCREMENT,company_id INTEGER,department TEXT,skill_name TEXT,target_level INTEGER,priority TEXT);
     ''')
     for user_id, username, cid in ((1,'ada',7),(2,'bo',7),(3,'hr',7),(4,'outside',8)):
@@ -306,3 +306,161 @@ def test_course_handle_alone_does_not_verify_completion():
     p={'completed_courses':[dict(title='SQL',handle='sql')]}
     assert not cv_service.assemble(p)['courses'][0]['verified']
     assert cv_service.assemble(p,orders=[dict(handle='sql',state='gennemfoert')])['courses'][0]['verified']
+
+
+def notes(db, username):
+    return db.query('SELECT title,message,action_url FROM notifications WHERE user_id=%s ORDER BY id', (username,))
+
+
+def test_sharing_a_goal_tells_hr_once_and_private_goals_tell_nobody(env):
+    db,app=env
+    cur=db.connection.cursor()
+    with app.test_request_context():
+        svc.link_goal(cur,7,1,1,'Python | 4','2030-01-01',[dict(kind='practice',title='Byg et værktøj')],False)
+    db.connection.commit()
+    assert notes(db,'hr')==[]
+    goal=svc.goals(cur,7,1)[0]
+    c=client(app)
+    c.post('/talent/actions/share_goal',data=dict(id=goal['id'],shared='yes'))
+    c.post('/talent/actions/share_goal',data=dict(id=goal['id'],shared='yes'))
+    told=notes(db,'hr')
+    assert len(told)==1 and 'Privat mål' in told[0]['message'] and told[0]['action_url']=='/hr/employee/1/goals'
+    assert notes(db,'ada')==[] and notes(db,'bo')==[]
+
+
+def test_manager_assessment_tells_the_employee_not_the_assessor(env):
+    db,app=env
+    cur=db.connection.cursor()
+    with app.test_request_context():
+        svc.assess(cur,7,1,'Python',4,'manager',3,'ref-1')
+        svc.assess(cur,7,1,'Python',2,'self',1,'ref-2')
+    db.connection.commit()
+    assert len(notes(db,'ada'))==1 and 'niveau 4 af 5' in notes(db,'ada')[0]['message']
+    assert notes(db,'hr')==[]
+
+
+def test_application_stages_and_placement_reach_the_right_people(env):
+    db,app=env
+    rid=publish_role(db);oid=opportunity(db,rid)
+    db.execute("UPDATE talent_opportunities SET department='Udvikling' WHERE id=%s",(oid,))
+    cur=db.connection.cursor()
+    svc.apply(cur,7,1,oid,{})
+    assert [n['title'] for n in notes(db,'hr')]==['Ny ansøgning']
+    application=db.one('SELECT * FROM talent_applications')
+    for revision,status in enumerate(('screening','interview','offer'),start=1):
+        svc.transition(cur,7,3,application['id'],status,revision)
+    assert len(notes(db,'ada'))==3 and 'Tilbud' in notes(db,'ada')[-1]['message']
+    svc.transition(cur,7,1,application['id'],'accepted',4)
+    assert notes(db,'hr')[-1]['title']=='Ansøgning opdateret'
+    svc.confirm_placement(cur,7,application['id'])
+    db.connection.commit()
+    assert notes(db,'ada')[-1]['title']=='Din placering er bekræftet'
+    person=db.one('SELECT job_title,department FROM company_users WHERE company_id=7 AND user_id=1')
+    assert person['job_title']=='Udvikler' and person['department']=='Udvikling'
+
+
+def test_completed_course_ticks_the_goal_step_for_hr_and_tells_the_learner(env):
+    import domain_reactions, event_bus
+    db,app=env
+    db.execute("INSERT INTO course_orders (order_id,company_id,user_id,username,product_title,status) VALUES ('own-order',7,1,'ada','Python','booked')")
+    cur=db.connection.cursor()
+    with app.test_request_context():
+        svc.link_goal(cur,7,1,1,'Python | 4','2030-01-01',[dict(kind='course',title='Tag kurset',order_id='own-order')],True)
+    db.connection.commit()
+    assert not svc.goals(cur,7,hr=True)[0]['actions'][0]['done']
+    db.execute("UPDATE course_orders SET status='completed' WHERE order_id='own-order'")
+    # Read side: HR and the learner see the same thing without any event.
+    assert svc.goals(cur,7,hr=True)[0]['actions'][0]['done']
+    domain_reactions.register()
+    with app.app_context():
+        for _ in range(2):
+            event_bus.publish_internal(7,'course.completed',dict(order_id='own-order',user_id=1,product_title='Python'))
+    assert '"done": true' in db.one('SELECT actions_json FROM talent_goal_links')['actions_json']
+    told=[n for n in notes(db,'ada') if n['action_url']=='/udvikling']
+    assert len(told)==1 and 'Privat mål' in told[0]['message']
+    # Another tenant's event for the same order id touches nothing.
+    with app.app_context():
+        assert event_bus.publish_internal(8,'course.completed',dict(order_id='own-order',user_id=1))==1
+
+
+def test_a_failing_subscriber_never_reaches_the_emitter_or_its_peers(env):
+    import event_bus
+    db,app=env
+    seen=[]
+    def boom(*a): raise RuntimeError('x')
+    def ok(cid,kind,payload): seen.append((cid,kind))
+    event_bus.subscribe('test.thing',boom); event_bus.subscribe('test.thing',ok); event_bus.subscribe('test.thing',ok)
+    try:
+        with app.app_context():
+            assert event_bus.publish_internal(7,'test.thing',{})==1
+        assert seen==[(7,'test.thing')]
+    finally:
+        event_bus._SUBSCRIBERS.pop('test.thing',None)
+
+
+def test_an_unmet_requirement_links_to_learning_and_a_met_one_does_not(env):
+    from flask import render_template_string
+    db,app=env
+    app.add_url_rule('/catalog','catalog.catalog_index',lambda:'') if 'catalog.catalog_index' not in app.view_functions else None
+    r=dict(available=True,total=2,counts=dict(satisfied=1,unknown=1,provisional=0),requirements=[
+        dict(skill='Python',current_level=4,target_level=4,provisional=False),
+        dict(skill='Ledelse & co',current_level=None,target_level=3,provisional=False)])
+    with app.test_request_context():
+        learner=render_template_string("{% import 'fm/_talent.html' as t %}{{ t.readiness(r, links=true) }}",r=r)
+        hr=render_template_string("{% import 'fm/_talent.html' as t %}{{ t.readiness(r) }}",r=r)
+    assert learner.count('Find læring')==1 and 'q=Ledelse+%26+co' in learner
+    assert 'Find læring' not in hr
+
+
+def test_a_confirmed_placement_is_published_to_integrations_after_commit(env):
+    db,app=env
+    rid=publish_role(db);oid=opportunity(db,rid)
+    cur=db.connection.cursor()
+    svc.apply(cur,7,1,oid,{})
+    application=db.one('SELECT * FROM talent_applications')
+    for revision,status in enumerate(('screening','interview','offer'),start=1):
+        svc.transition(cur,7,3,application['id'],status,revision)
+    svc.transition(cur,7,1,application['id'],'accepted',4)
+    db.connection.commit()
+    with mock.patch('event_bus.emit_event') as emit:
+        response=client(app,3,role='hr_manager').post('/talent/actions/placement',data=dict(id=application['id']))
+    assert response.status_code==302
+    assert emit.call_count==1
+    company,event,payload=emit.call_args.args
+    assert (company,event)==(7,'employee.placed')
+    assert payload['user_id']==1 and payload['job_title']=='Udvikler' and payload['kind']=='role'
+    from enterprise_company_settings import WEBHOOK_EVENT_CHOICES
+    assert {'employee.placed','order.change_requested','order.change_resolved'} <= {n for n,_ in WEBHOOK_EVENT_CHOICES}
+
+
+def test_one_reader_lists_assigned_and_personal_paths(env):
+    import learning_path_service as lps
+    db,app=env
+    assigned=[dict(id=5,learning_path_id=2,path_name='Ny i salg',due_date=None,status='in_progress',progress_percentage=50,
+                   steps=[dict(title='Kursus A',status='completed'),dict(title='Kursus B',status='not_started')])]
+    personal=[dict(id=9,title='Mod teamleder',status='aktiv',steps=[dict(title='Ledelse 1',completed=True),'Fri tekst'])]
+    with mock.patch.object(lps,'assignments_for_learner',return_value=assigned), mock.patch('app1.user_profile_db.get_learning_paths',return_value=personal):
+        items=lps.paths_for_learner(db.connection.cursor(),'ada',1,7)
+    assert [(i['kind'],i['title'],i['done'],i['total']) for i in items]==[('assigned','Ny i salg',1,2),('personal','Mod teamleder',1,2)]
+    assert items[0]['url']=='/min-laering/forloeb/5' and items[1]['steps'][1]=={'title':'Fri tekst','done':False}
+
+
+def test_a_course_is_matched_to_the_gaps_it_is_about():
+    import competency
+    gaps=[dict(skill='Forhandling',current_level=2,target_level=3),dict(skill='Ledelse',current_level=None,target_level=3),dict(skill='SQL',current_level=1,target_level=4)]
+    hit=competency.gaps_matched_by(gaps,'Salgstræning i praksis','Salg, Forhandling, Kommunikation')
+    assert [g['skill'] for g in hit]==['Forhandling']
+    assert competency.gaps_matched_by(gaps,'Ledelse: grundforløb','')[0]['skill']=='Ledelse'
+    assert competency.gaps_matched_by(gaps,'NoSQL i dybden','')==[], 'a word that merely contains the skill is not a match'
+    assert competency.gaps_matched_by(gaps,'','')==[]
+
+
+def test_an_empty_workspace_offers_ways_in_and_a_filled_one_does_not(env):
+    db,app=env
+    page=client(app).get('/udvikling').get_data(as_text=True)
+    assert 'Her samler du det, du kan, og det, du vil' in page and 'Importér dit CV' in page
+    cur=db.connection.cursor()
+    with app.test_request_context():
+        svc.assess(cur,7,1,'Python',3,'self',1,'first-run')
+    db.connection.commit()
+    assert 'Her samler du det, du kan, og det, du vil' not in client(app).get('/udvikling').get_data(as_text=True)

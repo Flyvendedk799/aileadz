@@ -109,14 +109,10 @@ _SNAPSHOT_AT = 0.0
 _SNAPSHOT_LOCK = threading.Lock()
 _TABLE_READY = set()
 
-_AI_SETTINGS_DDL = """
-CREATE TABLE IF NOT EXISTS ai_settings (
-    setting_key VARCHAR(100) NOT NULL PRIMARY KEY,
-    setting_value TEXT,
-    updated_by VARCHAR(255),
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-"""
+def _ai_settings_ddl():
+    """Defined once, in schema_registry."""
+    import schema_registry
+    return schema_registry.ddl('ai_settings')
 
 
 def ensure_ai_settings_table(mysql) -> None:
@@ -132,7 +128,7 @@ def ensure_ai_settings_table(mysql) -> None:
         refresh_flask_mysql_connection(mysql)
         cur = mysql.connection.cursor()
         try:
-            cur.execute(_AI_SETTINGS_DDL)
+            cur.execute(_ai_settings_ddl())
             mysql.connection.commit()
             _TABLE_READY.add(cache_key)
         finally:

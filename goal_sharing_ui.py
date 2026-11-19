@@ -2,8 +2,8 @@
 
 The data rules (``shared_with_employee`` flag, company AI switch, audit) are owned
 by Part A's ``goal_sharing`` module. This module adds what the HR/learner screens
-need: company-scoped employee lookup, the two HR sections, the learner-facing
-shared list and the learner notification. When Part A's module is importable AND
+need: company-scoped employee lookup, the two HR sections and the learner
+notification (the learner reads shared goals through ``goal_service``). When Part A's module is importable AND
 the caller passes ``conn=``, the flag writes/reads are delegated to it; otherwise
 a minimal, equivalent SQL fallback is used (identical column definitions), so the
 two parts merge without behaviour changes.
@@ -65,27 +65,6 @@ def list_goals_for_hr(cur, company_id, employee_id, conn=None):
     shared = [r for r in rows if int(r.get("shared_with_employee") or 0) == 1]
     private = [r for r in rows if int(r.get("shared_with_employee") or 0) != 1]
     return shared, private
-
-
-def shared_goals_for_learner(cur, user_id, company_id, conn=None):
-    """What the learner may see: SHARED goals only. Never raises."""
-    if not user_id or not company_id:
-        return []
-    try:
-        a = _part_a()
-        if a is not None and conn is not None:
-            return a.list_shared_goals_for_learner(conn, user_id, company_id)
-        cur.execute(
-            """SELECT id, goal_title, goal_description, target_date, status, progress, shared_at, share_note
-               FROM employee_goals
-               WHERE employee_id = %s AND company_id = %s AND shared_with_employee = 1
-               ORDER BY (status IN ('completed')) ASC, shared_at DESC, id DESC""",
-            (user_id, company_id),
-        )
-        return list(cur.fetchall() or [])
-    except Exception as e:
-        logger.warning("goal_sharing: learner goals failed: %s", e)
-        return []
 
 
 def add_goal(cur, *, company_id, employee_id, title, description="", target_date=None, share=False,

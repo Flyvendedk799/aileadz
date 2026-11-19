@@ -1,6 +1,6 @@
 """WSGI entrypoint for ServerHoster (and any gunicorn/uWSGI host).
 
-Run with:  gunicorn wsgi:application --bind 0.0.0.0:$PORT
+Run with:  gunicorn -c deploy/gunicorn.conf.py wsgi:application --bind 0.0.0.0:$PORT
 
 All configuration comes from the process environment (MYSQL_* or a mysql://
 DATABASE_URL, SECRET_KEY, OPENAI_API_KEY, AI_*, MAIL_*, ...). A `.env` next to

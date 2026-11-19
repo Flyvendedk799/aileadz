@@ -8,5 +8,5 @@
    Never construct Chart.js charts directly in a template; go through FMChart
    (enforced by tests/test_charts_layer.py). #}
 <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm-charts.css') }}?v={{ asset_version('futurematch/assets/fm-charts.css') }}">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+<script src="{{ url_for('static', filename='futurematch/vendor/chart.js@4.4.0/chart.umd.min.js') }}"></script>
 <script src="{{ url_for('static', filename='futurematch/assets/fm-charts.js') }}?v={{ asset_version('futurematch/assets/fm-charts.js') }}"></script>

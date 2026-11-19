@@ -2,11 +2,14 @@
 title: Konto, adgangskode og notifikationer
 slug: konto-og-notifikationer
 url: /indstillinger
-keywords: konto, indstillinger, adgangskode, kodeord, skift kodeord, glemt adgangskode, password, login, log ind, e-mail, email, notifikationer, notifikation, mørkt tema, settings
+keywords: opfølgning, check-in, stop opfølgning, konto, indstillinger, adgangskode, kodeord, skift kodeord, glemt adgangskode, password, login, log ind, e-mail, email, notifikationer, notifikation, mørkt tema, settings
 audience: employee
 ---
 ## Kort fortalt
 Under "Indstillinger" (/indstillinger) styrer du konto, e-mail, notifikationer og sikkerhed. Dine beskeder finder du under "Notifikationer" (/notifications).
+
+## Opfølgning fra AI-assistenten
+AI-assistenten kan følge op på et kursus, du har gennemført, eller et mål, der har ligget stille. Under "Indstillinger" slår du "Opfølgning fra AI-assistenten" fra og til. Du kan også bede assistenten om at holde op.
 
 ## Skift adgangskode
 1. Vælg "Indstillinger" i menuen under Konto.

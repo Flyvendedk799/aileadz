@@ -80,6 +80,19 @@ def _step_status(step, lc, sequential, done):
     return "Ikke startet", ""
 
 
+@learning_bp.route("/min-laering/forloeb")
+@login_required
+def my_paths():
+    """All of the learner's paths: assigned by HR and built with the assistant."""
+    from flask import session
+    cur = cursor()
+    try:
+        items = paths.paths_for_learner(cur, session.get("user"), session.get("user_id"), session.get("company_id"))
+    finally:
+        cur.close()
+    return render_template("fm/learning_paths_mine.html", paths=items)
+
+
 @learning_bp.route("/min-laering/forloeb/<int:progress_id>")
 @login_required
 def assignment(progress_id):

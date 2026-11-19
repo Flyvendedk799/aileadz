@@ -399,7 +399,7 @@ def create_companies_blueprint():
                     cu.total_chatbot_queries, cu.total_courses_completed,
                     manager.username as manager_name,
                     COUNT(DISTINCT co.id) as courses_enrolled,
-                    COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) as courses_completed,
+                    COUNT(DISTINCT CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.id END) as courses_completed,
                     COALESCE(AVG(elp.progress_percentage), 0) as avg_progress
                 FROM company_users cu
                 JOIN users u ON cu.user_id = u.id

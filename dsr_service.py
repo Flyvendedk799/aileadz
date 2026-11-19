@@ -21,22 +21,10 @@ SLA_DAYS = 30
 REQUEST_TYPES = ("erasure", "export")
 OPEN_STATUSES = ("open", "in_progress")
 
-_DDL = """CREATE TABLE IF NOT EXISTS dsr_requests (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    request_type VARCHAR(20) NOT NULL,
-    user_id INT NULL,
-    username VARCHAR(255) NULL,
-    email VARCHAR(255) NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'open',
-    reason TEXT NULL,
-    requested_at DATETIME NOT NULL,
-    due_at DATETIME NOT NULL,
-    handled_by VARCHAR(255) NULL,
-    handled_at DATETIME NULL,
-    note TEXT NULL,
-    INDEX idx_status_due (status, due_at),
-    INDEX idx_user (user_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
+def _ddl():
+    """Defined once, in schema_registry."""
+    import schema_registry
+    return schema_registry.ddl('dsr_requests')
 _TABLE_READY = False
 
 
@@ -46,7 +34,7 @@ def ensure_table(conn):
         return
     cur = conn.cursor()
     try:
-        cur.execute(_DDL)
+        cur.execute(_ddl())
         conn.commit()
         _TABLE_READY = True
     finally:

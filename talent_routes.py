@@ -41,6 +41,42 @@ def required(cur, cid, module):
         abort(404)
 
 
+@talent_bp.app_context_processor
+def _talent_nav():
+    """``talent_modules()`` for the shell: which talent modules this company switched on,
+    so the sidebar can offer "Interne muligheder". One primary-key read per page, memoised
+    per request; any failure means "nothing switched on"."""
+    def talent_modules():
+        cid = session.get('company_id')
+        if not cid or not session.get('user'):
+            return {}
+
+        def load():
+            cur = None
+            try:
+                import MySQLdb.cursors
+                cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+                return dict(service.flags(cur, cid))
+            except Exception:
+                return {}
+            finally:
+                if cur:
+                    cur.close()
+        from request_memo import memo
+        return memo(('talent_modules', cid), load)
+    return {'talent_modules': talent_modules}
+
+
+def _profile_schema():
+    """Goal visibility lives on the profile's goal table; make sure its columns exist
+    before a transaction starts (cached after the first call in a process)."""
+    try:
+        from app1.user_profile_db import ensure_tables
+        ensure_tables()
+    except Exception:
+        current_app.logger.debug("profile schema step unavailable", exc_info=True)
+
+
 def hr_access():
     if not can('company.employees'):
         abort(403)
@@ -67,12 +103,8 @@ def workspace():
         settings = service.flags(cur, cid)
         links = service.goals(cur, cid, user_id)
         orders = rows(cur, 'SELECT order_id,product_title,status FROM course_orders WHERE company_id=%s AND user_id=%s ORDER BY created_at DESC LIMIT 100', (cid,user_id))
-        order_map = {o['order_id']: o for o in orders}
         for item in links:
             item['readiness'] = evaluate(state, item['requirements'])
-            for step in item['actions']:
-                if step.get('order_id') in order_map:
-                    step['done'] = order_map[step['order_id']]['status'] == 'completed'
         role_list = service.roles(cur, cid) if settings.get('roles_enabled') else []
         exploration = None
         if request.args.get('role') and settings.get('roles_enabled'):
@@ -167,14 +199,9 @@ def hr():
                             'WHERE a.company_id=%s AND h.user_id=%s ORDER BY a.updated_at DESC', (cid, user_id)) if settings.get('mobility_enabled') else []
         scenarios = rows(cur, 'SELECT * FROM talent_scenarios WHERE company_id=%s ORDER BY created_at DESC', (cid,)) if settings.get('planning_enabled') else []
         for scenario in scenarios:
-            people_in_scope = [p for p in people if not scenario['department'] or p['department'] == scenario['department']]
             from kanon import _resolve_k_default
-            # Bounded pilot workload; never present a partial cohort as the whole workforce.
-            if len(people_in_scope) > 500:
-                scenario['coverage'] = None
-            else:
-                states = service.cohort_states(cur, cid, people_in_scope)
-                scenario['coverage'] = service.coverage(states, scenario['requirements'], _resolve_k_default())
+            scenario['coverage'] = service.scenario_coverage(cur, cid, people, scenario['department'],
+                                                             scenario['requirements'], _resolve_k_default())
             total = 0
             available = True
             import catalog_service
@@ -201,8 +228,10 @@ def hr():
 @login_required
 def action(action):
     f = request.form
+    _profile_schema()
     hr_actions = {'settings', 'role', 'publish_role', 'assign_role', 'manager_assessment', 'opportunity', 'publish_opportunity', 'close_opportunity', 'placement', 'scenario', 'publish_scenario'}
     cur, cid, user_id = context(management=action in hr_actions or action == 'transition')
+    placed = None
     dest = 'talent.hr' if action in hr_actions or f.get('return_to') == 'hr' and can('company.employees') else 'talent.workspace'
     if action == 'transition' and f.get('return_to') == 'hiring':
         dest = 'talent.hiring'
@@ -228,19 +257,18 @@ def action(action):
         elif action == 'goal':
             service.link_goal(cur, cid, user_id, int(f['goal_id']), f['requirements'], f['review_date'],
                               [dict(kind=f['kind'], title=f['next_step'], order_id=f.get('order_id'))], bool(f.get('shared')))
-        elif action in ('share_goal', 'complete_action'):
+        elif action == 'share_goal':
+            service.share_goal(cur, cid, user_id, f['id'], f.get('shared') == 'yes')
+        elif action == 'complete_action':
             cur.execute('SELECT * FROM talent_goal_links WHERE company_id=%s AND user_id=%s AND id=%s FOR UPDATE', (cid, user_id, f['id']))
             row = cur.fetchone()
             if not row:
                 abort(404)
-            if action == 'share_goal':
-                cur.execute('UPDATE talent_goal_links SET shared=%s WHERE company_id=%s AND user_id=%s AND id=%s', (int(f.get('shared') == 'yes'), cid, user_id, f['id']))
-            else:
-                actions = json.loads(row['actions_json'])
-                for item in actions:
-                    if item['id'] == f['action_id'] and item['kind'] in ('practice', 'mentoring'):
-                        item['done'] = True
-                cur.execute('UPDATE talent_goal_links SET actions_json=%s WHERE company_id=%s AND user_id=%s AND id=%s', (service.dump(actions), cid, user_id, f['id']))
+            actions = json.loads(row['actions_json'])
+            for item in actions:
+                if item['id'] == f['action_id'] and item['kind'] in ('practice', 'mentoring'):
+                    item['done'] = True
+            cur.execute('UPDATE talent_goal_links SET actions_json=%s WHERE company_id=%s AND user_id=%s AND id=%s', (service.dump(actions), cid, user_id, f['id']))
         elif action in ('opportunity', 'publish_opportunity', 'close_opportunity'):
             required(cur, cid, 'mobility')
             if action == 'opportunity':
@@ -257,7 +285,7 @@ def action(action):
             service.transition(cur, cid, user_id, f['id'], f['status'], int(f['revision']))
         elif action == 'placement':
             required(cur, cid, 'mobility')
-            service.confirm_placement(cur, cid, f['id'])
+            placed = service.confirm_placement(cur, cid, f['id'])
         elif action in ('scenario', 'publish_scenario'):
             required(cur, cid, 'planning')
             if action == 'scenario':
@@ -273,6 +301,10 @@ def action(action):
         else:
             abort(404)
         current_app.mysql.connection.commit()
+        if placed:
+            # After the commit: an integration (HR system) can follow the move.
+            import event_bus
+            event_bus.emit_event(cid, 'employee.placed', placed)
         from security_audit import audit
         audit('talent.' + action, resource_type='talent', resource_id=f.get('id', ''), company_id=cid)
         flash('Ændringen er gemt.', 'success')

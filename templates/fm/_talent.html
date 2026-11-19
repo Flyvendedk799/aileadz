@@ -2,9 +2,10 @@
 {% macro requirements(label='Kompetencekrav') %}
 <label>{{ label }}<textarea name="requirements" rows="4" required placeholder="Projektledelse | 4&#10;Kommunikation | 3"></textarea><small>Én kompetence pr. linje: navn | niveau 1–5. I scenarier kan du tilføje | antal medarbejdere.</small></label>
 {% endmacro %}
-{% macro readiness(r) %}
+{# links=true adds a catalog search on each requirement that is not yet met (learner pages only). #}
+{% macro readiness(r, links=false) %}
 {% if r %}<p>{% if r.available %}<strong>{{ r.counts.satisfied }} af {{ r.total }}</strong> krav dækket · {{ r.counts.unknown }} ukendte · {{ r.counts.provisional }} foreløbige selvvurderinger{% else %}Vurderingerne kan ikke indlæses lige nu.{% endif %}</p>
-<ul class="talent-requirements">{% for item in r.requirements %}<li><span>{{ item.skill }}</span><span>{{ item.current_level if item.current_level is not none else 'Ukendt' }} → {{ item.target_level }}/5{% if item.provisional %} · selvvurderet{% endif %}</span></li>{% endfor %}</ul>{% endif %}
+<ul class="talent-requirements">{% for item in r.requirements %}<li><span>{{ item.skill }}</span><span>{{ item.current_level if item.current_level is not none else 'Ukendt' }} → {{ item.target_level }}/5{% if item.provisional %} · selvvurderet{% endif %}{% if links and (item.current_level is none or item.current_level < item.target_level) %} · <a href="{{ url_for('catalog.catalog_index', q=item.skill) }}">Find læring</a>{% endif %}</span></li>{% endfor %}</ul>{% endif %}
 {% endmacro %}
 {% macro nav() %}
 <nav class="pg-subnav talent-tabs" aria-label="Min udvikling">

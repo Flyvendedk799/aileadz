@@ -73,6 +73,9 @@
 
     initMotion();
     initNavSections();
+    initA11y();
+    // The lit entry is also announced as the current page.
+    document.querySelectorAll(".fm-nav-link.active, .fm-subnav a.active, .fm-tabs a.active").forEach(a => a.setAttribute("aria-current", "page"));
     initCmdK();
     initTooltips();
     initNotifBadge();
@@ -125,10 +128,44 @@
     side.querySelectorAll(".fm-nav-link").forEach(link => {
       const name = link.querySelector("span")?.textContent;
       if (name) { link.setAttribute("aria-label", name); link.title = name; }
-      if (link.classList.contains("active")) link.setAttribute("aria-current", "location");
     });
     mobile.addEventListener("change", () => paint(false));
     paint(false);
+  }
+
+  /* ---- Structure a screen reader can use ----
+     Two things most pages got wrong the same way, fixed once here:
+     - the page title lives in the top bar, not in an <h1>: when the page has no
+       level-1 heading of its own, the top-bar title becomes it;
+     - a label that sits next to its field without for/id is tied to that field,
+       so the field is announced with its name. */
+  function initA11y() {
+    const title = document.querySelector(".fm-top-title");
+    if (title && title.textContent.trim() && !document.querySelector('h1, [role="heading"][aria-level="1"]')) {
+      title.setAttribute("role", "heading");
+      title.setAttribute("aria-level", "1");
+    }
+    let n = 0;
+    document.querySelectorAll("label").forEach(label => {
+      if (label.htmlFor || label.querySelector("input, select, textarea")) return;
+      const box = label.parentElement;
+      if (!box) return;
+      const fields = box.querySelectorAll("input:not([type=hidden]), select, textarea");
+      if (fields.length !== 1) return;                       // only the unambiguous case
+      const field = fields[0];
+      if (field.getAttribute("aria-label") || field.getAttribute("aria-labelledby")) return;
+      if (field.id && document.querySelector('label[for="' + CSS.escape(field.id) + '"]')) return;
+      if (!field.id) field.id = "fm-field-" + (++n);
+      label.htmlFor = field.id;
+    });
+    // A field with no label at all (search boxes, the chat input) is at least
+    // announced by its placeholder instead of as "edit text".
+    document.querySelectorAll("input:not([type=hidden]):not([type=submit]):not([type=button]):not([type=checkbox]):not([type=radio]), textarea").forEach(field => {
+      if (field.getAttribute("aria-label") || field.getAttribute("aria-labelledby") || field.getAttribute("title")) return;
+      if (field.closest("label") || (field.id && document.querySelector('label[for="' + CSS.escape(field.id) + '"]'))) return;
+      const hint = (field.getAttribute("placeholder") || "").replace(/[….]+$/, "").trim();
+      if (hint) field.setAttribute("aria-label", hint);
+    });
   }
 
   /* ---- Collapsible sidebar sections ----
@@ -317,7 +354,7 @@
       { icon: "fa-bullseye", title: "Opret udviklingsmål", sub: "Udviklingsmål", href: "/mine-maal", group: "Handlinger" },
       { icon: "fa-bell", title: "Mine notifikationer", sub: "Konto", href: "/notifications", group: "Handlinger" },
       { icon: "fa-graduation-cap", title: "Åbn kursuskataloget", sub: "Katalog", href: "/catalog", group: "Handlinger" },
-      { icon: "fa-receipt", title: "Mine bestillinger", sub: "Min tidslinje", href: "/min-tidslinje", group: "Handlinger" },
+      { icon: "fa-receipt", title: "Mine bestillinger", sub: "Status og frister", href: "/min-tidslinje", group: "Handlinger" },
       { icon: "fa-circle-half-stroke", title: "Skift tema (lys/mørk)", sub: "Udseende", act: "theme", group: "Handlinger" },
       { icon: "fa-circle-question", title: "Support & hjælp", sub: "Konto", href: "/support", group: "Handlinger" },
     ];
@@ -328,7 +365,7 @@
     back.className = "cmdk-back"; back.id = "cmdkBack";
     back.innerHTML = `
       <div class="cmdk">
-        <div class="cmdk-in"><i class="fa-solid fa-magnifying-glass"></i><input id="cmdkInput" type="text" role="combobox" aria-label="Søg sider og handlinger" aria-controls="cmdkList" aria-expanded="true" aria-autocomplete="list" placeholder="Søg sider, handlinger…" autocomplete="off" /><button class="fm-kbd" type="button" data-command-close aria-label="Luk søgning">Esc</button></div>
+        <div class="cmdk-in"><i class="fa-solid fa-magnifying-glass"></i><input id="cmdkInput" type="text" role="combobox" aria-label="Søg kurser, bestillinger, mål og sider" aria-controls="cmdkList" aria-expanded="true" aria-autocomplete="list" placeholder="Søg kurser, bestillinger, mål og sider…" autocomplete="off" /><button class="fm-kbd" type="button" data-command-close aria-label="Luk søgning">Esc</button></div>
         <div class="cmdk-list" id="cmdkList" role="listbox" aria-label="Søgeresultater"></div>
         <div class="cmdk-foot"><span><span class="fm-kbd">↑</span><span class="fm-kbd">↓</span> Naviger</span><span><span class="fm-kbd">↵</span> Vælg</span><span><span class="fm-kbd">⌘K</span> Åbn</span></div>
       </div>`;
@@ -387,7 +424,7 @@
       results = staticMatches(ql);
       active = 0;
       drawList(q);
-      // Live entity search (employees / companies / users) via the backend,
+      // Live search (courses, own orders and goals, and by role people/companies) via the backend,
       // debounced; live hits are shown first, static nav/actions after.
       if (debounceT) clearTimeout(debounceT);
       const seq = ++searchSeq;
@@ -434,7 +471,7 @@
     back.addEventListener("close", () => returnFocus?.focus());
     function close() { back.close(); }
     back.querySelector("[data-command-close]").addEventListener("click", close);
-    document.querySelector("[data-command-open]")?.addEventListener("click", open);
+    document.querySelectorAll("[data-command-open], [data-cmdk-open]").forEach(btn => btn.addEventListener("click", open));
     window.fmCmdK = open;
 
     input.addEventListener("input", () => render(input.value));

@@ -1,14 +1,8 @@
-<!DOCTYPE html>
-<html lang="da" data-theme="light">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{{ order.product_title }} · Leverandørportal · Futurematch</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/vendor/fontawesome/css/fa-core.min.css') }}?v={{ asset_version('futurematch/vendor/fontawesome/css/fa-core.min.css') }}" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm.css') }}?v={{ asset_version('futurematch/assets/fm.css') }}" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm-pages.css') }}?v={{ asset_version('futurematch/assets/fm-pages.css') }}" />
+{% extends "fm/vendor_base.html" %}
+{% block title %}{{ order.product_title }}{% endblock %}
+{% block page_id %}vendor-orders{% endblock %}
+{% block vendor_tab %}orders{% endblock %}
+{% block extra_head %}
   <style>
     body { margin: 0; background: var(--fm-bg); color: var(--fm-ink); font-family: 'Hanken Grotesk', system-ui, sans-serif; }
     .vp-wrap { max-width: 900px; margin: 0 auto; padding: 26px 16px 60px; }
@@ -27,9 +21,8 @@
     .badge.pending { background: var(--fm-clay-tint); color: var(--fm-clay); }
     @media (max-width: 600px) { .vp-top, .vp-nav { padding-left: 16px; padding-right: 16px; } .vp-h1 { font-size: 22px; } }
   </style>
-</head>
-<body data-page="vendor-orders">
-  {% set vendor_tab = 'orders' %}{% include 'fm/_vendor_nav.html' %}
+{% endblock %}
+{% block content %}
 
   <main class="vp-wrap">
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -42,5 +35,4 @@
     <p class="vp-lead">{{ order.user_name or order.username }} · {{ status_label }} · {{ order.price|dkmoney }} · ordre {{ order.order_id[:8] }}</p>
     {% include "fm/order_sections/_all.html" %}
   </main>
-</body>
-</html>
+{% endblock %}

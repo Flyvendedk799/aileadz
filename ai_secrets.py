@@ -82,15 +82,10 @@ _TABLE_READY = set()
 # export can be UNDONE when the row is removed. None means "was not set".
 _ENV_ORIGINAL: Dict[str, Optional[str]] = {}
 
-_DDL = """
-CREATE TABLE IF NOT EXISTS ai_secrets (
-    secret_name VARCHAR(100) NOT NULL PRIMARY KEY,
-    secret_value TEXT,
-    hint VARCHAR(16),
-    updated_by VARCHAR(255),
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-"""
+def _ddl():
+    """Defined once, in schema_registry."""
+    import schema_registry
+    return schema_registry.ddl('ai_secrets')
 
 
 # --- encryption ---------------------------------------------------------------
@@ -215,7 +210,7 @@ def ensure_ai_secrets_table(mysql) -> None:
         refresh_flask_mysql_connection(mysql)
         cur = mysql.connection.cursor()
         try:
-            cur.execute(_DDL)
+            cur.execute(_ddl())
             mysql.connection.commit()
             _TABLE_READY.add(cache_key)
         finally:

@@ -1,14 +1,8 @@
-<!DOCTYPE html>
-<html lang="da" data-theme="light">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Analyser · Leverandørportal · Futurematch</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/vendor/fontawesome/css/fa-core.min.css') }}?v={{ asset_version('futurematch/vendor/fontawesome/css/fa-core.min.css') }}" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm.css') }}?v={{ asset_version('futurematch/assets/fm.css') }}" />
+{% extends "fm/vendor_base.html" %}
+{% block title %}Analyser{% endblock %}
+{% block page_id %}vendor-analytics{% endblock %}
+{% block vendor_tab %}analytics{% endblock %}
+{% block extra_head %}
   <style>
     body { margin: 0; background: var(--fm-bg); color: var(--fm-ink); font-family: 'Hanken Grotesk', system-ui, sans-serif; }
     .vp-wrap { max-width: 1040px; margin: 0 auto; padding: 26px 24px 60px; }
@@ -38,9 +32,8 @@
     .vp-anon i { color: var(--fm-primary); margin-top: 1px; }
     @media (max-width: 820px) { .vp-kpis { grid-template-columns: 1fr 1fr; } .vp-grid2 { grid-template-columns: 1fr; } }
   </style>
-</head>
-<body data-page="vendor-analytics">
-  {% set vendor_tab = 'analytics' %}{% include 'fm/_vendor_nav.html' %}
+{% endblock %}
+{% block content %}
 
   <main class="vp-wrap">
     <h1 class="vp-h1">Analyser</h1>
@@ -104,6 +97,8 @@
       {% endif %}
     </div>
   </main>
+{% endblock %}
+{% block extra_scripts %}
 
   {% include 'fm/_charts.html' %}
   <script>
@@ -134,5 +129,4 @@
       }
     })();
   </script>
-</body>
-</html>
+{% endblock %}

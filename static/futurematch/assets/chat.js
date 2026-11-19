@@ -850,6 +850,9 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
     get_learning_path: "Hent læringssti",
     open_in_app: "Åbn i appen",
     set_learning_goal: "Opret mål",
+    share_learning_goal: "Del mål med HR",
+    get_my_development: "Min udvikling",
+    search_company_documents: "Virksomhedens dokumenter",
     get_learning_goals: "Hent mål",
     update_learning_goal: "Opdater mål",
     get_my_course_status: "Kursusstatus",
@@ -868,6 +871,8 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
     send_company_email: "Send virksomhedsmail",
     send_deadline_reminders: "Send påmindelser",
     create_order_for_employee: "Opret medarbejderordre",
+    hr_draft_role_framework: "Rolleramme som kladde",
+    hr_run_capability_scenario: "Kapacitetsscenarie",
     save_course_for_later: "Gem til senere",
     set_course_reminder: "Sæt påmindelse",
     manage_my_order: "Administrer ordre",
@@ -1568,7 +1573,7 @@ const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(fixInternalLi
       </div>
       <div class="agc-rows">${rowsHtml}</div>
       <div class="csv-footer">
-        <button class="csv-btn primary" data-url="/min-tidslinje"><i class="fa-solid ${icon("fa-timeline")}"></i> Se hele tidslinjen</button>
+        <button class="csv-btn primary" data-url="/min-tidslinje"><i class="fa-solid ${icon("fa-timeline")}"></i> Se alle bestillinger</button>
       </div>`;
     card.querySelectorAll("[data-url]").forEach((b) =>
       b.addEventListener("click", () => window.open(b.getAttribute("data-url"), "_blank")));

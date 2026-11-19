@@ -38,11 +38,23 @@ Role definitions are immutable versions. Publishing makes a version discoverable
 assignments pin a version, so editing a framework never silently changes someone's role.
 The existing learning-goal record remains the source for title/status. `talent_goal_links`
 adds requirements, an initial baseline, next actions, review date and explicit sharing.
-Only shared links enter the HR queue. Unsharing immediately removes the link from that
-queue. Neither shared goals nor applications expose private chat/check-in history.
+Visibility belongs to the goal (`goal_service.share_own_goal`): sharing or unsharing in the
+workspace or on `/mine-maal` moves the goal and all its links together. Only shared links
+enter the HR queue. Unsharing immediately removes the link from that queue. Neither shared goals nor applications expose private chat/check-in history.
 Practical/mentoring tasks can be acknowledged without changing proficiency. Course steps
 can reference the employee's own order and follow its actual completion status. HR's
 outcome queue links to the existing guarded order review.
+
+A course step is done exactly when its order is completed: `talent_service.goals` derives
+it for the employee and HR views alike, and the `course.completed` subscriber
+(`domain_reactions.py`) persists it and tells the learner once.
+
+## Notifications
+
+Talent writes notify inside the caller's transaction (`talent_service._tell`), never the
+person who acted: HR when a goal becomes shared (never for a private goal), the hiring
+team on a new application and on the applicant's accept/withdraw, the applicant on each
+stage set by the hiring team and on placement, and the employee on a manager assessment.
 
 ## Internal recruitment
 
@@ -57,7 +69,9 @@ Stages: submitted → screening → interview → offer → accepted; rejection/
 terminal. Projects may skip interview. Stage writes use row locks and revision checks.
 Only the applicant accepts or withdraws; only the assigned hiring team advances a case.
 An accepted offer needs a separate HR placement confirmation before changing a role or
-adding project membership. No automatic ranking, rejection, hiring or role changes.
+adding project membership. Confirming a role placement also sets `company_users.job_title`
+to the role title and, when the opportunity names one, the department; the employee's own
+`target_role` is left alone. No automatic ranking, rejection, hiring or role changes.
 
 ## Capability scenarios
 
@@ -69,6 +83,10 @@ partial figures. Course costs are estimates using company catalog discounts; ass
 links open the existing participant/cost/budget review and do not purchase anything.
 Publishing a scenario explicitly updates company/department proficiency targets. Required
 headcount remains a planning goal, not a claim about current staffing.
+
+The HR assistant can draft a role framework and run a scenario behind a confirm card
+(`hr_draft_role_framework`, `hr_run_capability_scenario` in `hr_tools.py`). Both save drafts
+through this service and use the page's coverage (`scenario_coverage`); neither publishes.
 
 ## Rollout and data lifecycle
 

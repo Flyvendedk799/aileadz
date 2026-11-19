@@ -12,7 +12,7 @@
   <form method="get" class="fm-card" style="padding:14px 16px;margin-bottom:14px">
     <div class="fm-flex fm-gap12" style="flex-wrap:wrap;align-items:center">
       <input class="fm-input" style="flex:1;min-width:220px" type="search" name="q" value="{{ q }}" placeholder="Søg på titel, udbyder eller handle">
-      <select class="fm-input" style="width:auto" name="status" onchange="this.form.submit()">
+      <select class="fm-input" style="width:auto" name="status" aria-label="Filtrér på status" onchange="this.form.submit()">
         <option value="">Alle ({{ result.counts.active + result.counts.hidden + result.counts.archived }})</option>
         <option value="active" {{ 'selected' if status == 'active' }}>Publiceret ({{ result.counts.active }})</option>
         <option value="hidden" {{ 'selected' if status == 'hidden' }}>Skjult ({{ result.counts.hidden }})</option>
@@ -30,7 +30,7 @@
       <tbody>
       {% for p in result.products %}
         <tr>
-          <td><input type="checkbox" name="handles" value="{{ p.handle }}"></td>
+          <td><input type="checkbox" name="handles" value="{{ p.handle }}" aria-label="Vælg {{ p.title }}"></td>
           <td><div style="font-weight:650">{{ p.title }}</div><div class="muted mono" style="font-size:11.5px">{{ p.handle }}{% if p.edited %} · redigeret{% endif %}{% if p.handle in stale %} · forældet{% endif %}</div></td>
           <td>{{ p.vendor }}</td>
           <td><span class="fm-badge {{ 'green' if p.status == 'active' else ('amber' if p.status == 'hidden' else '') }} dot">{{ {'active':'Publiceret','hidden':'Skjult','archived':'Arkiveret'}[p.status] }}</span></td>

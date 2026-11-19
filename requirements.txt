@@ -1,6 +1,7 @@
 # Core web framework + DB / infra
 Flask>=3.1,<4
-# Production WSGI server (ServerHoster runs `gunicorn wsgi:application`).
+# Production WSGI server (start command and settings: docs/runbooks/DEPLOY.md,
+# deploy/gunicorn.conf.py).
 gunicorn>=21,<24
 PyMySQL>=1.1,<2
 sshtunnel>=0.4,<0.5
@@ -63,5 +64,9 @@ ldap3>=2.9,<3
 pypdf>=6.16.1,<7
 pdfplumber>=0.11,<0.13
 
+# Logo/brand-asset validation and resizing (enterprise_company_settings.py;
+# the import is guarded, without it uploads are stored unprocessed).
+Pillow>=13,<14
+
 # Cross-process atomic catalogue editing and review publication.
-filelock>=3.16,<4
+filelock>=4.2.1,<5

@@ -87,10 +87,10 @@ _TOPIC_KEYWORDS = {
     "løn", "ansættelse", "opsigelse", "personalejura", "mub",
     # Project methods
     "agil", "agile", "scrum", "kanban", "prince", "prince2", "pmp",
-    "certificering", "certifikat", "safe", "devops",
+    "certificering", "certifikat", "safe",
     # Health & safety
     "førstehjælp", "brand", "brandslukker", "hjertestart", "aed",
-    "arbejdsmiljø", "ergonomi", "sikkerhedskultur",
+    "ergonomi", "sikkerhedskultur",
     # Languages
     "engelsk", "tysk", "fransk", "spansk", "dansk",
     # Misc
@@ -3785,6 +3785,21 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                             pass
             except Exception as _grounding_err:
                 print(f"[Grounding Check Error] {_grounding_err}")
+
+            # A confirm card that is still waiting is not a finished action.
+            try:
+                if _grounding is not None and had_tool_calls:
+                    _pending_note = _grounding.pending_confirmation_note(
+                        visible_text, [getattr(tr, "output", None) for tr in (runtime_result.tool_results or [])],
+                        [getattr(tr, "name", None) for tr in (runtime_result.tool_results or [])])
+                    if _pending_note:
+                        yield f"data: {json.dumps({'type': 'chunk', 'content': chr(10) + chr(10) + _pending_note})}\n\n"
+                        try:
+                            log_debug(sid, "pending_confirmation_claimed_done", {})
+                        except Exception:
+                            pass
+            except Exception as _pending_err:
+                print(f"[Pending Confirmation Check Error] {_pending_err}")
 
             # ── Item #6: In-process post-turn self-eval (heuristic, no LLM) ──
             # Reference-free score using only the scorers that need no golden

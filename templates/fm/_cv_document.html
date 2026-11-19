@@ -113,7 +113,7 @@
 <article class="cvd cvd--{{ prefs.template or 'klassisk' }}" data-cv-doc>
   <header class="cvd-head">
     <div class="cvd-id">
-      <h1 class="cvd-name">{{ cv.name or 'Mit CV' }}</h1>
+      <div class="cvd-name" role="heading" aria-level="2">{{ cv.name or 'Mit CV' }}</div>
       {% if cv.headline %}
         <div class="cvd-headline">{{ cv.headline }}{{ edit('headline') }}</div>
       {% elif editable %}

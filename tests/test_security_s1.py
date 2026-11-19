@@ -558,3 +558,40 @@ class S111_VoiceNeedsLoginAndRateLimit(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OwnSearchResultsTests(unittest.TestCase):
+    """The palette also finds courses and the signed-in person's OWN orders and goals."""
+
+    def test_orders_and_goals_are_scoped_to_the_person(self):
+        import search_api
+        app = get_app()
+        seen = []
+
+        def responder(sql, params):
+            seen.append((" ".join(sql.split()), params))
+            return []
+
+        fake, p = patch_mysql(app, responder)
+        with p, mock.patch("catalog_service.search_products", return_value={"products": [
+                {"handle": "x", "title": "<b>Excel</b>", "vendor": "A"}]}), app.test_request_context("/api/search?q=excel"):
+            from flask import session
+            session.update(user="anna", user_id=5, company_id=7)
+            groups = search_api._own_results("excel", "%excel%", 7)
+        self.assertEqual(groups[0]["label"], "Kurser")
+        self.assertEqual(groups[0]["items"][0]["href"], "/products/x")
+        orders = [s for s in seen if "FROM course_orders" in s[0]]
+        goals = [s for s in seen if "FROM user_learning_goals" in s[0]]
+        self.assertTrue(orders and "user_id = %s AND company_id = %s" in orders[0][0])
+        self.assertEqual(orders[0][1][:2], (5, 7))
+        self.assertTrue(goals and "username=%s" in goals[0][0])  # goal_service.own_goals
+        self.assertEqual(goals[0][1][0], "anna")
+
+    def test_palette_renders_titles_as_text(self):
+        import os
+        src = open(os.path.join(secapp._REPO_ROOT, "static/futurematch/assets/shell.js"), encoding="utf-8").read()
+        # Built with DOM nodes: titles (course, order and goal names) go in as text.
+        self.assertIn("title.textContent = result.title;", src)
+        self.assertIn("detail.textContent = result.sub;", src)
+        self.assertNotIn("${r.title}", src)
+        self.assertNotIn("${result.title}", src)

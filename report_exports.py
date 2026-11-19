@@ -70,7 +70,7 @@ def build(cur, company_id, report_type, *, department=None, date_from=None, date
             SELECT u.username AS `Medarbejder`, u.email AS `E-mail`, cu.department AS `Afdeling`,
                    cu.job_title AS `Stilling`, cu.hire_date AS `Ansat fra`,
                    COUNT(DISTINCT co.id) AS `Kurser tilmeldt`,
-                   COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) AS `Kurser gennemført`,
+                   COUNT(DISTINCT CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.id END) AS `Kurser gennemført`,
                    COALESCE(AVG(elp.progress_percentage), 0) AS `Gns. fremdrift %`,
                    cu.total_chatbot_queries AS `AI-samtaler`, cu.last_login AS `Seneste login`
             FROM company_users cu JOIN users u ON cu.user_id = u.id
@@ -98,10 +98,10 @@ def build(cur, company_id, report_type, *, department=None, date_from=None, date
         rows = _run(cur, """
             SELECT cu.department AS `Afdeling`, COUNT(DISTINCT cu.user_id) AS `Medarbejdere`,
                    COUNT(DISTINCT co.id) AS `Tilmeldinger`,
-                   COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) AS `Gennemførte kurser`,
-                   ROUND(COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) * 100.0
+                   COUNT(DISTINCT CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.id END) AS `Gennemførte kurser`,
+                   ROUND(COUNT(DISTINCT CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.id END) * 100.0
                          / NULLIF(COUNT(DISTINCT co.id), 0), 1) AS `Gennemførelsesrate %`,
-                   COALESCE(SUM(CASE WHEN co.completion_status = 'completed' THEN co.price END), 0) AS `Investering (kr)`
+                   COALESCE(SUM(CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.price END), 0) AS `Investering (kr)`
             FROM company_users cu
             LEFT JOIN course_orders co ON cu.user_id = co.user_id AND cu.company_id = co.company_id
             WHERE cu.company_id = %s""" + where + " GROUP BY cu.department ORDER BY cu.department", p)
@@ -135,7 +135,7 @@ def build(cur, company_id, report_type, *, department=None, date_from=None, date
         rows = _run(cur, """
             SELECT cu.department AS `Afdeling`,
                    COUNT(DISTINCT co.id) AS `Ordrer`,
-                   COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) AS `Gennemført`,
+                   COUNT(DISTINCT CASE WHEN (co.status = 'completed' OR COALESCE(co.completion_status, '') = 'completed') THEN co.id END) AS `Gennemført`,
                    COALESCE(SUM(CASE WHEN co.status NOT IN ('cancelled', 'rejected') THEN co.price END), 0) AS `Forbrug (kr)`
             FROM company_users cu
             LEFT JOIN course_orders co ON co.user_id = cu.user_id AND co.company_id = cu.company_id

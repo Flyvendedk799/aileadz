@@ -65,16 +65,16 @@
         <div class="fm-eyebrow" style="margin-bottom:10px">Farver</div>
         <div class="form-grid3" style="margin-bottom:18px">
           <div class="fm-field" style="margin:0"><label>Primær farve</label><div class="color-group">
-            <input type="color" id="colorPickerPrimary" value="{{ widget.theme_primary_color if widget and widget.theme_primary_color else '#0b6b63' }}">
-            <input type="text" class="fm-input" id="theme_primary_color" name="theme_primary_color" value="{{ widget.theme_primary_color if widget and widget.theme_primary_color else '#0b6b63' }}">
+            <input type="color" id="colorPickerPrimary" aria-label="Primær farve (farvevælger)" value="{{ widget.theme_primary_color if widget and widget.theme_primary_color else '#0b6b63' }}">
+            <input type="text" class="fm-input" id="theme_primary_color" aria-label="Primær farve (hex-kode)" name="theme_primary_color" value="{{ widget.theme_primary_color if widget and widget.theme_primary_color else '#0b6b63' }}">
           </div></div>
           <div class="fm-field" style="margin:0"><label>Tekst på primær</label><div class="color-group">
-            <input type="color" id="colorPickerText" value="{{ widget.theme_text_color if widget and widget.theme_text_color else '#FFFFFF' }}">
-            <input type="text" class="fm-input" id="theme_text_color" name="theme_text_color" value="{{ widget.theme_text_color if widget and widget.theme_text_color else '#FFFFFF' }}">
+            <input type="color" id="colorPickerText" aria-label="Tekstfarve (farvevælger)" value="{{ widget.theme_text_color if widget and widget.theme_text_color else '#FFFFFF' }}">
+            <input type="text" class="fm-input" id="theme_text_color" aria-label="Tekstfarve (hex-kode)" name="theme_text_color" value="{{ widget.theme_text_color if widget and widget.theme_text_color else '#FFFFFF' }}">
           </div></div>
           <div class="fm-field" style="margin:0"><label>Baggrundsfarve</label><div class="color-group">
-            <input type="color" id="colorPickerBg" value="{{ widget.theme_bg_color if widget and widget.theme_bg_color else '#FFFFFF' }}">
-            <input type="text" class="fm-input" id="theme_bg_color" name="theme_bg_color" value="{{ widget.theme_bg_color if widget and widget.theme_bg_color else '#FFFFFF' }}">
+            <input type="color" id="colorPickerBg" aria-label="Baggrundsfarve (farvevælger)" value="{{ widget.theme_bg_color if widget and widget.theme_bg_color else '#FFFFFF' }}">
+            <input type="text" class="fm-input" id="theme_bg_color" aria-label="Baggrundsfarve (hex-kode)" name="theme_bg_color" value="{{ widget.theme_bg_color if widget and widget.theme_bg_color else '#FFFFFF' }}">
           </div></div>
         </div>
 
@@ -139,7 +139,7 @@
             <div class="pv-body" id="previewBody"><div class="pv-welcome" id="previewWelcome">Hej! Hvordan kan jeg hjælpe dig?</div></div>
             <div id="previewBranding" class="pv-branding">Powered by Futurematch</div>
             <div class="pv-input"><input type="text" placeholder="Skriv en besked..." disabled>
-              <button id="previewSendBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></button>
+              <button id="previewSendBtn" type="button" aria-label="Send (forhåndsvisning)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></button>
             </div>
           </div>
           <div class="pv-bubble" id="previewBubble"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></div>

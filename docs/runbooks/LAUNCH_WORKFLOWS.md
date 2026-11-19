@@ -79,9 +79,11 @@ regenerate a different report while claiming it is the original one.
 
 Retention removes only terminal sent/skipped queue rows after the configured
 period. Unresolved failed/uncertain messages remain available for investigation.
-Auth/reset mail and other existing low-volume notification writers keep their
-existing delivery paths; the durable workflow introduced here covers order,
-booking-change, scheduled-report and customer-handover messages.
+The durable queue covers order, booking-change, scheduled-report, customer-handover,
+compliance-escalation, weekly manager digest, vendor catalogue-review and GDPR-request
+messages. Mail that carries a single-use link (password reset, invite, employee welcome
+with a set-password link) is sent directly on purpose: such a token must not sit in a
+queue table.
 
 ## Pilot acceptance (use a sandbox customer)
 

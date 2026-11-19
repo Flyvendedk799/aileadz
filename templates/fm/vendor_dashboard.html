@@ -1,14 +1,8 @@
-<!DOCTYPE html>
-<html lang="da" data-theme="light">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Oversigt · Leverandørportal · Futurematch</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/vendor/fontawesome/css/fa-core.min.css') }}?v={{ asset_version('futurematch/vendor/fontawesome/css/fa-core.min.css') }}" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm.css') }}?v={{ asset_version('futurematch/assets/fm.css') }}" />
+{% extends "fm/vendor_base.html" %}
+{% block title %}Oversigt{% endblock %}
+{% block page_id %}vendor-dashboard{% endblock %}
+{% block vendor_tab %}dashboard{% endblock %}
+{% block extra_head %}
   <style>
     body { margin: 0; background: var(--fm-bg); color: var(--fm-ink); font-family: 'Hanken Grotesk', system-ui, sans-serif; }
     .vp-wrap { max-width: 1040px; margin: 0 auto; padding: 26px 24px 60px; }
@@ -87,9 +81,8 @@
     .vp-ai-form button { border: none; border-radius: 10px; background: var(--fm-primary); color: #fff; width: 42px; cursor: pointer; font-size: 15px; }
     @media (max-width: 720px) { .vp-kpis { grid-template-columns: 1fr; } .vp-ai-panel { width: calc(100vw - 24px); right: 12px; bottom: 12px; } }
   </style>
-</head>
-<body data-page="vendor-dashboard">
-  {% set vendor_tab = 'dashboard' %}{% include 'fm/_vendor_nav.html' %}
+{% endblock %}
+{% block content %}
 
   <main class="vp-wrap">
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -100,6 +93,19 @@
 
     <h1 class="vp-h1">Velkommen, {{ vendor_name }}</h1>
     <p class="vp-lead">Her kan du følge dit katalog og dine indsendelser.</p>
+
+    {# A brand-new provider: no courses, nothing submitted, nothing ordered. Say what makes the page come alive. #}
+    {% if kpis and not kpis.course_count and not kpis.submission_count and not kpis.awaiting_booking %}
+    <section class="vp-card vp-first-run" aria-label="Sådan kommer du i gang">
+      <h2 style="font-size:17px;margin:0 0 6px">Dit katalog er tomt endnu</h2>
+      <p class="vp-lead" style="margin-bottom:12px">Virksomheder kan bestille hos dig, så snart dine kurser står i kataloget. Det sker sådan:</p>
+      <ul style="margin:0;padding-left:18px;line-height:1.75;font-size:14px">
+        <li><a href="{{ url_for('vendor.vendor_submit') }}">Indsend dit katalog</a> som fil eller link. Futurematch gennemgår det, før det bliver synligt.</li>
+        <li><a href="{{ url_for('vendor.vendor_profile') }}">Udfyld din profil</a>, så virksomhederne kan se, hvem du er, og hvem de skal kontakte.</li>
+        <li>Når nogen bestiller, står det under <a href="{{ url_for('vendor.vendor_orders') }}">Bestillinger</a>, hvor du bekræfter pladsen.</li>
+      </ul>
+    </section>
+    {% endif %}
 
     <div class="vp-kpis">
       <a class="vp-kpi" href="{{ url_for('vendor.vendor_analytics') }}" style="text-decoration:none;color:inherit" title="Se ordrer og gennemførelse pr. kursus">
@@ -188,6 +194,8 @@
       {% endif %}
     </div>
   </main>
+{% endblock %}
+{% block extra_scripts %}
 
   <!-- AI-assistent: self-contained SSE-klient mod /vendor/ask (.vp-* styling) -->
   <button type="button" class="vp-ai-fab" id="vpAiFab" aria-expanded="false" aria-controls="vpAiPanel" aria-label="Åbn leverandør-assistent">
@@ -354,5 +362,4 @@
     }
   })();
   </script>
-</body>
-</html>
+{% endblock %}

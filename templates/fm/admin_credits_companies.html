@@ -12,7 +12,7 @@
     <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-circle-plus"></i></span><h3>Tilføj kreditter til en virksomhed</h3></div>
     <div class="fm-card-body">
       <form method="post" action="{{ url_for('credits.admin_grant_company_credits') }}" style="display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
-        <select class="fm-input" name="company_id" required>
+        <select class="fm-input" name="company_id" aria-label="Virksomhed" required>
           <option value="">Vælg virksomhed</option>
           {% for c in overview.companies %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
         </select>

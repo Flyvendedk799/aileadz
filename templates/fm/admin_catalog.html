@@ -51,7 +51,7 @@
       <div class="fm-card-body">
         <p style="color:var(--fm-ink-2);font-size:13px;line-height:1.5;margin-bottom:14px">Upload en CSV for at oprette en kladde. Intet skrives til kataloget før du bekræfter previewet.</p>
         <form method="POST" action="{{ url_for('admin_dashboard.admin_catalog_import') }}" enctype="multipart/form-data" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-          <input class="fm-input" style="flex:1;min-width:200px" type="file" name="catalog_csv" accept=".csv,text/csv" required>
+          <input class="fm-input" style="flex:1;min-width:200px" type="file" name="catalog_csv" aria-label="CSV-fil med kurser" accept=".csv,text/csv" required>
           <button class="btn btn-primary" type="submit"><i class="fa-solid fa-upload"></i> Preview CSV</button>
         </form>
       </div>

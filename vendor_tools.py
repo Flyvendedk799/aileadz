@@ -210,7 +210,7 @@ def vendor_performance_summary(args, vendor_name):
                 COUNT(*) AS total_orders,
                 SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS orders_30d,
                 SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 90 DAY) THEN 1 ELSE 0 END) AS orders_90d,
-                SUM(CASE WHEN status = 'completed' OR completion_status = 'completed' THEN 1 ELSE 0 END) AS completed_orders,
+                SUM(CASE WHEN (status = 'completed' OR COALESCE(completion_status, '') = 'completed') THEN 1 ELSE 0 END) AS completed_orders,
                 SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_orders
             FROM course_orders
             WHERE product_handle IN ({placeholders})
@@ -225,7 +225,7 @@ def vendor_performance_summary(args, vendor_name):
             f"""
             SELECT product_handle,
                    COUNT(*) AS orders,
-                   SUM(CASE WHEN status = 'completed' OR completion_status = 'completed' THEN 1 ELSE 0 END) AS completed
+                   SUM(CASE WHEN (status = 'completed' OR COALESCE(completion_status, '') = 'completed') THEN 1 ELSE 0 END) AS completed
             FROM course_orders
             WHERE product_handle IN ({placeholders})
             GROUP BY product_handle
@@ -367,7 +367,7 @@ def vendor_analytics_series(vendor_name, months=6):
             f"""
             SELECT DATE_FORMAT(created_at, '%%Y-%%m') AS ym,
                    COUNT(*) AS orders,
-                   SUM(CASE WHEN status = 'completed' OR completion_status = 'completed' THEN 1 ELSE 0 END) AS completed
+                   SUM(CASE WHEN (status = 'completed' OR COALESCE(completion_status, '') = 'completed') THEN 1 ELSE 0 END) AS completed
             FROM course_orders
             WHERE product_handle IN ({placeholders})
               AND created_at >= DATE_SUB(DATE_FORMAT(NOW(), '%%Y-%%m-01'), INTERVAL %s MONTH)
@@ -383,7 +383,7 @@ def vendor_analytics_series(vendor_name, months=6):
         cur.execute(
             f"""
             SELECT COUNT(*) AS orders,
-                   SUM(CASE WHEN status = 'completed' OR completion_status = 'completed' THEN 1 ELSE 0 END) AS completed,
+                   SUM(CASE WHEN (status = 'completed' OR COALESCE(completion_status, '') = 'completed') THEN 1 ELSE 0 END) AS completed,
                    SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS orders_30d
             FROM course_orders
             WHERE product_handle IN ({placeholders})
@@ -397,7 +397,7 @@ def vendor_analytics_series(vendor_name, months=6):
             f"""
             SELECT product_handle,
                    COUNT(*) AS orders,
-                   SUM(CASE WHEN status = 'completed' OR completion_status = 'completed' THEN 1 ELSE 0 END) AS completed
+                   SUM(CASE WHEN (status = 'completed' OR COALESCE(completion_status, '') = 'completed') THEN 1 ELSE 0 END) AS completed
             FROM course_orders
             WHERE product_handle IN ({placeholders})
             GROUP BY product_handle
@@ -1158,14 +1158,20 @@ def vendor_booking_work(args, vendor_name):
         if args.get('order_id'):
             clause += ' AND co.order_id=%s'
             values.append(str(args['order_id']))
-        cur.execute('SELECT co.order_id,co.product_title,co.status,cc.kind AS pending_change '
+        cur.execute('SELECT co.order_id,co.product_title,co.status,cc.kind AS pending_change,d.completion_state '
                     'FROM course_orders co LEFT JOIN course_order_changes cc ON cc.order_id=co.order_id AND cc.status=\'pending\' '
+                    'LEFT JOIN course_order_details d ON d.order_id=co.order_id '
                     'WHERE ' + clause + " AND co.status <> 'pending_approval' ORDER BY co.created_at DESC LIMIT 25", tuple(values))
         rows = cur.fetchall() or []
         explanations = {'cancel':'Kunden ønsker afbestilling. Afgør gebyr og svar på bestillingen.',
                         'reschedule':'Kunden ønsker et andet hold. Gennemgå hold og pris før accept.',
                         'substitute':'Kunden ønsker en anden deltager. Gennemgå og svar på bestillingen.'}
-        return {'orders':[dict(r, explanation=explanations.get(r.get('pending_change'), ''),
+        import order_lifecycle as lc
+        return {'orders':[dict({k: v for k, v in r.items() if k != 'completion_state'},
+                               explanation=explanations.get(r.get('pending_change'), ''),
+                               # the same reading the learner's and HR's assistants give
+                               case=lc.case_state(r.get('status'), pending_change=bool(r.get('pending_change')),
+                                                  attendance_reported=r.get('completion_state') == 'reported'),
                                url=url_for('vendor.vendor_booking', order_id=r['order_id'])) for r in rows]}
     finally:
         cur.close()
@@ -1207,3 +1213,18 @@ VENDOR_TOOLS.extend([
         'parameters':{'type':'object','properties':{'handle':{'type':'string'},'title':{'type':'string'},'summary':{'type':'string'}},'required':['handle']}}},
 ])
 _VENDOR_TOOL_ROUTER.update(vendor_booking_work=vendor_booking_work, vendor_propose_catalog_correction=vendor_propose_catalog_correction)
+
+
+def vendor_search_help(args, vendor_name):
+    """The help articles written for course providers (never the company-side ones)."""
+    import json as _json
+    from app1.help_kb import execute_search_platform_help
+    return _json.loads(execute_search_platform_help(args or {}, audience="vendor"))
+
+
+VENDOR_TOOLS.append({'type': 'function', 'function': {
+    'name': 'vendor_search_help',
+    'description': ("Slå op i hjælpeartiklerne til leverandørportalen: hvordan man bekræfter en plads, afviser en bestilling, "
+                    "retter kurser og hold, og indsender et katalog. Brug det ved 'hvordan gør jeg ...' om portalen."),
+    'parameters': {'type': 'object', 'properties': {'query': {'type': 'string'}}, 'required': ['query']}}})
+_VENDOR_TOOL_ROUTER.update(vendor_search_help=vendor_search_help)

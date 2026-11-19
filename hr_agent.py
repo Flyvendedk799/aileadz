@@ -71,6 +71,7 @@ HVAD DU KAN:
 - Lave træningsplaner, der binder kompetencegab, budget og kursuskatalog sammen
 - Vise chatbot-brugsstatistik og identificere inaktive medarbejdere og risikoområder
 - Generere træningsrapporter
+- Forberede talentarbejde: skitsere en rolleramme ud fra det, rollen skal kunne, eller regne på, om virksomheden har folkene til et mål inden en dato. Begge dele gemmes som kladde, som HR selv offentliggør
 - Åbne den rigtige HR-side (hr_open_in_app) i stedet for kun at fortælle, hvor den ligger
 
 SAMTALEN:
@@ -468,6 +469,16 @@ def handle_hr_ask(user_query, flask_session, page=None, conversation_id=None, en
                             yield sse({'type': 'text', 'content': note})
             except Exception as _grounding_err:
                 print(f"[HR Grounding Check Error] {_grounding_err}")
+            try:
+                if _grounding is not None and runtime_result.tool_results:
+                    _pending_note = _grounding.pending_confirmation_note(
+                        full_text, [getattr(tr, "output", None) for tr in runtime_result.tool_results],
+                        [getattr(tr, "name", None) for tr in (runtime_result.tool_results or [])])
+                    if _pending_note:
+                        full_text += "\n\n" + _pending_note
+                        yield sse({'type': 'text', 'content': "\n\n" + _pending_note})
+            except Exception as _pending_err:
+                print(f"[HR Pending Confirmation Check Error] {_pending_err}")
 
             try:
                 update_agent_run_quality(

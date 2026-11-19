@@ -1,0 +1,56 @@
+{# Base for every signed-in vendor portal page: one head, the shared header and tab bar
+   (fm/_vendor_nav.html), a skip link and the light/dark choice. Vendors are an isolated
+   session and never get the company shell (fm_base.html) or shell.js.
+   A page sets:  {% block vendor_tab %}orders{% endblock %}  (dashboard, orders, analytics, submit, profile)
+   and fills title, page_id, extra_head (its own <style>), content and extra_scripts. #}
+<!DOCTYPE html>
+<html lang="da" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}Leverandørportal{% endblock %} · Leverandørportal · Futurematch</title>
+  {# Same stored choice as the main app ("fm-theme"), applied before first paint. #}
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('fm-theme') || (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light');
+      } catch (e) { /* storage blocked: stay light */ }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/vendor/fontawesome/css/fa-core.min.css') }}?v={{ asset_version('futurematch/vendor/fontawesome/css/fa-core.min.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm.css') }}?v={{ asset_version('futurematch/assets/fm.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/vendor-portal.css') }}?v={{ asset_version('futurematch/assets/vendor-portal.css') }}" />
+  {% block extra_head %}{% endblock %}
+</head>
+<body data-page="{% block page_id %}vendor{% endblock %}">
+  <a class="fm-skip" href="#fm-main">Spring til indhold</a>
+  {% set vendor_tab %}{% block vendor_tab %}{% endblock %}{% endset %}{% set vendor_tab = vendor_tab | trim %}{% include 'fm/_vendor_nav.html' %}
+  <div id="fm-main" tabindex="-1">
+  {% block content %}{% endblock %}
+  </div>
+  <script>
+    (function () {
+      var btn = document.querySelector('[data-vendor-theme]');
+      if (!btn) return;
+      function paint() {
+        var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+        btn.setAttribute('aria-pressed', dark ? 'true' : 'false');
+        var icon = btn.querySelector('i');
+        if (icon) icon.className = 'fa-solid ' + (dark ? 'fa-sun' : 'fa-moon');
+      }
+      btn.addEventListener('click', function () {
+        var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('fm-theme', next); } catch (e) { /* not remembered */ }
+        paint();
+      });
+      paint();
+    })();
+  </script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

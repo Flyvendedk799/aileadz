@@ -75,6 +75,9 @@ def boot_app():
     _load_env(SANDBOX_DIR / ".env.sandbox")
     _load_env(ROOT / ".env")
     os.environ.setdefault("AI_WARMUP_ON_IMPORT", "0")
+    # The eval sends the whole golden set as one user; the per-actor turn brake is for people.
+    os.environ.setdefault("AI_RATE_TURNS_5MIN", "0")
+    os.environ.setdefault("AI_RATE_TURNS_HOUR", "0")
     os.environ.setdefault("SANDBOX", "1")
     os.chdir(ROOT)
 

@@ -122,15 +122,10 @@ def decrypt_secret(blob):
 
 # ------------------------------------------------------------- database
 
-_DDL = """CREATE TABLE IF NOT EXISTS user_2fa (
-    user_id INT NOT NULL PRIMARY KEY,
-    secret_enc TEXT NOT NULL,
-    enabled TINYINT(1) NOT NULL DEFAULT 0,
-    backup_codes TEXT NULL,
-    last_step BIGINT NOT NULL DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    enabled_at DATETIME NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
+def _ddl():
+    """Defined once, in schema_registry."""
+    import schema_registry
+    return schema_registry.ddl('user_2fa')
 _TABLE_READY = False
 
 
@@ -140,7 +135,7 @@ def ensure_table(conn):
         return
     cur = conn.cursor()
     try:
-        cur.execute(_DDL)
+        cur.execute(_ddl())
         conn.commit()
         _TABLE_READY = True
     finally:

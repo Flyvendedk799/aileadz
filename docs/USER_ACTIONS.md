@@ -16,12 +16,15 @@ Back up the database first. These run once at boot and cannot be undone:
 - The plaintext API-key column is nulled and dropped on the first API request; keys keep working (hash was already stored) and are never shown again.
 - Legacy order statuses are mapped (`pending` to `approved`, `confirmed`/`processing` to `booked`, `invoiced`/`paid` move into `billing_status`) and old `company_notifications` are copied into `notifications` (`schema_registry.run_data_migrations`, flagged in `schema_meta`).
 
-Afterwards open Admin, Systemstatus (`/admin/system-health`): no missing tables or columns should be listed (otherwise grep the web log for `Table creation warning`). The migrations were only tested on the in-memory SQLite harness (`tests/sqlite_platform.py`), never on real MySQL, so check the result by hand. Everybody is logged out once; **platform admins must enrol TOTP at next login** (keep the 8 backup codes). A locked-out admin can set `TWOFA_ENFORCE_ADMIN=0`, enrol, and must remove the variable again.
+Afterwards open Admin, Systemstatus (`/admin/system-health`): no missing tables or columns should be listed (otherwise grep the web log for `Table creation warning`). The migrations are tested on MySQL 8 against legacy-shaped rows (`tests/test_launch_mysql.py::LegacyDataMigrationTests`: old order statuses, billing states, ISO dates, role broadcasts, plaintext passwords, and a second run that changes nothing), but never against your actual production data, so still back up first and check the result by hand. Everybody is logged out once; **platform admins must enrol TOTP at next login** (keep the 8 backup codes). A locked-out admin can set `TWOFA_ENFORCE_ADMIN=0`, enrol, and must remove the variable again.
 
 Alembic is optional at runtime; to adopt it, follow "Schema lifecycle" in DEPLOY.md.
 
 ## 3. Services and mail
 
+The host-side steps in this section and in section 1 are written out as a hand-over task list in [runbooks/SERVERHOSTER_HANDOVER.md](runbooks/SERVERHOSTER_HANDOVER.md).
+
+- **Web start command:** change it in ServerHoster to `gunicorn -c deploy/gunicorn.conf.py wsgi:application --bind 0.0.0.0:$PORT` (DEPLOY.md). Then open two chats at once and a normal page beside them: none may hang or be cut off after 30 seconds.
 - **Worker service:** create it in ServerHoster and verify "Worker kører" in Systemstatus before setting `SCHEDULER_OPPORTUNISTIC=0` on web (steps in JOB_RUNNER.md). Without it, scheduled reports, overdue-invoice notices, digests, retention, deadline and compliance reminders only run inside web requests.
 - **Mail:** set `MAIL_*` (or ServerHoster's `SMTP_*`/`SMTP_FROM`) and `APP_BASE_URL` on both services, then use Systemstatus "Send test-mail" and confirm arrival, sender and links (EMAIL_SETUP.md). Add SPF/DKIM for the sending domain or mail lands in spam. Reset links, invites, approval mails and scheduled reports all depend on this.
 - **Monitor:** if an uptime monitor reads anything beyond `status` from `/readyz`, set `HEALTH_TOKEN` and send it as `X-Health-Token`.

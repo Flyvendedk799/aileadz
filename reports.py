@@ -22,18 +22,6 @@ def _usage_window_days(default=365):
 def reports():
     username = session.get('user')
     
-    # Fetch AI app usage from app_usage table
-    try:
-        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-        cur.execute("SELECT app_name, SUM(usage_count) AS total_usage FROM app_usage WHERE username = %s GROUP BY app_name", (username,))
-        app_usage_data = cur.fetchall()
-        cur.close()
-    except Exception as e:
-        current_app.logger.error("Error fetching app usage data: %s", e)
-        app_usage_data = []
-    
-    app_usage_summary = {entry['app_name']: entry['total_usage'] for entry in app_usage_data}
-    
     # Fetch credit usage records from credit_usage table
     try:
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
@@ -96,24 +84,20 @@ def reports():
         current_app.logger.error("Error fetching user credits: %s", e)
         current_credits = 0
     
-    # Fetch social metrics (aggregate followers and impressions)
-    try:
-        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-        cur.execute("SELECT SUM(followers) AS total_followers, SUM(impressions) AS total_impressions FROM social_metrics WHERE username = %s", (username,))
-        social_data = cur.fetchone()
-        cur.close()
-        total_followers = social_data['total_followers'] if social_data and social_data['total_followers'] is not None else 0
-        total_impressions = social_data['total_impressions'] if social_data and social_data['total_impressions'] is not None else 0
-    except Exception as e:
-        current_app.logger.error("Error fetching social metrics: %s", e)
-        total_followers = 0
-        total_impressions = 0
+    # What the credits went to, from the same ledger rows (the old "app usage" and
+    # "social reach" tiles read tables nothing has written to since an earlier product).
+    by_purpose = defaultdict(int)
+    for record in credit_records:
+        label = (record.get('description') or '').strip() or 'Andet'
+        by_purpose[label[:60]] += record['credits_used'] or 0
+    usage_by_purpose = sorted(by_purpose.items(), key=lambda kv: -kv[1])[:5]
 
     # Prepare daily details for the table
     daily_details = [{'date': date, 'credits_used': daily_usage[date]} for date in sorted_dates]
     
     return render_template('fm/reports.html',
-                           app_usage=app_usage_summary,
+                           usage_by_purpose=usage_by_purpose,
+                           usage_count=len(credit_records),
                            total_used=total_credits_used,
                            current_credits=current_credits,
                            daily_details=daily_details,
@@ -124,6 +108,4 @@ def reports():
                            peak_day=peak_day,
                            last7_labels=last7_dates,
                            last7_usage=last7_usage,
-                           total_followers=total_followers,
-                           total_impressions=total_impressions,
                            credit_records=credit_records)

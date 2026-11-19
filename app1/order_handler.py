@@ -6,8 +6,7 @@ Handles course ordering, payment processing, and order management
 import uuid
 import datetime
 import logging
-from flask import session, current_app
-import MySQLdb.cursors
+from flask import session
 from typing import Dict, List, Optional, Tuple
 import re
 
@@ -205,20 +204,16 @@ class OrderHandler:
                 if order['order_id'] == order_id:
                     return order
             
-            # Check database
-            conn = current_app.mysql.connection
-            if conn:
-                cur = conn.cursor(MySQLdb.cursors.DictCursor)
-                cur.execute(
-                    "SELECT * FROM course_orders WHERE order_id = %s",
-                    (order_id,)
-                )
-                db_order = cur.fetchone()
-                cur.close()
-                
-                if db_order:
-                    return self._format_db_order(db_order)
-            
+            # Database lookup goes through the order service, which only
+            # returns a row the caller plays a role on (owner, same-company
+            # manager, the order's vendor, platform admin). A bare
+            # "WHERE order_id" here let any chat caller read another tenant's
+            # order by id.
+            from order_service import OrderContext, get_order
+            db_order = get_order(OrderContext.from_session(source='chatbot'), order_id)
+            if db_order:
+                return self._format_db_order(db_order)
+
             return None
             
         except Exception as e:
@@ -349,7 +344,7 @@ class OrderHandler:
         confirmation += f"\n**Næste skridt:**\n{steps.get('message', '')}\n"
         if order.get('budget_warning'):
             confirmation += f"\n{order['budget_warning']}\n"
-        confirmation += "\nDu kan følge status på din tidslinje."
+        confirmation += "\nDu kan følge status under Mine bestillinger."
         return confirmation
 
     def _format_date(self, iso_date: str) -> str:

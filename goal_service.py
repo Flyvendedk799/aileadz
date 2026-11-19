@@ -15,11 +15,18 @@ read model over both and the one place that decides who may see a goal:
 Readers return the same record shape for both kinds::
 
     {key, id, owner ('self'|'hr'), title, description, target_date,
-     status ('active'|'done'|'paused'), status_label, shared (bool), shared_at}
+     status ('active'|'done'|'paused'), status_label, shared (bool), shared_at,
+     progress, share_note (HR goals, else None),
+     created_at, updated_at (own goals, else None)}
 
 ``for_learner`` never returns an unshared HR goal; ``for_hr`` never returns an
-unshared own goal. New HR-facing code (pages, HR assistant tools, reports,
-exports) must read goals through ``for_hr``, never from the tables.
+unshared own goal. Every reader goes through this module, never the tables:
+learner-facing code (``/mine-maal``, the home page, the advisor's goal tools,
+``learner_context``, ``user_profile_db.get_learning_goals``) through
+``own_goals`` / ``shared_hr_goals`` / ``for_learner``; HR-facing code (pages,
+HR assistant tools, reports, exports) through ``for_hr``. ``OWN_STATUS_SLUG``
+maps a canonical status back to the value the own-goal writers
+(``user_profile_db``) store.
 
 Callers pass a DictCursor, authorize the actor, own the transaction and commit.
 The sharing columns on ``user_learning_goals`` are added by the profile schema
@@ -36,6 +43,7 @@ logger = logging.getLogger(__name__)
 
 STATUS_LABELS = {"active": "Aktiv", "done": "Fuldført", "paused": "På pause"}
 _OWN_STATUS = {"aktiv": "active", "fuldfoert": "done", "paa_pause": "paused"}
+OWN_STATUS_SLUG = {v: k for k, v in _OWN_STATUS.items()}
 _HR_STATUS = {"active": "active", "in_progress": "active", "completed": "done", "done": "done",
               "paused": "paused", "on_hold": "paused"}
 # What HR may set on a goal it wrote (canonical -> stored value).
@@ -54,6 +62,10 @@ def _record(owner, row, status, shared, shared_at=None):
         "status_label": STATUS_LABELS[status],
         "shared": bool(shared),
         "shared_at": shared_at,
+        "progress": row.get("progress") if owner == "hr" else None,
+        "share_note": row.get("share_note") if owner == "hr" else None,
+        "created_at": row.get("created_at") if owner == "self" else None,
+        "updated_at": row.get("updated_at") if owner == "self" else None,
     }
 
 
@@ -76,18 +88,30 @@ def _username(cur, company_id, user_id):
     return row["username"] if row else None
 
 
+def own_goals(cur, username, company_id=None):
+    """All of the person's own goals, active first. ``shared`` is relative to
+    ``company_id``: without a company, no goal counts as shared."""
+    cur.execute("SELECT id,title,description,target_date,status,shared_with_hr,shared_company_id,shared_at,"
+                "created_at,updated_at "
+                "FROM user_learning_goals WHERE username=%s ORDER BY (status='aktiv') DESC, updated_at DESC", (username,))
+    return [_own(r, company_id) for r in cur.fetchall()]
+
+
+def shared_hr_goals(cur, company_id, user_id):
+    """The HR-written goals this company shared with the person, earliest target date first."""
+    if not company_id or not user_id:
+        return []
+    cur.execute("SELECT id,goal_title,goal_description,target_date,status,progress,share_note,"
+                "shared_with_employee,shared_at "
+                "FROM employee_goals WHERE employee_id = %s AND company_id = %s AND shared_with_employee = 1 "
+                "ORDER BY (target_date IS NULL), target_date, id", (user_id, company_id))
+    return [_hr(r) for r in cur.fetchall()]
+
+
 def for_learner(cur, username, company_id=None, user_id=None):
     """Everything the person may see: all their own goals, and the HR goals shared with them."""
-    cur.execute("SELECT id,title,description,target_date,status,shared_with_hr,shared_company_id,shared_at "
-                "FROM user_learning_goals WHERE username=%s ORDER BY (status='aktiv') DESC, updated_at DESC", (username,))
-    own = [_own(r, company_id) for r in cur.fetchall()]
-    from_manager = []
-    if company_id and user_id:
-        cur.execute("SELECT id,goal_title,goal_description,target_date,status,shared_with_employee,shared_at "
-                    "FROM employee_goals WHERE company_id=%s AND employee_id=%s AND shared_with_employee=1 "
-                    "ORDER BY (target_date IS NULL), target_date, id", (company_id, user_id))
-        from_manager = [_hr(r) for r in cur.fetchall()]
-    return {"own": own, "from_manager": from_manager}
+    return {"own": own_goals(cur, username, company_id),
+            "from_manager": shared_hr_goals(cur, company_id, user_id)}
 
 
 def for_hr(cur, company_id, user_id):

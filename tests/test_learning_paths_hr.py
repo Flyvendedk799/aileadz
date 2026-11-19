@@ -99,12 +99,10 @@ class GoalDelegationTests(unittest.TestCase):
         fake = types.SimpleNamespace(
             list_goals_for_hr=mock.Mock(return_value={"shared": ["s"], "hr_only": ["p"]}),
             set_shared=mock.Mock(return_value={"id": 5, "employee_id": 1, "goal_title": "Mål"}),
-            list_shared_goals_for_learner=mock.Mock(return_value=["g"]),
             create_goal=mock.Mock(return_value=9),
         )
         with mock.patch.dict(sys.modules, {"goal_sharing": fake}), mock.patch.object(gsu, "_notify_shared") as notify:
             self.assertEqual(gsu.list_goals_for_hr(None, 7, 1, conn=object()), (["s"], ["p"]))
-            self.assertEqual(gsu.shared_goals_for_learner(None, 1, 7, conn=object()), ["g"])
             res = gsu.set_shared(None, company_id=7, goal_id=5, shared=True, actor_user_id=2, note="n", conn=object())
             self.assertTrue(res["shared"])
             notify.assert_called_once()

@@ -13,16 +13,14 @@ The company-wide switch ``company_settings.ai_learner_hr_goals`` (default ON)
 sits above the per-goal flag: when a company turns it off, even shared goals stay
 out of the learner AI's context. Sharing/unsharing is audit-logged.
 
-Every learner-facing read MUST go through ``shared_goal_filter`` /
-``list_shared_goals_for_learner`` so the filter lives in exactly one place.
+This module owns the flag and its writers. Every learner-facing read goes through
+``goal_service.shared_hr_goals`` / ``goal_service.for_learner`` so the filter
+lives in exactly one place.
 """
 
 import logging
 
 logger = logging.getLogger(__name__)
-
-# The single predicate every learner-facing query appends.
-SHARED_PREDICATE = "shared_with_employee = 1"
 
 _SCHEMA_READY = False
 
@@ -174,18 +172,3 @@ def set_shared(conn, *, goal_id, company_id, shared, actor_user_id, note=None):
         pass
     row["shared_with_employee"] = 1 if shared else 0
     return row
-
-
-def list_shared_goals_for_learner(conn, user_id, company_id, limit=20):
-    """What the learner may see: SHARED goals only ("Mål fra din leder")."""
-    ensure_schema(conn)
-    cur = conn.cursor()
-    try:
-        cur.execute(
-            "SELECT id, goal_title, goal_description, target_date, status, progress, shared_at, share_note "
-            "FROM employee_goals WHERE employee_id = %s AND company_id = %s AND " + SHARED_PREDICATE +
-            " ORDER BY (target_date IS NULL), target_date ASC, id ASC LIMIT %s",
-            (user_id, company_id, int(limit)))
-        return _rows(cur)
-    finally:
-        cur.close()

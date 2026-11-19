@@ -493,7 +493,9 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
   `user_education`, `user_completed_courses`, `user_profile_summary` (+`target_role`),
   `user_certifications`, `user_languages`, `user_portfolio_links`, `user_memories`,
   `user_learning_goals`, `user_learning_paths`; `ensure_tables()` runs idempotent
-  CREATE/ALTER every boot. All are covered by GDPR export/erase (drift-tested).
+  CREATE/ALTER every boot. All are covered by GDPR export/erase (drift-tested). Goals are
+  written here but read through `goal_service` (`get_learning_goals` is a thin adapter over
+  `goal_service.own_goals` that keeps the profile shape: stored status slug plus `shared`).
 - **Competency** (`competency.py`): `canonical_skill()` + `skill_category()` run on every
   skill write (`add_skill`, `/api/cv/apply`, chat `update_user_profile`). The 1-5 scale
   is **reused from `hr_tools.SKILL_LEVEL_MAP`** (begynder=1..ekspert=5), never forked.
@@ -667,8 +669,8 @@ Claude; `AI_USER_KNOWLEDGE_EMBEDDINGS=0` = keyword-only.
 **HR learner context - `learner_context.py`.** The learner's assigned paths/progress, HR
 skill-matrix gaps, department targets, HR-written goals; each source degrades
 independently; 120 s per-worker cache. HR goals are **opt-in per goal**: only
-`employee_goals.shared_with_employee = 1` (`goal_sharing.SHARED_PREDICATE`, carried by
-every learner-facing query; a test scans the repo for unfiltered reads), plus company
+`employee_goals.shared_with_employee = 1`, read through `goal_service.shared_hr_goals`, the
+one learner-facing reader (a test scans the repo for unfiltered reads), plus company
 switch `company_settings.ai_learner_hr_goals` (default on) and `AI_LEARNER_HR_GOALS=0`
 platform kill switch. Unshared goals never reach the learner UI, AI context or data export.
 

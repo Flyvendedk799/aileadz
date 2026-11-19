@@ -55,11 +55,19 @@ def my_manager_goals():
     if not user_id or not company_id:
         return jsonify({'goals': []})
     try:
+        import MySQLdb.cursors
+        import goal_service
         import goal_sharing
-        rows = goal_sharing.list_shared_goals_for_learner(current_app.mysql.connection, user_id, company_id)
-        goals = [{'id': r['id'], 'title': r.get('goal_title'), 'description': r.get('goal_description'),
+        conn = current_app.mysql.connection
+        goal_sharing.ensure_schema(conn)
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        try:
+            rows = goal_service.shared_hr_goals(cur, company_id, user_id)[:20]
+        finally:
+            cur.close()
+        goals = [{'id': r['id'], 'title': r['title'], 'description': r['description'],
                   'target_date': r['target_date'].isoformat() if r.get('target_date') else None,
-                  'status': r.get('status'), 'progress': float(r['progress']) if r.get('progress') is not None else 0,
+                  'status': r['status'], 'progress': float(r['progress']) if r.get('progress') is not None else 0,
                   'note': r.get('share_note')} for r in rows]
         return jsonify({'goals': goals})
     except Exception as e:

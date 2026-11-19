@@ -121,6 +121,7 @@ _TABLES_SQL = [
         shared_with_hr TINYINT(1) NOT NULL DEFAULT 0,
         shared_company_id INT DEFAULT NULL,
         shared_at DATETIME DEFAULT NULL,
+        company_id INT DEFAULT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_username (username)
@@ -320,11 +321,13 @@ def _backfill_conversation_state(cur):
 
 
 _tables_ensured = False
+# True once ensure_tables has seen user_learning_goals.company_id.
+_goal_company_column = False
 
 
 def ensure_tables():
     """Create tables if they don't exist. Cached after first success (Phase 2C)."""
-    global _tables_ensured
+    global _tables_ensured, _goal_company_column
     # Always verify/heal the request connection FIRST, even when the table
     # creation is cached. flask_mysqldb hands back the same connection object for
     # the whole request even if its socket died mid-request, so callers (profile
@@ -415,6 +418,13 @@ def ensure_tables():
         _ensure_column(cur, "user_learning_goals", "shared_with_hr", "shared_with_hr TINYINT(1) NOT NULL DEFAULT 0")
         _ensure_column(cur, "user_learning_goals", "shared_company_id", "shared_company_id INT DEFAULT NULL")
         _ensure_column(cur, "user_learning_goals", "shared_at", "shared_at DATETIME DEFAULT NULL")
+        # The company the person was in when they wrote the goal. Nullable, never
+        # backfilled, and not a visibility rule (that is shared_company_id).
+        _ensure_column(cur, "user_learning_goals", "company_id", "company_id INT DEFAULT NULL")
+        try:
+            _goal_company_column = _column_exists(cur, "user_learning_goals", "company_id")
+        except Exception:
+            current_app.mysql.connection.rollback()
 
         if not _column_exists(cur, "user_skills", "numeric_level"):
             cur.execute("ALTER TABLE user_skills ADD COLUMN numeric_level INT DEFAULT NULL")
@@ -1350,29 +1360,39 @@ def set_cv_prefs(username, prefs_json):
 _GOAL_STATUSES = ("aktiv", "fuldfoert", "paa_pause")
 
 
-def get_learning_goals(username):
+def get_learning_goals(username, company_id=None):
+    """The person's own goals, read through ``goal_service.own_goals``.
+
+    Rows keep the profile shape the profile snapshot, check-ins and goal tools
+    use: ``status`` is the stored slug (aktiv/fuldfoert/paa_pause); ``shared``
+    says whether the goal is shared with ``company_id``'s HR (False without one)."""
+    import goal_service
     ensure_tables()  # the sharing columns are added there; cheap once cached
     cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-    cur.execute(
-        "SELECT id, title, description, target_date, status, created_at, updated_at, "
-        "shared_with_hr, shared_company_id "
-        "FROM user_learning_goals WHERE username = %s "
-        "ORDER BY (status = 'aktiv') DESC, updated_at DESC",
-        (username,)
-    )
-    rows = cur.fetchall()
-    cur.close()
-    return list(rows)
+    try:
+        goals = goal_service.own_goals(cur, username, company_id)
+    finally:
+        cur.close()
+    return [{"id": g["id"], "title": g["title"], "description": g["description"] or None,
+             "target_date": g["target_date"], "status": goal_service.OWN_STATUS_SLUG[g["status"]],
+             "created_at": g["created_at"], "updated_at": g["updated_at"], "shared": g["shared"]}
+            for g in goals]
 
 
-def add_learning_goal(username, title, description="", target_date=None):
+def add_learning_goal(username, title, description="", target_date=None, company_id=None):
+    """``company_id``: the company the person belonged to when they wrote the goal
+    (provenance only; visibility is ``shared_company_id``, see goal_service)."""
     cur = current_app.mysql.connection.cursor()
-    cur.execute(
-        "INSERT INTO user_learning_goals (username, title, description, target_date, status) "
-        "VALUES (%s, %s, %s, %s, 'aktiv')",
-        (username, title.strip()[:255], (description or "").strip() or None,
-         (target_date or "").strip()[:50] or None)
-    )
+    values = (username, title.strip()[:255], (description or "").strip() or None,
+              (target_date or "").strip()[:50] or None)
+    if company_id and _goal_company_column:
+        cur.execute(
+            "INSERT INTO user_learning_goals (username, title, description, target_date, status, company_id) "
+            "VALUES (%s, %s, %s, %s, 'aktiv', %s)", values + (company_id,))
+    else:
+        cur.execute(
+            "INSERT INTO user_learning_goals (username, title, description, target_date, status) "
+            "VALUES (%s, %s, %s, %s, 'aktiv')", values)
     goal_id = cur.lastrowid
     current_app.mysql.connection.commit()
     cur.close()

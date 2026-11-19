@@ -123,10 +123,15 @@ def work_requirements(username, company_id=None):
                     "JOIN users u ON u.id=a.user_id JOIN company_users cu ON cu.user_id=u.id AND cu.company_id=a.company_id "
                     "WHERE a.company_id=%s AND u.username=%s AND cu.status='active' AND rv.published=1", (company_id, username))
         out = [{**r, 'source': 'current_role', 'priority': 'high'} for row in cur.fetchall() for r in json.loads(row['requirements_json'])]
-        cur.execute("SELECT l.requirements_json FROM talent_goal_links l JOIN users u ON u.id=l.user_id "
-                    "JOIN user_learning_goals g ON g.id=l.goal_id AND g.username=u.username "
+        # Goal ownership is compared in Python: the two tables may differ in collation
+        # (talent_service._same_owner).
+        cur.execute("SELECT l.requirements_json,g.username AS goal_username,u.username AS link_username "
+                    "FROM talent_goal_links l JOIN users u ON u.id=l.user_id "
+                    "JOIN user_learning_goals g ON g.id=l.goal_id "
                     "WHERE l.company_id=%s AND u.username=%s AND g.status='aktiv'", (company_id, username))
-        out.extend({**r, 'source': 'development_goal', 'priority': 'high'} for row in cur.fetchall() for r in json.loads(row['requirements_json']))
+        from talent_service import _same_owner
+        out.extend({**r, 'source': 'development_goal', 'priority': 'high'}
+                   for row in cur.fetchall() if _same_owner(row) for r in json.loads(row['requirements_json']))
         return out
     finally:
         cur.close()

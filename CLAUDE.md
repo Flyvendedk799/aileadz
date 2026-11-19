@@ -40,5 +40,5 @@ The AI (employee advisor, profiler, HR and vendor assistants; OpenAI and Claude 
 ## Git and deploy
 
 - Branch from `main`, open a PR; CI (`.survhub/ci.yml`, runs on ServerHoster) = gitleaks + ruff + boot smoke + pytest on MySQL 8. Use conventional prefixes (`fix(scope):`, `feat(scope):`, `chore:`, `docs:`).
-- Production is ServerHoster on a VPS behind a Cloudflare tunnel. Deploy, env vars, worker service, e-mail, secret rotation: [docs/runbooks/](docs/runbooks/DEPLOY.md). Manual owner-only steps: [docs/USER_ACTIONS.md](docs/USER_ACTIONS.md).
+- Production is ServerHoster on a Google Cloud VM behind a Cloudflare tunnel. Deploy, env vars, worker service, e-mail, secret rotation: [docs/runbooks/](docs/runbooks/DEPLOY.md). Manual owner-only steps: [docs/USER_ACTIONS.md](docs/USER_ACTIONS.md).
 - Keep docs true: when a change alters a module's contract, an env var, a route or an invariant, update the matching doc in the same PR. Add a new doc only with an entry in `docs/README.md`.

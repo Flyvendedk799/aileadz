@@ -31,6 +31,9 @@ Nothing here needs a manual step; it is what to expect and check after the deplo
 - **No new required environment variables.** Optional ones, with safe defaults:
   `AI_RATE_TURNS_5MIN` (30) and `AI_RATE_TURNS_HOUR` (200) limit how many assistant
   messages one person can send; `WEB_*` are described in section 1.
+  `AI_MAX_RUN_COST` (0.50 USD) and `AI_MAX_RUN_TOKENS` (200000) now have defaults: one
+  assistant answer stops with a polite message past either. Production's largest run so
+  far is ~17k tokens; set either to `0` to switch the guard off.
 - **More mail goes through the queue** (compliance alerts, weekly digest, vendor
   catalogue review, GDPR notices). They are sent by the worker, so section 2 matters
   more than before: without a running worker they wait in "Mail og leveringer".

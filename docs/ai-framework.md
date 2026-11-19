@@ -214,7 +214,7 @@ Subsequent requests cannot inherit the previous request's policy.
   `prefer_quality` stay on main; profile-mutation intents always stay on main (so the
   confirm card UX holds). A rate-limit cooldown forces the fast model.
 - **Guards:** `AI_MAX_TOOL_CALLS` (12) per run, repeat-call circuit breaker,
-  `AI_MAX_RUN_COST` / `AI_MAX_RUN_TOKENS` (0 = off), `choose_max_iterations`
+  `AI_MAX_RUN_COST` / `AI_MAX_RUN_TOKENS` (0.50 USD / 200k tokens; 0 = off), `choose_max_iterations`
   (`AI_MAX_TOOL_ITERATIONS`, base 4), per-turn token budget -> "start a new chat".
 - **Intent routing:** employee regex classifier first; `AI_LLM_ROUTER` (default on,
   4 s timeout) refines only the ambiguous catch-all.
@@ -775,7 +775,7 @@ vendor name is fenced; figures pass grounding.
 | `AI_TOOL_TURN_TEMPERATURE` | 0.2 | OpenAI temperature on tool-deciding turns |
 | `AI_TOKEN_CHARS_PER_TOKEN` | 4.0 | token estimator divisor (Danish tokenises worse; try 3.5) |
 | `AI_MAX_TOOL_CALLS` / `AI_MAX_TOOL_ITERATIONS` | 12 / 4 | per-run tool-call ceiling / loop base |
-| `AI_MAX_RUN_COST` / `AI_MAX_RUN_TOKENS` | 0 / 0 | per-run USD / token ceilings (0 = off) |
+| `AI_MAX_RUN_COST` / `AI_MAX_RUN_TOKENS` | 0.50 / 200000 | per-run USD / token ceilings, about 3x the largest normal production run (0 = off) |
 | `AI_RATE_TURNS_5MIN` / `AI_RATE_TURNS_HOUR` | 30 / 200 | turns one actor may send to an assistant endpoint (`rate_limit.ai_turn_allowed`; 0 = off); answers 429 with a Danish message. Anonymous visitors are keyed on their address and get 5x the limits, since an office shares one |
 | `AI_RATE_LIMIT_RETRY_SECONDS` / `_BACKOFF_CAP_SECONDS` / `_COOLDOWN_SECONDS` | 2.5 / 20 / 90 | 429 handling; cooldown forces the fast model |
 | `AI_LLM_ROUTER` / `AI_LLM_ROUTER_TIMEOUT_SECONDS` | on / 4 | LLM intent router on the ambiguous catch-all |

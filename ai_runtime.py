@@ -724,20 +724,28 @@ def max_tool_calls_per_run() -> int:
         return 12
 
 
+# Per-run ceilings (ROADMAP T3-9, from production ai_agent_runs, Nov 2026: 1,470 runs,
+# the largest single model call 17k tokens, p99 15k; with AI_MAX_TOOL_ITERATIONS=3 a
+# normal maximal run is ~70k tokens and ~0.08 USD on the main model). The defaults
+# leave roughly 3x headroom so a long answer is never cut, and stop a runaway loop.
+DEFAULT_MAX_RUN_COST_USD = 0.50
+DEFAULT_MAX_RUN_TOKENS = 200_000
+
+
 def max_run_cost_usd() -> float:
-    """Approximate per-run USD cost ceiling (0 disables the guard)."""
+    """Approximate per-run USD cost ceiling (AI_MAX_RUN_COST; 0 disables the guard)."""
     try:
-        return max(0.0, float(os.getenv("AI_MAX_RUN_COST", "0")))
+        return max(0.0, float(os.getenv("AI_MAX_RUN_COST", str(DEFAULT_MAX_RUN_COST_USD))))
     except ValueError:
-        return 0.0
+        return DEFAULT_MAX_RUN_COST_USD
 
 
 def max_run_tokens() -> int:
-    """Approximate per-run total-token ceiling (0 disables the guard)."""
+    """Approximate per-run total-token ceiling (AI_MAX_RUN_TOKENS; 0 disables the guard)."""
     try:
-        return max(0, int(os.getenv("AI_MAX_RUN_TOKENS", "0")))
+        return max(0, int(os.getenv("AI_MAX_RUN_TOKENS", str(DEFAULT_MAX_RUN_TOKENS))))
     except ValueError:
-        return 0
+        return DEFAULT_MAX_RUN_TOKENS
 
 
 def _approx_cost_usd(input_tokens: int, output_tokens: int, model: Optional[str] = None,

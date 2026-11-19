@@ -15,9 +15,7 @@ const PASSWORD = process.env.E2E_PASSWORD || 'test';
 const SKIP = /logout|\/slet|\/fjern|export|download|\.ics|\.csv|\/api\/|mine-data|\/ui\b|impersonat|\/vendor/;
 const NAV = '#fmSide a[href^="/"], .pg-subnav a[href^="/"], .pg-tab[href^="/"], nav a[href^="/"]';
 // Structure a screen reader needs, checked on every page: a level-1 heading, a name for
-// every visible field and control. These pages still have known gaps (docs/ROADMAP.md T2-7);
-// a finding anywhere else fails.
-const A11Y_KNOWN = /^\/(virksomhed\/indstillinger\/chatbot|admin\/|profil\/cv|companies\/admin)/;
+// every visible field and control. No page is exempt.
 function a11yFindings() {
   const out = [];
   const visible = (e) => !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length);
@@ -70,7 +68,7 @@ for (const [user, minimum] of Object.entries(ROLES)) {
       const response = await go(path);
       visited += 1;
       if (!response || response.status() >= 500) failures.push(`${response ? response.status() : 'no response'} ${path}`);
-      if (response && response.status() < 400 && !A11Y_KNOWN.test(path)) {
+      if (response && response.status() < 400) {
         for (const finding of await page.evaluate(a11yFindings)) structure.push(`${path}: ${finding}`);
       }
       const links = await page.$$eval(NAV, (as) => as.map((a) => a.getAttribute('href').split('#')[0]));

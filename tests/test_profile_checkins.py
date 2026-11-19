@@ -399,3 +399,31 @@ class NotificationOptInTests(unittest.TestCase):
         gaps = [c for c in found if c["kind"] == pc.KIND_GAP]
         self.assertTrue(gaps)
         self.assertTrue(all("nudge" not in c for c in gaps))
+
+
+class FollowupSettingTests(unittest.TestCase):
+    """A person switches the assistant's follow-ups off and on in account settings."""
+
+    def test_the_switch_only_writes_when_the_wish_differs(self):
+        import pages
+        from flask import Flask
+        app = Flask(__name__)
+        calls = []
+        store = {"muted": False}
+        fake = mock.Mock()
+        fake.checkins_muted.side_effect = lambda u: store["muted"]
+
+        def set_muted(u, muted):
+            calls.append(muted)
+            store["muted"] = muted
+        fake.set_checkins_muted.side_effect = set_muted
+        with app.app_context(), mock.patch.dict("sys.modules", {"app1.user_profile_db": fake}), \
+                mock.patch("app1.user_profile_db", fake, create=True):
+            pages._save_followup_choice("ada", True)       # already on: nothing written
+            self.assertTrue(pages._followups_on("ada"))
+            pages._save_followup_choice("ada", False)      # switch off
+            self.assertFalse(pages._followups_on("ada"))
+            pages._save_followup_choice("ada", False)      # still off: nothing written
+            pages._save_followup_choice("ada", True)       # back on
+            self.assertTrue(pages._followups_on("ada"))
+        self.assertEqual(calls, [True, False])

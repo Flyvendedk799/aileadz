@@ -63,6 +63,13 @@
                     <span class="sw"></span>
                   </label>
                 </div>
+                <div class="toggle-row">
+                  <div><div class="t">Opfølgning fra AI-assistenten</div><div class="d">Assistenten må følge op på et kursus, du har gennemført, eller et mål, der har ligget stille. Slå det fra, hvis du ikke ønsker det.</div></div>
+                  <label class="sw-wrap">
+                    <input class="sw-input" type="checkbox" name="ai_followups" aria-label="Opfølgning fra AI-assistenten" {% if ai_followups %}checked{% endif %}>
+                    <span class="sw"></span>
+                  </label>
+                </div>
                 <div class="fm-mb0" style="margin-top:8px"><button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-floppy-disk"></i> Gem profiloplysninger</button></div>
               </form>
             </div>

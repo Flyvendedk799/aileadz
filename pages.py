@@ -170,6 +170,29 @@ def analytics():
 
 
 
+def _followups_on(username):
+    """True unless the person has switched the AI assistant's follow-ups off."""
+    try:
+        from app1 import user_profile_db as db
+        db.ensure_tables()
+        return not db.checkins_muted(username)
+    except Exception as e:
+        current_app.logger.debug("follow-up preference unavailable: %s", e)
+        return True
+
+
+def _save_followup_choice(username, wanted):
+    """The person's own switch for follow-ups from the AI assistant (the same one the
+    assistant sets when asked to stop). Never fails the settings save."""
+    try:
+        from app1 import user_profile_db as db
+        db.ensure_tables()
+        if db.checkins_muted(username) == wanted:      # stored state differs from the wish
+            db.set_checkins_muted(username, not wanted)
+    except Exception as e:
+        current_app.logger.warning("follow-up preference not saved: %s", e)
+
+
 @pages_bp.route('/indstillinger', methods=['GET', 'POST'])
 @login_required
 def settings():
@@ -211,6 +234,7 @@ def settings():
                     cur.execute(query, tuple(update_values))
                     current_app.mysql.connection.commit()
                     cur.close()
+                    _save_followup_choice(username, request.form.get('ai_followups') == 'on')
                     flash("Profiloplysninger opdateret!", "success")
                 except Exception as e:
                     current_app.logger.error("Error updating profile: %s", e)
@@ -268,7 +292,7 @@ def settings():
         
         return redirect(url_for('pages.settings'))
     
-    return render_template('fm/settings.html', user=user_data)
+    return render_template('fm/settings.html', user=user_data, ai_followups=_followups_on(username))
 
 
 

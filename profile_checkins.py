@@ -23,7 +23,9 @@ Guard rails (this is the "never a form-filler" surface, keep it that way):
 * at most ``MAX_OPEN`` open items per person, ``MAX_SHOWN`` shown per conversation,
   an asked item rests ``CHECKIN_COOLDOWN_DAYS`` and gives up after ``CHECKIN_MAX_ASKS``
   asks; unanswered items expire after ``CHECKIN_TTL_DAYS``;
-* the person can switch it off (``set_checkins_muted``, tool outcome ``stop_all``);
+* the person can switch it off and on again: in account settings (``/indstillinger``,
+  "Opfølgning fra AI-assistenten") or by telling the assistant (``set_checkins_muted``,
+  tool outcome ``stop_all``);
 * by default nothing reaches the person outside the assistant. A company's HR can
   switch on a weekly notification (``notify_checkin``, opt-in on ``/hr/engagement``);
 * ``AI_PROFILE_CHECKINS=0`` is the platform kill switch;

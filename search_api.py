@@ -64,15 +64,20 @@ def _own_results(q, like, company_id):
             logger.warning("search_api: order search failed: %s", e)
     if username:
         try:
+            import goal_service
             cur = _cursor()
-            cur.execute("SELECT id, title, status FROM user_learning_goals WHERE username = %s AND title LIKE %s "
-                        "ORDER BY (status = 'aktiv') DESC, id DESC LIMIT 5", (username, like))
-            labels = {'aktiv': 'Aktivt mål', 'fuldfoert': 'Fuldført mål', 'paa_pause': 'Mål på pause'}
+            try:
+                own = goal_service.own_goals(cur, username)
+            finally:
+                cur.close()
+            needle = like[1:-1].lower()  # the query without its LIKE wildcards
+            hits = sorted((g for g in own if needle in g['title'].lower()),
+                          key=lambda g: (g['status'] != 'active', -g['id']))[:5]
+            labels = {'active': 'Aktivt mål', 'done': 'Fuldført mål', 'paused': 'Mål på pause'}
             items = [{
-                'title': r['title'], 'sub': labels.get(r['status'], 'Mål'),
-                'href': '/mine-maal#goal-%s' % r['id'], 'icon': 'fa-bullseye',
-            } for r in (cur.fetchall() or [])]
-            cur.close()
+                'title': g['title'], 'sub': labels[g['status']],
+                'href': '/mine-maal#goal-%s' % g['id'], 'icon': 'fa-bullseye',
+            } for g in hits]
             if items:
                 groups.append({'label': 'Mine mål', 'items': items})
         except Exception as e:

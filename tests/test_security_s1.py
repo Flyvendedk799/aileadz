@@ -584,7 +584,7 @@ class OwnSearchResultsTests(unittest.TestCase):
         goals = [s for s in seen if "FROM user_learning_goals" in s[0]]
         self.assertTrue(orders and "user_id = %s AND company_id = %s" in orders[0][0])
         self.assertEqual(orders[0][1][:2], (5, 7))
-        self.assertTrue(goals and "username = %s" in goals[0][0])
+        self.assertTrue(goals and "username=%s" in goals[0][0])  # goal_service.own_goals
         self.assertEqual(goals[0][1][0], "anna")
 
     def test_palette_renders_titles_as_text(self):

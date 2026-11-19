@@ -4975,7 +4975,8 @@ def _execute_set_learning_goal(args, username):
     try:
         from app1 import user_profile_db as db
         db.ensure_tables()
-        gid = db.add_learning_goal(username, title, args.get("description", ""), args.get("target_date"))
+        gid = db.add_learning_goal(username, title, args.get("description", ""), args.get("target_date"),
+                                   company_id=_own_company_identity(username)[0])
         return json.dumps({"status": "success", "section": "goals", "goal_id": gid,
                            "message": f"Udviklingsmål oprettet: {title}"}, ensure_ascii=False)
     except Exception as e:
@@ -4988,17 +4989,15 @@ def _execute_get_learning_goals(args, username):
         return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
     try:
         from app1 import user_profile_db as db
-        db.ensure_tables()
-        goals = db.get_learning_goals(username)
-        label = {"aktiv": "aktiv", "fuldfoert": "fuldført", "paa_pause": "på pause"}
         company_id, user_id = _own_company_identity(username)
+        goals = db.get_learning_goals(username, company_id)
+        label = {"aktiv": "aktiv", "fuldfoert": "fuldført", "paa_pause": "på pause"}
         items = []
         for g in goals:
             item = {"id": g["id"], "title": g["title"], "description": g.get("description") or "",
                     "target_date": g.get("target_date") or "", "status": label.get(g["status"], g["status"])}
             if company_id:
-                shared = bool(g.get("shared_with_hr")) and g.get("shared_company_id") == company_id
-                item["visibility"] = "delt med HR" if shared else "privat"
+                item["visibility"] = "delt med HR" if g["shared"] else "privat"
             items.append(item)
         out = {"status": "success", "section": "goals", "count": len(items), "goals": items,
                "message": ("Ingen udviklingsmål oprettet endnu." if not items else f"{len(items)} udviklingsmål.")}

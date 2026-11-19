@@ -15,7 +15,7 @@ def env():
     db.raw.executescript('''
         CREATE TABLE user_learning_goals (id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT,title TEXT,description TEXT,
             target_date TEXT,status TEXT DEFAULT 'aktiv',shared_with_hr INTEGER DEFAULT 0,shared_company_id INTEGER,
-            shared_at TEXT,created_at TEXT,updated_at TEXT);
+            shared_at TEXT,company_id INTEGER,created_at TEXT,updated_at TEXT);
         CREATE TABLE talent_goal_links (id TEXT PRIMARY KEY,company_id INTEGER,user_id INTEGER,goal_id INTEGER,shared INTEGER DEFAULT 0);
     ''')
     people = ((1, 'ada', 7, 'employee'), (3, 'hr', 7, 'hr_manager'), (4, 'outside-hr', 8, 'hr_manager'))
@@ -140,3 +140,78 @@ def test_hr_page_shows_only_what_the_employee_shared_and_can_set_status(env):
         s.update(user='outside-hr', user_id=4, company_id=8, company_role='hr_manager')
     other.post('/hr/goals/10/status', data=dict(status='done'))
     assert db.one('SELECT status FROM employee_goals WHERE id=10')['status'] == 'paused'
+
+
+def test_learner_page_reads_both_kinds_through_goal_service(env):
+    db, app = env
+    db.execute("UPDATE user_learning_goals SET status='fuldfoert' WHERE id=1")
+    db.execute("UPDATE employee_goals SET share_note='Godt til efteråret' WHERE id=11")
+    c = app.test_client()
+    with c.session_transaction() as s:
+        s.update(user='ada', user_id=1, company_id=7, company_role='employee')
+    with mock.patch('app1.user_profile_db.ensure_tables'), \
+            mock.patch('goal_service.own_goals', wraps=goal_service.own_goals) as own, \
+            mock.patch('goal_service.shared_hr_goals', wraps=goal_service.shared_hr_goals) as hr:
+        page = c.get('/mine-maal').get_data(as_text=True)
+    assert own.called and hr.called
+    assert 'Tag PRINCE2' in page and 'Godt til efteråret' in page
+    assert 'Fasthold Ada' not in page            # HR-only stays HR-only
+    assert 'Fuldført' in page and 'Skifte branche' in page and 'Blive teamleder' in page
+
+
+def test_profile_reader_keeps_its_shape_and_visibility(env):
+    db, app = env
+    from app1 import user_profile_db
+    cur = db.connection.cursor()
+    goal_service.share_own_goal(cur, 7, 1, 2, True)
+    db.execute("UPDATE user_learning_goals SET status='paa_pause' WHERE id=1")
+    with app.test_request_context(), mock.patch('app1.user_profile_db.ensure_tables'):
+        rows = {g['id']: g for g in user_profile_db.get_learning_goals('ada', 7)}
+        assert rows[1]['status'] == 'paa_pause' and rows[2]['status'] == 'aktiv'
+        assert rows[2]['shared'] and not rows[1]['shared']
+        # Without a company nothing counts as shared; another company sees it as private.
+        assert not any(g['shared'] for g in user_profile_db.get_learning_goals('ada'))
+        assert not any(g['shared'] for g in user_profile_db.get_learning_goals('ada', 8))
+
+
+def test_learner_ai_context_gets_only_open_shared_hr_goals(env):
+    db, app = env
+    import learner_context
+    db.execute("INSERT INTO employee_goals (id,employee_id,company_id,goal_title,status,shared_with_employee) "
+               "VALUES (12,1,7,'Afsluttet','completed',1)")
+    with app.test_request_context():
+        assert titles(learner_context._load_hr_goals(1, 7)) == ['Tag PRINCE2']
+        assert learner_context._load_hr_goals(1, 8) == []
+
+
+def test_new_own_goal_records_the_company_it_was_written_in(env):
+    db, app = env
+    from app1 import user_profile_db
+    with app.test_request_context(), mock.patch.object(user_profile_db, '_goal_company_column', True):
+        gid = user_profile_db.add_learning_goal('ada', 'Lære SQL', company_id=7)
+    row = db.one('SELECT company_id,shared_with_hr FROM user_learning_goals WHERE id=%s', (gid,))
+    assert row == {'company_id': 7, 'shared_with_hr': 0}      # provenance only, still private
+
+
+def test_no_surface_reads_the_own_goal_table_outside_goal_service():
+    """Every page and assistant reads a person's own goals through goal_service.
+
+    Allowed: goal_service itself; the GDPR export (reads every per-user table
+    whole); the talent workspace, whose development links join their goal for
+    its title and status and carry the goal's visibility (``talent_goal_links.shared``)."""
+    import os
+    import re
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    allowed = {'goal_service.py', 'gdpr_service.py', 'talent_service.py', 'competency_model.py'}
+    offenders = []
+    for here, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if d not in {'.git', 'node_modules', '__pycache__', '.claude', 'tests', 'sandbox',
+                                                '.venv', 'venv'}]
+        for fn in files:
+            if not fn.endswith('.py') or fn in allowed:
+                continue
+            text = open(os.path.join(here, fn), encoding='utf-8', errors='ignore').read()
+            for m in re.finditer(r'(?:\b(DELETE)\s+)?\b(?:FROM|JOIN)\s+user_learning_goals\b', text, re.I):
+                if not m.group(1):
+                    offenders.append(os.path.relpath(os.path.join(here, fn), root))
+    assert offenders == []

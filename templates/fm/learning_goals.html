@@ -33,9 +33,8 @@
 
 {% block content %}
 <div class="fm-wrap">
-  {% set active = goals|selectattr('status','equalto','aktiv')|list %}
-  {% set done = goals|selectattr('status','equalto','fuldfoert')|list %}
-  {% set labels = {'aktiv':'Aktiv','fuldfoert':'Fuldført','paa_pause':'På pause'} %}
+  {% set active = goals|selectattr('status','equalto','active')|list %}
+  {% set done = goals|selectattr('status','equalto','done')|list %}
 
   <section class="goal-kpis">
     <div class="gk"><div class="l">Mål i alt</div><div class="v tnum">{{ goals|length }}</div></div>
@@ -71,10 +70,10 @@
     {% for g in manager_goals %}
     <article class="goal-card">
       <div class="goal-top"><span class="fm-badge indigo">Delt af din leder</span>{% if g.target_date %}<span class="goal-meta"><i class="fa-solid fa-calendar-day"></i> {{ g.target_date }}</span>{% endif %}</div>
-      <div class="goal-title">{{ g.goal_title }}</div>
-      {% if g.goal_description %}<div class="goal-desc">{{ g.goal_description }}</div>{% endif %}
+      <div class="goal-title">{{ g.title }}</div>
+      {% if g.description %}<div class="goal-desc">{{ g.description }}</div>{% endif %}
       {% if g.share_note %}<div class="goal-desc"><em>“{{ g.share_note }}”</em></div>{% endif %}
-      <div class="goal-actions"><a class="gbtn primary" href="{{ url_for('catalog.catalog_index', q=g.goal_title) }}"><i class="fa-solid fa-graduation-cap"></i> Find kurser</a></div>
+      <div class="goal-actions"><a class="gbtn primary" href="{{ url_for('catalog.catalog_index', q=g.title) }}"><i class="fa-solid fa-graduation-cap"></i> Find kurser</a></div>
     </article>
     {% endfor %}
   </section>
@@ -85,21 +84,21 @@
   {% if goals %}
   <section class="goal-grid">
     {% for g in goals %}
-    <article class="goal-card{{ ' done' if g.status == 'fuldfoert' }}" id="goal-{{ g.id }}" style="scroll-margin-top:90px">
+    <article class="goal-card{{ ' done' if g.status == 'done' }}" id="goal-{{ g.id }}" style="scroll-margin-top:90px">
       <div class="goal-top">
-        <span class="fm-badge {{ 'success' if g.status == 'fuldfoert' else ('amber' if g.status == 'paa_pause' else 'teal') }}">{{ labels.get(g.status, g.status) }}</span>
+        <span class="fm-badge {{ 'success' if g.status == 'done' else ('amber' if g.status == 'paused' else 'teal') }}">{{ g.status_label }}</span>
         {% if g.target_date %}<span class="goal-meta"><i class="fa-solid fa-calendar-day"></i> {{ g.target_date }}</span>{% endif %}
       </div>
-      {% set g_shared = session.get('company_id') and g.shared_with_hr and g.shared_company_id == session.get('company_id') %}
+      {% set g_shared = session.get('company_id') and g.shared %}
       <div class="goal-title">{{ g.title }}</div>
       {% if session.get('company_id') %}<div class="goal-meta"><i class="fa-solid {{ 'fa-share-nodes' if g_shared else 'fa-lock' }}"></i> {{ 'Delt med HR' if g_shared else 'Privat · kun du kan se det' }}</div>{% endif %}
       {% if g.description %}<div class="goal-desc">{{ g.description }}</div>{% endif %}
       <div class="goal-actions">
         <a class="gbtn primary" href="{{ url_for('catalog.catalog_index', q=g.title) }}"><i class="fa-solid fa-graduation-cap"></i> Find kurser</a>
-        {% if g.status != 'fuldfoert' %}
+        {% if g.status != 'done' %}
         <form method="POST" action="{{ url_for('futurematch.learning_goal_status', goal_id=g.id) }}"><input type="hidden" name="action" value="fuldfoert"><button class="gbtn" type="submit"><i class="fa-solid fa-check"></i> Fuldført</button></form>
         {% endif %}
-        {% if g.status == 'aktiv' %}
+        {% if g.status == 'active' %}
         <form method="POST" action="{{ url_for('futurematch.learning_goal_status', goal_id=g.id) }}"><input type="hidden" name="action" value="paa_pause"><button class="gbtn" type="submit"><i class="fa-solid fa-pause"></i> Pause</button></form>
         {% else %}
         <form method="POST" action="{{ url_for('futurematch.learning_goal_status', goal_id=g.id) }}"><input type="hidden" name="action" value="aktiv"><button class="gbtn" type="submit"><i class="fa-solid fa-play"></i> Genaktivér</button></form>

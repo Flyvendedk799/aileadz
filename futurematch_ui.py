@@ -635,8 +635,10 @@ def employee_home():
     # ── Goals and deadlines (N-8.5): what the learner is working toward ──
     goals = []
     try:
-        from app1.user_profile_db import get_learning_goals
-        goals = [g for g in (get_learning_goals(username) or []) if (g.get('status') or 'aktiv') == 'aktiv'][:3]
+        if username:
+            from app1.user_profile_db import ensure_tables
+            ensure_tables()
+            goals = [g for g in _own_goals(username) if g['status'] == 'active'][:3]
     except Exception as e:
         current_app.logger.debug("home goals load: %s", e)
     today = datetime.date.today()
@@ -723,23 +725,36 @@ def learning_goals():
     goals = []
     manager_goals = []
     try:
-        from app1.user_profile_db import get_learning_goals, ensure_tables
+        from app1.user_profile_db import ensure_tables
         ensure_tables()
-        goals = get_learning_goals(session['user'])
+        goals = _own_goals(session['user'], session.get('company_id'))
     except Exception as e:
         current_app.logger.warning("learning goals load: %s", e)
     # "Mål fra din leder": ONLY goals HR chose to share (N-3.5 / S-4.4).
     if session.get('company_id') and session.get('user_id'):
         try:
-            import MySQLdb.cursors
-            import goal_sharing_ui as goal_sharing
-            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-            manager_goals = goal_sharing.shared_goals_for_learner(
-                cur, session['user_id'], session['company_id'], conn=current_app.mysql.connection)
-            cur.close()
+            import goal_service
+            import goal_sharing
+            conn = current_app.mysql.connection
+            goal_sharing.ensure_schema(conn)
+            cur = conn.cursor(MySQLdb_cursors_dict())
+            try:
+                manager_goals = goal_service.shared_hr_goals(cur, session['company_id'], session['user_id'])[:20]
+            finally:
+                cur.close()
         except Exception as e:
             current_app.logger.warning("manager goals load: %s", e)
     return render_template('fm/learning_goals.html', goals=goals, manager_goals=manager_goals)
+
+
+def _own_goals(username, company_id=None):
+    """The person's own goals as goal_service records (``shared`` relative to company_id)."""
+    import goal_service
+    cur = current_app.mysql.connection.cursor(MySQLdb_cursors_dict())
+    try:
+        return goal_service.own_goals(cur, username, company_id)
+    finally:
+        cur.close()
 
 
 @futurematch_bp.route('/mine-maal/add', methods=['POST'])
@@ -751,7 +766,8 @@ def learning_goal_add():
         try:
             from app1.user_profile_db import add_learning_goal, ensure_tables
             ensure_tables()
-            add_learning_goal(session['user'], title, request.form.get('description', ''), request.form.get('target_date'))
+            add_learning_goal(session['user'], title, request.form.get('description', ''), request.form.get('target_date'),
+                              company_id=session.get('company_id'))
             flash('Udviklingsmål oprettet.', 'success')
         except Exception as e:
             current_app.logger.warning("goal add: %s", e)

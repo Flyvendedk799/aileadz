@@ -23,8 +23,8 @@ CREATE TABLE IF NOT EXISTS brands (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Test logins. Passwords are plaintext on purpose: the auth layer accepts
--- plaintext and auto-upgrades to a hash on first login.
+-- Test logins. Seeded as plaintext; `run_sandbox.py init` (and the app at boot)
+-- hashes them, because only hashed passwords authenticate.
 --   admin login:    test / test
 --   employee login: medarbejder / test
 INSERT INTO users (username, password, email, credits, role) VALUES

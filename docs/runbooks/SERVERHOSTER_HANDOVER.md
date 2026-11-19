@@ -152,8 +152,8 @@ password); Admin, Katalog shows the Shopify sync working; the old Shopify token 
   restore; see [BACKUP_RESTORE.md](BACKUP_RESTORE.md), "How production does it".
 - **GitHub Actions:** `security.yml` ran and failed weekly on pip-audit (fixed with the
   Pillow and filelock bumps). `ai-eval-nightly.yml` "passed" nightly without running:
-  neither `OPENAI_API_KEY` nor `ANTHROPIC_API_KEY` is set as a repository secret. It now
-  fails when the OpenAI key is missing.
+  neither `OPENAI_API_KEY` nor `ANTHROPIC_API_KEY` is set as a repository secret. It is
+  replaced by a nightly job on the server ([AI_EVAL_NIGHTLY.md](AI_EVAL_NIGHTLY.md)).
 
 ## Report format
 

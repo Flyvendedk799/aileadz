@@ -832,9 +832,9 @@ SANDBOX=1 AI_WARMUP_ON_IMPORT=0 MYSQL_HOST=127.0.0.1 MYSQL_USER=none MYSQL_PASSW
 
 - **AI-quality eval** (`ai_eval/`, see its README): drives the real endpoints against
   `golden_set.json` (employee, HR, vendor scopes); needs a live `OPENAI_API_KEY` + the Docker
-  sandbox MySQL (`./sandbox/sandbox.sh up && init`, port 3307) - not offline. Nightly on both
-  providers: `.github/workflows/ai-eval-nightly.yml`. Re-baseline once after an intentional
-  quality shift: `python3 ai_eval/run_eval.py --set-baseline`.
+  sandbox MySQL (`./sandbox/sandbox.sh up && init`, port 3307) - not offline. Nightly on the
+  server, gated against `ai_eval/baselines/<provider>.json` (runbooks/AI_EVAL_NIGHTLY.md).
+  Re-baseline after an intentional quality shift with `--set-baseline --baseline ai_eval/baselines/<provider>.json`.
 - **Offline coverage by area:** runtime/provider `test_ai_runtime.py`, `test_ai_provider_toggle.py`,
   `test_ai_fallback_guard.py`; SSE pipeline `test_ask_sse_offline.py` (mocked LLM: no
   `<suggestions>` leak, one final completion, grounding disclaimer, `meta` before `[DONE]`);

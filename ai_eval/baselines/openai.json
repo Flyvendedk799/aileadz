@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "timestamp": 1795092422,
+  "metrics": {
+    "tool_selection_pct": 84.1,
+    "refusal_pct": 62.5,
+    "retrieval_pct": 88.9,
+    "retrieval_precision_pct": 84.7,
+    "grounding_pct": 93.9,
+    "profile_event_pct": 100.0,
+    "order_confirmation_pct": 100.0,
+    "fluency_pct": 100.0,
+    "overall_pass_pct": 78.7
+  },
+  "latency_p50_ms": 6768.0,
+  "latency_p95_ms": 13570.4
+}

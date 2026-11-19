@@ -50,7 +50,7 @@ If a statement is untranslatable, extend `SqliteMysql` (it raises loudly on purp
 
 ## AI quality (not part of pytest)
 
-`ai_eval/` drives the real agent through `/app1/ask` against a golden set and scores groundedness, tool use and fluency; it needs a sandbox DB and an API key. Nightly via `.github/workflows/ai-eval-nightly.yml`. See [../ai_eval/README.md](../ai_eval/README.md). Scorer logic itself is unit-tested offline (`test_eval_scorers.py`, `test_tooler2_scorers.py`, `test_self_eval_scorer.py`).
+`ai_eval/` drives the real agent through `/app1/ask` against a golden set and scores groundedness, tool use and fluency; it needs a sandbox DB and an API key. Nightly on the production server, gated against `ai_eval/baselines/` ([runbooks/AI_EVAL_NIGHTLY.md](runbooks/AI_EVAL_NIGHTLY.md)). See [../ai_eval/README.md](../ai_eval/README.md). Scorer logic itself is unit-tested offline (`test_eval_scorers.py`, `test_tooler2_scorers.py`, `test_self_eval_scorer.py`).
 
 ## Local full-stack sandbox
 

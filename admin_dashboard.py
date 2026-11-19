@@ -1414,9 +1414,16 @@ def admin_system_health():
     except Exception as e:
         logging.warning("system-health: backup status unavailable: %s", e)
 
+    ai_eval = []
+    try:
+        import eval_status
+        ai_eval = eval_status.status()
+    except Exception as e:
+        logging.warning("system-health: AI eval status unavailable: %s", e)
+
     return render_template('fm/admin_system_health.html',
                            features=features, outbox=outbox, snapshot=snapshot,
-                           mail=mail, jobs=jobs, backup=backup)
+                           mail=mail, jobs=jobs, backup=backup, ai_eval=ai_eval)
 
 
 # ---------------------------------------------------------------------------

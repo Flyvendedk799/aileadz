@@ -580,7 +580,9 @@
           "schedule_recurring_report"
         ],
         "expect_confirmation_before_mutation": true
-      }
+      },
+      "scope": "hr",
+      "_note": "HR-only manager tool: runs in HR scope (the employee assistant must never have it, see t2_role_gating_employee_no_hr_tools)."
     },
     {
       "id": "t2_recheck_compliance",
@@ -591,7 +593,9 @@
           "recheck_compliance"
         ],
         "expect_confirmation_before_mutation": true
-      }
+      },
+      "scope": "hr",
+      "_note": "HR-only manager tool: runs in HR scope (the employee assistant must never have it, see t2_role_gating_employee_no_hr_tools)."
     },
     {
       "id": "t2_generate_fresh_insights",
@@ -601,7 +605,9 @@
         "tool_any_of": [
           "generate_fresh_insights"
         ]
-      }
+      },
+      "scope": "hr",
+      "_note": "HR-only manager tool: runs in HR scope (the employee assistant must never have it, see t2_role_gating_employee_no_hr_tools)."
     },
     {
       "id": "t2_bulk_calendar_invites",
@@ -611,7 +617,9 @@
         "tool_any_of": [
           "bulk_calendar_invites"
         ]
-      }
+      },
+      "scope": "hr",
+      "_note": "HR-only manager tool: runs in HR scope (the employee assistant must never have it, see t2_role_gating_employee_no_hr_tools)."
     },
     {
       "id": "t2_send_company_email",
@@ -622,7 +630,9 @@
           "send_company_email"
         ],
         "expect_confirmation_before_mutation": true
-      }
+      },
+      "scope": "hr",
+      "_note": "HR-only manager tool: runs in HR scope (the employee assistant must never have it, see t2_role_gating_employee_no_hr_tools)."
     },
     {
       "id": "t2_send_deadline_reminders",
@@ -633,7 +643,9 @@
           "send_deadline_reminders"
         ],
         "expect_confirmation_before_mutation": true
-      }
+      },
+      "scope": "hr",
+      "_note": "HR-only manager tool: runs in HR scope (the employee assistant must never have it, see t2_role_gating_employee_no_hr_tools)."
     },
     {
       "id": "t2_create_order_for_employee",
@@ -644,7 +656,9 @@
           "create_order_for_employee"
         ],
         "expect_confirmation_before_mutation": true
-      }
+      },
+      "scope": "hr",
+      "_note": "HR-only manager tool: runs in HR scope (the employee assistant must never have it, see t2_role_gating_employee_no_hr_tools)."
     },
     {
       "id": "t2_save_course_for_later",

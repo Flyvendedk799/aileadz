@@ -259,15 +259,24 @@ def _mark_course_steps(cur, company_id, links):
                 s['done'] = status[s['order_id']] == 'completed'
 
 
+def _same_owner(row):
+    """The goal row belongs to the linked user. Compared here, not in SQL: ``users``
+    and ``user_learning_goals`` can carry different utf8mb4 collations (a table created
+    with ``DEFAULT CHARSET=utf8mb4`` gets the charset default, ``users`` the server's),
+    and MySQL refuses ``=`` across two implicit collations (error 1267)."""
+    return (row.pop('goal_username', None) or '').casefold() == (row.pop('link_username', None) or '').casefold()
+
+
 def complete_course_steps(cur, company_id, user_id, order_id):
     """Persist "done" on every development-goal step linked to a completed order.
 
     Returns the titles of the goals that moved, so the caller can tell the learner."""
-    cur.execute('SELECT l.id,l.actions_json,g.title FROM talent_goal_links l JOIN users u ON u.id=l.user_id '
-                'JOIN user_learning_goals g ON g.id=l.goal_id AND g.username=u.username '
+    cur.execute('SELECT l.id,l.actions_json,g.title,g.username AS goal_username,u.username AS link_username '
+                'FROM talent_goal_links l JOIN users u ON u.id=l.user_id '
+                'JOIN user_learning_goals g ON g.id=l.goal_id '
                 'WHERE l.company_id=%s AND l.user_id=%s', (company_id, user_id))
     moved = []
-    for row in cur.fetchall():
+    for row in [r for r in cur.fetchall() if _same_owner(r)]:
         actions = json.loads(row['actions_json'] or '[]')
         hit = [a for a in actions if a.get('order_id') == order_id and not a.get('done')]
         if not hit:
@@ -282,12 +291,13 @@ def complete_course_steps(cur, company_id, user_id, order_id):
 
 def goals(cur, company_id, user_id=None, *, hr=False):
     clause = ' AND l.shared=1' if hr else ' AND l.user_id=%s'
-    cur.execute('SELECT l.*,g.title,g.status FROM talent_goal_links l JOIN users u ON u.id=l.user_id '
-                'JOIN user_learning_goals g ON g.id=l.goal_id AND g.username=u.username '
+    cur.execute('SELECT l.*,g.title,g.status,g.username AS goal_username,u.username AS link_username '
+                'FROM talent_goal_links l JOIN users u ON u.id=l.user_id '
+                'JOIN user_learning_goals g ON g.id=l.goal_id '
                 'JOIN company_users cu ON cu.user_id=l.user_id AND cu.company_id=l.company_id '
                 "WHERE l.company_id=%s AND cu.status='active'" + clause + ' ORDER BY l.review_date',
                 (company_id,) if hr else (company_id, user_id))
-    links = [unpack(r) for r in cur.fetchall()]
+    links = [unpack(r) for r in cur.fetchall() if _same_owner(r)]
     _mark_course_steps(cur, company_id, links)
     return links
 

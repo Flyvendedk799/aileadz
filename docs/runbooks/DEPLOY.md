@@ -1,6 +1,6 @@
 # Runbook: Deploy & Operations Index
 
-Single entrypoint for operating aileadz. Production is a VPS running ServerHoster,
+Single entrypoint for operating aileadz. Production is a Google Cloud VM running ServerHoster,
 which supervises two services from this repo:
 
 | Service | Start command | Role |

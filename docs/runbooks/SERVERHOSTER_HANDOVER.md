@@ -67,7 +67,7 @@ from the commit that added this file) switches to threaded workers.
 3. Do not add these variables unless told to; the defaults are intended:
    `WEB_CONCURRENCY` (default `1`: keep it at 1, per-process rate limits and caches assume
    one process), `WEB_THREADS` (default `16`), `WEB_TIMEOUT` (default `120`),
-   `WEB_MAX_REQUESTS` (default `2000`), `WEB_ACCESS_LOG` (default `0`).
+   `WEB_MAX_REQUESTS` (default `0` = never recycle; with one process a recycle pauses the site while open chat streams drain, so set it only together with more workers), `WEB_ACCESS_LOG` (default `0`).
 4. Restart the web service.
 
 **Check:**

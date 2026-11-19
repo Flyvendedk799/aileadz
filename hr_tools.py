@@ -1098,11 +1098,8 @@ def _execute_hr_talent_overview(args):
         flags = talent_service.flags(cur, company_id)
         out = {"page": "/hr/talent", "modules": {k: bool(flags.get(k + "_enabled")) for k in ("roles", "mobility", "planning")}}
         if flags.get("roles_enabled"):
-            seen, frameworks = set(), []
-            for r in talent_service.roles(cur, company_id, published=False):
-                if r.get("role_id") in seen:  # newest version first per title
-                    continue
-                seen.add(r.get("role_id"))
+            frameworks = []
+            for r in talent_service.latest_roles(cur, company_id, published=False):
                 frameworks.append({"title": r.get("title"), "version": r.get("version"), "published": bool(r.get("published")),
                                    "requirements": [q.get("skill") for q in (r.get("requirements") or []) if isinstance(q, dict)][:12]})
             out["role_frameworks"] = frameworks[:40]

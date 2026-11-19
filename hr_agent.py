@@ -471,7 +471,8 @@ def handle_hr_ask(user_query, flask_session, page=None, conversation_id=None, en
             try:
                 if _grounding is not None and runtime_result.tool_results:
                     _pending_note = _grounding.pending_confirmation_note(
-                        full_text, [getattr(tr, "output", None) for tr in runtime_result.tool_results])
+                        full_text, [getattr(tr, "output", None) for tr in runtime_result.tool_results],
+                        [getattr(tr, "name", None) for tr in (runtime_result.tool_results or [])])
                     if _pending_note:
                         full_text += "\n\n" + _pending_note
                         yield sse({'type': 'text', 'content': "\n\n" + _pending_note})

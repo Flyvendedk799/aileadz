@@ -1538,7 +1538,7 @@ def get_order_changes(order_id):
             cur.execute("SELECT order_id FROM course_orders WHERE order_id = %s AND company_id = %s",
                         (order_id, g.company_id))
             if not cur.fetchone():
-                return jsonify({'error': 'Order not found'}), 404
+                return jsonify({'error': 'Bestillingen blev ikke fundet'}), 404
             cur.execute(
                 "SELECT id, kind, status, requested_kind AS requested_by, decision_note, created_at, resolved_at "
                 "FROM course_order_changes WHERE order_id = %s AND company_id = %s ORDER BY id",
@@ -1548,7 +1548,7 @@ def get_order_changes(order_id):
             cur.close()
         return jsonify({'success': True, 'data': changes})
     except Exception:
-        return jsonify({'error': 'Changes could not be fetched'}), 500
+        return jsonify({'error': 'Ændringerne kunne ikke hentes'}), 500
 
 
 @api_enterprise_bp.route('/api/v1/learning-paths/assignments')
@@ -1560,8 +1560,9 @@ def get_learning_path_assignments():
         per_page = max(1, min(int(request.args.get('per_page', 50)), 100))
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
         try:
-            cur.execute("SELECT COUNT(*) AS total FROM employee_learning_progress "
-                        "WHERE company_id = %s AND learning_path_id IS NOT NULL", (g.company_id,))
+            cur.execute("SELECT COUNT(*) AS total FROM employee_learning_progress elp "
+                        "JOIN learning_paths lp ON lp.id = elp.learning_path_id AND lp.company_id = elp.company_id "
+                        "WHERE elp.company_id = %s AND elp.learning_path_id IS NOT NULL", (g.company_id,))
             total = cur.fetchone()['total']
             cur.execute(
                 "SELECT elp.id AS assignment_id, elp.user_id AS employee_id, elp.learning_path_id, lp.path_name, "
@@ -1579,9 +1580,9 @@ def get_learning_path_assignments():
                         'pagination': {'page': page, 'per_page': per_page, 'total': total,
                                        'pages': (total + per_page - 1) // per_page}})
     except ValueError:
-        return jsonify({'error': 'page and per_page must be integers'}), 400
+        return jsonify({'error': 'page og per_page skal være heltal'}), 400
     except Exception:
-        return jsonify({'error': 'Assignments could not be fetched'}), 500
+        return jsonify({'error': 'Tildelingerne kunne ikke hentes'}), 500
 
 
 @api_enterprise_bp.route('/api/v1/compliance')
@@ -1597,13 +1598,13 @@ def get_compliance_state():
             current_app.mysql.connection, g.company_id,
             department=request.args.get('department', ''), only_gaps=request.args.get('only_gaps') in ('1', 'true'))
         if state.get('error'):
-            return jsonify({'error': 'Compliance could not be derived'}), 500
+            return jsonify({'error': 'Compliance-status kunne ikke beregnes'}), 500
         return jsonify({'success': True, 'data': {
             'department': state.get('department'), 'overall_compliance_pct': state.get('overall_compliance_pct'),
             'total_requirements': state.get('total_requirements'), 'statutory_requirements': state.get('statutory_requirements'),
             'requirements': state.get('requirements') or []}})
     except Exception:
-        return jsonify({'error': 'Compliance could not be derived'}), 500
+        return jsonify({'error': 'Compliance-status kunne ikke beregnes'}), 500
 
 
 @api_enterprise_bp.route('/api/v1/role-frameworks')
@@ -1614,11 +1615,8 @@ def get_role_frameworks():
         import talent_service
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
         try:
-            seen, data = set(), []
-            for r in talent_service.roles(cur, g.company_id):
-                if r['role_id'] in seen:
-                    continue
-                seen.add(r['role_id'])
+            data = []
+            for r in talent_service.latest_roles(cur, g.company_id):
                 data.append({'role_id': r['role_id'], 'version_id': r['id'], 'version': r['version'], 'title': r['title'],
                              'requirements': [{'competency': q.get('skill'), 'competency_id': q.get('competency_id'),
                                                'target_level': q.get('target_level'), 'required_people': q.get('required_people')}
@@ -1627,7 +1625,7 @@ def get_role_frameworks():
             cur.close()
         return jsonify({'success': True, 'data': data})
     except Exception:
-        return jsonify({'error': 'Role frameworks could not be fetched'}), 500
+        return jsonify({'error': 'Rollerammerne kunne ikke hentes'}), 500
 
 
 @api_enterprise_bp.route('/api/v1/orders', methods=['POST'])

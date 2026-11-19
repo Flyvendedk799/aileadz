@@ -235,7 +235,7 @@ class EscalationTests(unittest.TestCase):
                 mock.patch.object(compliance_service, "_manager_recipients",
                                   return_value=[{"email": "a@acme.dk", "name": "Ann"},
                                                 {"email": "b@acme.dk", "name": "Bo"}]), \
-                mock.patch("email_service.email_recently_sent", return_value=False), \
+                mock.patch.object(compliance_service, "_escalated_recently", return_value=False), \
                 mock.patch("mail_delivery.enqueue",
                            side_effect=lambda *a, **k: sent.append((a, k)) or True), \
                 mock.patch("email_service._resolve_branding", return_value={}):
@@ -255,7 +255,7 @@ class EscalationTests(unittest.TestCase):
                                return_value=FakeConnection(FakeCursor(fetchall=[]))), \
                 mock.patch.object(compliance_service, "_manager_recipients",
                                   return_value=[{"email": "a@acme.dk", "name": "Ann"}]), \
-                mock.patch("email_service.email_recently_sent", return_value=True), \
+                mock.patch.object(compliance_service, "_escalated_recently", return_value=True), \
                 mock.patch("mail_delivery.enqueue",
                            side_effect=lambda *a, **k: sent.append(a) or True), \
                 mock.patch("email_service._resolve_branding", return_value={}):
@@ -263,6 +263,16 @@ class EscalationTests(unittest.TestCase):
                 7, [_req(1, "Arbejdsmiljø", overdue=1, statutory=True)])
         self.assertEqual(n, 0)
         self.assertEqual(sent, [])
+
+    def test_escalation_window_is_read_from_the_outbox_and_fails_closed(self):
+        cur = FakeCursor(fetchall=[(1,)])
+        with mock.patch.object(compliance_service, "_get_conn", return_value=FakeConnection(cur)):
+            self.assertTrue(compliance_service._escalated_recently(7, "Emne"))
+        with mock.patch.object(compliance_service, "_get_conn", return_value=FakeConnection(FakeCursor(fetchall=[]))):
+            self.assertFalse(compliance_service._escalated_recently(7, "Emne"))
+        # No database: do not queue (a repeated mail cannot be recalled, a missed one is retried).
+        with mock.patch.object(compliance_service, "_get_conn", return_value=None):
+            self.assertTrue(compliance_service._escalated_recently(7, "Emne"))
 
     def test_no_critical_requirements_sends_nothing(self):
         with mock.patch("mail_delivery.enqueue") as send:

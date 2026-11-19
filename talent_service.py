@@ -96,6 +96,18 @@ def roles(cur, company_id, published=True):
     return [unpack(r) for r in cur.fetchall()]
 
 
+def latest_roles(cur, company_id, published=True):
+    """One row per role: its highest version (among the published ones by default).
+
+    Publishing a new version leaves the old one published, and a role can be
+    retitled between versions, so "newest" is the version number, never row order."""
+    newest = {}
+    for r in roles(cur, company_id, published=published):
+        if r['role_id'] not in newest or int(r['version']) > int(newest[r['role_id']]['version']):
+            newest[r['role_id']] = r
+    return sorted(newest.values(), key=lambda r: (r.get('title') or '').casefold())
+
+
 def role(cur, company_id, version_id, *, published=True):
     cur.execute('SELECT * FROM talent_role_versions WHERE company_id=%s AND id=%s' + (' AND published=1' if published else ''), (company_id, version_id))
     row = cur.fetchone()

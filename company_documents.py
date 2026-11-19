@@ -11,7 +11,8 @@ Contract
   lexical scorer (term frequency x rarity, title bonus and
   shared-beginning matching for Danish inflections and compounds). No embedding call, so it
   works offline and costs nothing per upload; it is bounded by ``MAX_DOCUMENTS``
-  and ``MAX_CHUNKS_SCANNED``.
+  and ``MAX_CHUNKS_SCANNED``, and ``add_document`` refuses an upload that would
+  take the company past the passage budget, so search always reads the whole library.
 * The text is the customer's, not ours: callers that hand passages to a model
   fence them with ``grounding.delimit_untrusted`` and name the document, so an
   answer can cite it and an instruction hidden in a document is read as data.
@@ -177,6 +178,12 @@ def add_document(cur, company_id, actor_user_id, title, filename, data):
     if int((cur.fetchone() or {}).get("n") or 0) >= MAX_DOCUMENTS:
         raise DocumentError("I har nået grænsen på %d dokumenter. Fjern et, før I uploader et nyt." % MAX_DOCUMENTS)
     passages = split_passages(text)
+    # Search reads every passage a company has (up to MAX_CHUNKS_SCANNED), so the
+    # library is capped there: a document that would not be searched is refused,
+    # never stored and silently skipped.
+    cur.execute("SELECT COALESCE(SUM(chunk_count),0) AS n FROM company_documents WHERE company_id=%s", (company_id,))
+    if int((cur.fetchone() or {}).get("n") or 0) + len(passages) > MAX_CHUNKS_SCANNED:
+        raise DocumentError("Der er ikke plads til dokumentet i jeres samling. Fjern et af de store dokumenter, eller upload en kortere udgave.")
     doc_id = str(uuid.uuid4())
     cur.execute("INSERT INTO company_documents (id,company_id,title,filename,char_count,chunk_count,uploaded_by) "
                 "VALUES (%s,%s,%s,%s,%s,%s,%s)",

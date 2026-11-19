@@ -1222,7 +1222,8 @@ def vendor_ask():
                         full_text += note
                         yield _vendor_sse({"type": "text", "content": note})
                 pending_note = _grounding.pending_confirmation_note(
-                    full_text, [getattr(tr, "output", None) for tr in (runtime_result.tool_results or [])])
+                    full_text, [getattr(tr, "output", None) for tr in (runtime_result.tool_results or [])],
+                        [getattr(tr, "name", None) for tr in (runtime_result.tool_results or [])])
                 if pending_note:
                     full_text += "\n\n" + pending_note
                     yield _vendor_sse({"type": "text", "content": "\n\n" + pending_note})

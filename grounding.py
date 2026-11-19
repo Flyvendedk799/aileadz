@@ -882,10 +882,20 @@ def _as_dict(output):
     return {}
 
 
-def pending_confirmation_note(answer, tool_outputs):
+def _writes(name):
+    try:
+        import ai_tool_registry
+        return bool(name and ai_tool_registry.get_tool_meta(name).side_effect)
+    except Exception:
+        return False
+
+
+def pending_confirmation_note(answer, tool_outputs, tool_names=None):
     """The note to append when ``answer`` claims an action is done although this
     turn only produced a confirm card (a tool result with ``needs_confirmation``)
     and no tool reported the action as carried out. Returns "" otherwise.
+    ``tool_names`` (parallel to ``tool_outputs``) lets a successful result from a
+    tool the registry marks as a write count as carried out, whatever its shape.
 
     Pure and guarded. Conservative on purpose: an answer that mentions the card
     or the Bekræft button already tells the truth and is left alone."""
@@ -894,12 +904,13 @@ def pending_confirmation_note(answer, tool_outputs):
         if not text.strip():
             return ""
         results = [_as_dict(o) for o in (tool_outputs or [])]
+        names = list(tool_names or []) + [None] * len(results)
         pending = [r for r in results if r.get("needs_confirmation") is True or r.get("status") == "proposed"]
         if not pending:
             return ""
-        carried_out = [r for r in results if r not in pending and (
+        carried_out = [r for r, name in zip(results, names) if r not in pending and (
             r.get("success") is True or r.get("status") in ("success", "ok", "order_created", "saved"))
-            and (r.get("section") or r.get("order_id") or r.get("queued") or r.get("visibility"))]
+            and (_writes(name) or r.get("section") or r.get("order_id") or r.get("queued") or r.get("visibility"))]
         if carried_out:
             return ""          # something really was done this turn; do not second-guess which
         if _DONE_CLAIM.search(text) and not _CONFIRM_CUE.search(text):

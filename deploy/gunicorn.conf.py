@@ -18,10 +18,14 @@ worker_class = "gthread"
 workers = int(os.environ.get("WEB_CONCURRENCY", "1"))
 threads = int(os.environ.get("WEB_THREADS", "16"))
 timeout = int(os.environ.get("WEB_TIMEOUT", "120"))
-graceful_timeout = 30
+# A worker that is asked to stop gets as long as a response may take, so an
+# open chat stream finishes instead of being cut mid-answer.
+graceful_timeout = timeout
 keepalive = 5
-# Recycle a worker now and then so a slow leak never becomes an outage.
-max_requests = int(os.environ.get("WEB_MAX_REQUESTS", "2000"))
-max_requests_jitter = 200
+# No periodic recycling by default: with one process a recycle means nobody
+# accepts requests while open streams drain, and the per-process limiter and
+# caches start empty. Set WEB_MAX_REQUESTS only together with more workers.
+max_requests = int(os.environ.get("WEB_MAX_REQUESTS", "0"))
+max_requests_jitter = 200 if max_requests else 0
 accesslog = "-" if os.environ.get("WEB_ACCESS_LOG", "0") == "1" else None
 errorlog = "-"

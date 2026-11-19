@@ -3790,7 +3790,8 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
             try:
                 if _grounding is not None and had_tool_calls:
                     _pending_note = _grounding.pending_confirmation_note(
-                        visible_text, [getattr(tr, "output", None) for tr in (runtime_result.tool_results or [])])
+                        visible_text, [getattr(tr, "output", None) for tr in (runtime_result.tool_results or [])],
+                        [getattr(tr, "name", None) for tr in (runtime_result.tool_results or [])])
                     if _pending_note:
                         yield f"data: {json.dumps({'type': 'chunk', 'content': chr(10) + chr(10) + _pending_note})}\n\n"
                         try:

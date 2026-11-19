@@ -453,6 +453,9 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
 - **Help per audience**: `search_platform_help` (employee), `hr_search_platform_help` (HR) and
   `vendor_search_help` (vendor) search only the articles whose front matter names that audience
   (`help_kb.search_help(..., audience=)`), so nobody is told how a page they cannot open works.
+- **HR `hr_talent_overview`** (read-only): role frameworks with their required competencies, the
+  acting person's own hiring pipelines as counts per stage (only opportunities they are on the hiring
+  team for; applicants are never named) and capability scenarios, each only when its module is on.
 - **HR `hr_onboarding_readiness` / `hr_mail_delivery_status`** (read-only): the evidence behind
   "Kom i gang" and the company's mail queue by state, with the items that need a person.
 - **`get_my_agenda`** (profile-gated): cross-silo "what's on my plate" - course

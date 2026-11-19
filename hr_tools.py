@@ -989,6 +989,20 @@ HR_TOOLS.append({
 HR_TOOLS.append({
     "type": "function",
     "function": {
+        "name": "hr_talent_overview",
+        "description": (
+            "Vis virksomhedens talentarbejde: rollerammer med de kompetencer, de kræver, de interne muligheder hvor "
+            "brugeren selv er i ansættelsesteamet med antal ansøgninger pr. trin, og kapacitetsscenarier. Brug det ved "
+            "spørgsmål om roller, rollekrav, interne stillinger, ansøgninger eller scenarier. Ansøgere nævnes ikke ved "
+            "navn her; den enkelte ansøgning læses på siden for ansættelsesteamet."
+        ),
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    },
+})
+
+HR_TOOLS.append({
+    "type": "function",
+    "function": {
         "name": "hr_onboarding_readiness",
         "description": (
             "Vis hvor langt virksomheden er med at komme i gang: hvilke trin der er på plads (medarbejdere og ledere, "
@@ -1069,6 +1083,52 @@ HR_TOOLS.append({
 def _execute_hr_search_platform_help(args):
     from app1.help_kb import execute_search_platform_help
     return execute_search_platform_help(args, audience="hr")
+
+
+def _execute_hr_talent_overview(args):
+    """Read-only: role frameworks, the acting person's own hiring pipelines and
+    capability scenarios, as counts. Applicants are never named here: an
+    application is read on the hiring page by the hiring team."""
+    company_id, user_id = session.get('company_id'), session.get('user_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+    import talent_service
+    cur = _get_cursor()
+    try:
+        flags = talent_service.flags(cur, company_id)
+        out = {"page": "/hr/talent", "modules": {k: bool(flags.get(k + "_enabled")) for k in ("roles", "mobility", "planning")}}
+        if flags.get("roles_enabled"):
+            seen, frameworks = set(), []
+            for r in talent_service.roles(cur, company_id, published=False):
+                if r.get("role_id") in seen:  # newest version first per title
+                    continue
+                seen.add(r.get("role_id"))
+                frameworks.append({"title": r.get("title"), "version": r.get("version"), "published": bool(r.get("published")),
+                                   "requirements": [q.get("skill") for q in (r.get("requirements") or []) if isinstance(q, dict)][:12]})
+            out["role_frameworks"] = frameworks[:40]
+        if flags.get("mobility_enabled") and user_id:
+            cur.execute(
+                "SELECT o.id, o.title, o.kind, o.status, o.deadline, a.status AS stage, COUNT(a.id) AS n "
+                "FROM talent_opportunities o "
+                "JOIN talent_hiring_members h ON h.company_id=o.company_id AND h.opportunity_id=o.id "
+                "LEFT JOIN talent_applications a ON a.company_id=o.company_id AND a.opportunity_id=o.id "
+                "WHERE o.company_id=%s AND h.user_id=%s GROUP BY o.id, o.title, o.kind, o.status, o.deadline, a.status "
+                "ORDER BY o.deadline", (company_id, user_id))
+            pipelines = {}
+            for row in cur.fetchall() or []:
+                p = pipelines.setdefault(row["id"], {"title": row["title"], "kind": row["kind"], "status": row["status"],
+                                                     "deadline": row["deadline"], "applications": {}, "total": 0})
+                if row.get("stage"):
+                    p["applications"][talent_service.STAGE_LABELS.get(row["stage"], row["stage"])] = int(row["n"])
+                    p["total"] += int(row["n"])
+            out["my_hiring_pipelines"] = list(pipelines.values())[:40]
+            out["pipeline_scope"] = "Kun muligheder, hvor du selv er i ansættelsesteamet."
+        if flags.get("planning_enabled"):
+            cur.execute("SELECT title, department, target_date, status FROM talent_scenarios WHERE company_id=%s ORDER BY created_at DESC LIMIT 20", (company_id,))
+            out["scenarios"] = [dict(r) for r in cur.fetchall() or []]
+    finally:
+        cur.close()
+    return json.dumps(out, ensure_ascii=False, default=str)
 
 
 def _execute_hr_onboarding_readiness(args):
@@ -1660,7 +1720,29 @@ def _execute_get_pending_actions(args):
     """, (company_id,))
     pending = cur.fetchone()['cnt']
     if pending > 0:
-        actions.append({"type": "approval", "message": f"{pending} kursusbestillinger venter paa godkendelse", "priority": "high", "count": pending})
+        actions.append({"type": "approval", "message": f"{pending} kursusbestillinger venter på godkendelse", "priority": "high", "count": pending})
+
+    # Orders past approval where the next move is the company's: read with the
+    # same case reading the order pages and the other assistants use.
+    try:
+        import order_fulfillment
+        cur.execute("""
+            SELECT order_id, status, variant_date FROM course_orders
+            WHERE company_id = %s AND status IN ('approved', 'booked')
+            ORDER BY created_at DESC LIMIT 300
+        """, (company_id,))
+        staged = {}
+        for case in order_fulfillment.case_states(cur, cur.fetchall() or []).values():
+            staged[case["stage"]] = staged.get(case["stage"], 0) + 1
+        for stage, text, priority in (
+                ("booker", "godkendte bestillinger venter på, at pladsen bliver bekræftet", "high"),
+                ("change", "bestillinger har et ændringsønske, der venter på svar", "high"),
+                ("verifier", "indsendte deltagelser venter på at blive bekræftet", "medium")):
+            if staged.get(stage):
+                actions.append({"type": "order_" + stage, "message": f"{staged[stage]} {text}", "priority": priority, "count": staged[stage]})
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("pending actions: order case reading failed")
 
     # Budget alerts (>80% used)
     cur.execute("""
@@ -1679,7 +1761,7 @@ def _execute_get_pending_actions(args):
     """, (company_id,))
     inactive = cur.fetchone()['cnt']
     if inactive > 0:
-        actions.append({"type": "inactive", "message": f"{inactive} medarbejdere har ikke vaeret aktive i 30+ dage", "priority": "medium", "count": inactive})
+        actions.append({"type": "inactive", "message": f"{inactive} medarbejdere har ikke været aktive i 30+ dage", "priority": "medium", "count": inactive})
 
     # Critical skill gaps
     cur.execute("""
@@ -1705,7 +1787,7 @@ def _execute_search_courses_for_team(args):
     query = args.get('query', '')
     limit = args.get('limit', 5)
     if not query:
-        return json.dumps({"error": "Angiv en soegning."})
+        return json.dumps({"error": "Angiv en søgning."})
 
     try:
         from app1.rag import hybrid_rank_products, load_augmented_products
@@ -1735,7 +1817,7 @@ def _execute_search_courses_for_team(args):
         import traceback
         print(f"[HR_TOOLS][search_courses_for_team] ERROR for query={query!r}: {e}")
         traceback.print_exc()
-        return json.dumps({"query": query, "results": [], "count": 0, "error": f"Soegefejl: {str(e)}"}, default=str)
+        return json.dumps({"query": query, "results": [], "count": 0, "error": "search_failed"}, default=str)
 
 
 def _execute_get_chatbot_usage_stats(args):
@@ -4447,6 +4529,7 @@ def execute_hr_tool(tool_call):
         "hr_open_in_app": _execute_hr_open_in_app,
         "hr_search_company_documents": _execute_hr_search_company_documents,
         "hr_onboarding_readiness": _execute_hr_onboarding_readiness,
+        "hr_talent_overview": _execute_hr_talent_overview,
         "hr_search_platform_help": _execute_hr_search_platform_help,
         "hr_mail_delivery_status": _execute_hr_mail_delivery_status,
     }

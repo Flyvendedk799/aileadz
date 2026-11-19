@@ -342,6 +342,7 @@ _HR_META = {
     # AI empowerment pass: read-only cross-surface navigation for the HR panel.
     # No company scope required — it navigates, it never reads tenant data.
     "hr_search_platform_help": ToolMeta("hr_search_platform_help", "hr", company_required=False, cache_ttl=600, toolset_tags=("help",)),
+    "hr_talent_overview": ToolMeta("hr_talent_overview", "hr", company_required=True, cache_ttl=30, toolset_tags=("talent",)),
     "hr_onboarding_readiness": ToolMeta("hr_onboarding_readiness", "hr", company_required=True, cache_ttl=60, toolset_tags=("onboarding",)),
     "hr_mail_delivery_status": ToolMeta("hr_mail_delivery_status", "hr", company_required=True, cache_ttl=30, toolset_tags=("mail",)),
     "hr_search_company_documents": ToolMeta(
@@ -490,6 +491,7 @@ _TOOL_LABELS = {
     "hr_open_in_app": "Åbn HR-side",
     "hr_search_company_documents": "Virksomhedens dokumenter",
     "hr_onboarding_readiness": "Kom i gang",
+    "hr_talent_overview": "Talent og roller",
     "hr_search_platform_help": "Hjælpeartikler",
     "hr_mail_delivery_status": "Mail og leveringer",
     # Vendor tools
@@ -1476,7 +1478,7 @@ _HR_PAGE_TOOLS = {
     "dashboard": ("get_pending_actions", "hr_explain_insights"),
     "team": ("get_team_training_status", "get_team_non_starters"),
     "employees": ("get_employee_overview", "hr_inactive_employees"),
-    "talent": ("get_employee_overview", "get_company_skill_gaps"),
+    "talent": ("hr_talent_overview", "get_employee_overview", "get_company_skill_gaps"),
     "onboarding": ("hr_onboarding_readiness",),
     "mail": ("hr_mail_delivery_status",),
     "departments": ("get_team_training_status", "get_budget_overview"),
@@ -1554,6 +1556,9 @@ def get_hr_tool_selection(
     if _has_any(query, ("kom i gang", "komme i gang", "er vi klar", "hvad mangler vi", "opsætning", "opsaetning",
                         "onboarding", "sat op", "næste skridt for os", "pilot")):
         names.add("hr_onboarding_readiness")
+    if _has_any(query, ("rolleramme", "rollekrav", "rolleprofil", "intern stilling", "interne stilling", "interne mulighed",
+                        "ansøgning", "ansoegning", "ansættelsesteam", "kapacitetsscenarie", "scenarie", "talent")):
+        names.add("hr_talent_overview")
     if _has_any(query, ("mail", "e-mail", "email", "fik de", "fået besked", "faaet besked", "ikke modtaget",
                         "leveringer", "levering", "ikke sendt", "fejler")):
         names.add("hr_mail_delivery_status")

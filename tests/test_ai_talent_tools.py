@@ -193,3 +193,50 @@ def test_hr_assistant_reads_onboarding_and_mail_state_for_its_own_company(env):
     assert 'hr_onboarding_readiness' in {t['function']['name'] for t in hr_selection}
     hr_selection, _ = registry.get_hr_tool_selection(company_id=7, user_query='fik de mailen?')
     assert 'hr_mail_delivery_status' in {t['function']['name'] for t in hr_selection}
+
+
+def test_hr_talent_overview_counts_only_the_acting_persons_pipelines(monkeypatch):
+    import json as _json
+    from flask import Flask, session
+    import hr_tools
+    import talent_service
+
+    class Cur:
+        def __init__(self):
+            self.seen, self._rows = [], []
+
+        def execute(self, sql, params=None):
+            self.seen.append((" ".join(sql.split()), tuple(params or ())))
+            if "talent_hiring_members" in sql:
+                self._rows = [{"id": "o1", "title": "Teamleder", "kind": "role", "status": "published", "deadline": "2030-01-01", "stage": "screening", "n": 2},
+                              {"id": "o1", "title": "Teamleder", "kind": "role", "status": "published", "deadline": "2030-01-01", "stage": "submitted", "n": 1}]
+            else:
+                self._rows = []
+
+        def fetchall(self):
+            return self._rows
+
+        def close(self):
+            pass
+
+    cur = Cur()
+    monkeypatch.setattr(hr_tools, "_get_cursor", lambda: cur)
+    monkeypatch.setattr(talent_service, "flags", lambda c, cid: {"roles_enabled": 0, "mobility_enabled": 1, "planning_enabled": 0})
+    app = Flask(__name__)
+    app.secret_key = "t"
+    with app.test_request_context():
+        session["company_id"], session["user_id"] = 7, 42
+        out = _json.loads(hr_tools._execute_hr_talent_overview({}))
+    pipeline = out["my_hiring_pipelines"][0]
+    assert pipeline["total"] == 3 and pipeline["applications"] == {"Gennemgang": 2, "Ansøgning modtaget": 1}
+    sql, params = next(q for q in cur.seen if "talent_hiring_members" in q[0])
+    assert "h.user_id=%s" in sql and params == (7, 42)
+    # Modules that are off are not read, and nobody is named.
+    assert "role_frameworks" not in out and "scenarios" not in out
+    assert "user_id" not in _json.dumps(out) and "snapshot" not in sql
+
+
+def test_hr_talent_overview_is_selectable_by_question():
+    import ai_tool_registry as reg
+    selection, _ = reg.get_hr_tool_selection(company_id=7, user_query='hvor mange ansøgninger har vi på de interne stillinger?')
+    assert 'hr_talent_overview' in {t['function']['name'] for t in selection}
